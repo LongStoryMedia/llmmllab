@@ -1,0 +1,44 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseReasoningTextDoneEvent
+description: Emitted when a reasoning text is completed.
+type: object
+properties:
+  content_index:
+    description: 'The index of the reasoning content part.
+
+      '
+    type: integer
+  item_id:
+    description: 'The ID of the item this reasoning text is associated with.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item this reasoning text is associated with.
+
+      '
+    type: integer
+  sequence_number:
+    description: 'The sequence number of this event.
+
+      '
+    type: integer
+  text:
+    description: 'The full text of the completed reasoning content.
+
+      '
+    type: string
+  type:
+    description: 'The type of the event. Always `response.reasoning_text.done`.
+
+      '
+    enum:
+    - response.reasoning_text.done
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- text
+- sequence_number

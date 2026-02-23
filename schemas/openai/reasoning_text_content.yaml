@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ReasoningTextContent
+description: Reasoning text from the model.
+type: object
+properties:
+  text:
+    description: The reasoning text from the model.
+    type: string
+  type:
+    default: reasoning_text
+    description: The type of the reasoning text. Always `reasoning_text`.
+    enum:
+    - reasoning_text
+    type: string
+required:
+- type
+- text

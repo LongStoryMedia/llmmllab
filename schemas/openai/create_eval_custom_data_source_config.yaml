@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalCustomDataSourceConfig
+description: 'A CustomDataSourceConfig object that defines the schema for the data
+  source used for the evaluation runs.
+
+  This schema is used to define the shape of the data that will be:
+
+  - Used to define your testing criteria and
+
+  - What data is required when creating a run
+
+  '
+type: object
+properties:
+  include_sample_schema:
+    default: false
+    description: Whether the eval should expect you to populate the sample namespace
+      (ie, by generating responses off of your data source)
+    type: boolean
+  item_schema:
+    additionalProperties: true
+    description: The json schema for each row in the data source.
+    type: object
+  type:
+    default: custom
+    description: The type of data source. Always `custom`.
+    enum:
+    - custom
+    type: string
+required:
+- item_schema
+- type

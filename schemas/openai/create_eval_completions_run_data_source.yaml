@@ -1,0 +1,123 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalCompletionsRunDataSource
+description: 'A CompletionsRunDataSource object describing a model sampling configuration.
+
+  '
+type: object
+properties:
+  input_messages:
+    anyOf:
+    - properties:
+        template:
+          description: A list of chat messages forming the prompt or context. May
+            include variable references to the `item` namespace, ie {{item.name}}.
+          items:
+            anyOf:
+            - $ref: easy_input_message.yaml
+            - $ref: eval_item.yaml
+          type: array
+        type:
+          description: The type of input messages. Always `template`.
+          enum:
+          - template
+          type: string
+      required:
+      - type
+      - template
+      title: TemplateInputMessages
+      type: object
+    - properties:
+        item_reference:
+          description: A reference to a variable in the `item` namespace. Ie, "item.input_trajectory"
+          type: string
+        type:
+          description: The type of input messages. Always `item_reference`.
+          enum:
+          - item_reference
+          type: string
+      required:
+      - type
+      - item_reference
+      title: ItemReferenceInputMessages
+      type: object
+    description: Used when sampling from a model. Dictates the structure of the messages
+      passed into the model. Can either be a reference to a prebuilt trajectory (ie,
+      `item.input_trajectory`), or a template with variable references to the `item`
+      namespace.
+    discriminator:
+      propertyName: type
+  model:
+    description: The name of the model to use for generating completions (e.g. "o3-mini").
+    type: string
+  sampling_params:
+    properties:
+      max_completion_tokens:
+        description: The maximum number of tokens in the generated output.
+        type: integer
+      reasoning_effort:
+        $ref: reasoning_effort.yaml
+      response_format:
+        anyOf:
+        - $ref: response_format_text.yaml
+        - $ref: response_format_json_schema.yaml
+        - $ref: response_format_json_object.yaml
+        description: 'An object specifying the format that the model must output.
+
+
+          Setting to `{ "type": "json_schema", "json_schema": {...} }` enables
+
+          Structured Outputs which ensures the model will match your supplied JSON
+
+          schema. Learn more in the [Structured Outputs
+
+          guide](https://platform.openai.com/docs/guides/structured-outputs).
+
+
+          Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+
+          ensures the message the model generates is valid JSON. Using `json_schema`
+
+          is preferred for models that support it.
+
+          '
+      seed:
+        default: 42
+        description: A seed value to initialize the randomness, during sampling.
+        type: integer
+      temperature:
+        default: 1
+        description: A higher temperature increases randomness in the outputs.
+        type: number
+      tools:
+        description: 'A list of tools the model may call. Currently, only functions
+          are supported as a tool. Use this to provide a list of functions the model
+          may generate JSON inputs for. A max of 128 functions are supported.
+
+          '
+        items:
+          $ref: chat_completion_tool.yaml
+        type: array
+      top_p:
+        default: 1
+        description: An alternative to temperature for nucleus sampling; 1.0 includes
+          all tokens.
+        type: number
+    type: object
+  source:
+    anyOf:
+    - $ref: eval_jsonl_file_content_source.yaml
+    - $ref: eval_jsonl_file_id_source.yaml
+    - $ref: eval_stored_completions_source.yaml
+    description: Determines what populates the `item` namespace in this run's data
+      source.
+    discriminator:
+      propertyName: type
+  type:
+    default: completions
+    description: The type of run data source. Always `completions`.
+    enum:
+    - completions
+    type: string
+required:
+- type
+- source

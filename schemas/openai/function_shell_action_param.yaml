@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellActionParam
+description: Commands and limits describing how to run the shell tool call.
+type: object
+properties:
+  commands:
+    description: Ordered shell commands for the execution environment to run.
+    items:
+      type: string
+    type: array
+  max_output_length:
+    anyOf:
+    - description: Maximum number of UTF-8 characters to capture from combined stdout
+        and stderr output.
+      type: integer
+    - type: 'null'
+  timeout_ms:
+    anyOf:
+    - description: Maximum wall-clock time in milliseconds to allow the shell commands
+        to run.
+      type: integer
+    - type: 'null'
+required:
+- commands

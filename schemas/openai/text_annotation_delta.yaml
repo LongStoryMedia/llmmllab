@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TextAnnotationDelta
+anyOf:
+- $ref: message_delta_content_text_annotations_file_citation_object.yaml
+- $ref: message_delta_content_text_annotations_file_path_object.yaml
+discriminator:
+  propertyName: type

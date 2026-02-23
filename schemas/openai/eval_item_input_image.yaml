@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalItemInputImage
+description: An image input block used within EvalItem content arrays.
+type: object
+properties:
+  detail:
+    description: 'The detail level of the image to be sent to the model. One of `high`,
+      `low`, or `auto`. Defaults to `auto`.
+
+      '
+    type: string
+  image_url:
+    description: 'The URL of the image input.
+
+      '
+    type: string
+  type:
+    description: 'The type of the image input. Always `input_image`.
+
+      '
+    enum:
+    - input_image
+    type: string
+required:
+- type
+- image_url

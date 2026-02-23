@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalItemContentArray
+description: 'A list of inputs, each of which may be either an input text, output
+  text, input
+
+  image, or input audio object.
+
+  '
+type: array
+items:
+  $ref: eval_item_content_item.yaml

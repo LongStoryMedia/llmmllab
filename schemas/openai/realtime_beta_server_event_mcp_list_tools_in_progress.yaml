@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventMCPListToolsInProgress
+description: Returned when listing MCP tools is in progress for an item.
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the MCP list tools item.
+    type: string
+  type:
+    const: mcp_list_tools.in_progress
+    description: The event type, must be `mcp_list_tools.in_progress`.
+required:
+- event_id
+- type
+- item_id

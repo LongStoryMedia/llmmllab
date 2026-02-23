@@ -1,0 +1,60 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFormatJsonSchema
+description: 'JSON Schema response format. Used to generate structured JSON responses.
+
+  Learn more about [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs).
+
+  '
+type: object
+properties:
+  json_schema:
+    description: 'Structured Outputs configuration options, including a JSON Schema.
+
+      '
+    properties:
+      description:
+        description: 'A description of what the response format is for, used by the
+          model to
+
+          determine how to respond in the format.
+
+          '
+        type: string
+      name:
+        description: 'The name of the response format. Must be a-z, A-Z, 0-9, or contain
+
+          underscores and dashes, with a maximum length of 64.
+
+          '
+        type: string
+      schema:
+        $ref: response_format_json_schema_schema.yaml
+      strict:
+        anyOf:
+        - default: false
+          description: 'Whether to enable strict schema adherence when generating
+            the output.
+
+            If set to true, the model will always follow the exact schema defined
+
+            in the `schema` field. Only a subset of JSON Schema is supported when
+
+            `strict` is `true`. To learn more, read the [Structured Outputs
+
+            guide](https://platform.openai.com/docs/guides/structured-outputs).
+
+            '
+          type: boolean
+        - type: 'null'
+    required:
+    - name
+    title: JSON schema
+    type: object
+  type:
+    description: The type of response format being defined. Always `json_schema`.
+    enum:
+    - json_schema
+    type: string
+required:
+- type
+- json_schema

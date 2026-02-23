@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileCitationBody
+description: A citation to a file.
+type: object
+properties:
+  file_id:
+    description: The ID of the file.
+    type: string
+  filename:
+    description: The filename of the file cited.
+    type: string
+  index:
+    description: The index of the file in the list of files.
+    type: integer
+  type:
+    default: file_citation
+    description: The type of the file citation. Always `file_citation`.
+    enum:
+    - file_citation
+    type: string
+required:
+- type
+- file_id
+- index
+- filename

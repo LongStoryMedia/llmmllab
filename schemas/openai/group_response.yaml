@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GroupResponse
+description: Details about an organization group.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) when the group was created.
+    format: int64
+    type: integer
+  id:
+    description: Identifier for the group.
+    type: string
+  is_scim_managed:
+    description: Whether the group is managed through SCIM and controlled by your
+      identity provider.
+    type: boolean
+  name:
+    description: Display name of the group.
+    type: string
+required:
+- id
+- name
+- created_at
+- is_scim_managed

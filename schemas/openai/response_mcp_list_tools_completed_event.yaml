@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseMCPListToolsCompletedEvent
+description: 'Emitted when the list of available MCP tools has been successfully retrieved.
+
+  '
+type: object
+properties:
+  item_id:
+    description: The ID of the MCP tool call item that produced this output.
+    type: string
+  output_index:
+    description: The index of the output item that was processed.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.mcp_list_tools.completed'.
+    enum:
+    - response.mcp_list_tools.completed
+    type: string
+required:
+- type
+- item_id
+- output_index
+- sequence_number

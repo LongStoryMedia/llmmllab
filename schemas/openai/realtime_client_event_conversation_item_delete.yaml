@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventConversationItemDelete
+description: "Send this event when you want to remove any item from the conversation\
+  \ \nhistory. The server will respond with a `conversation.item.deleted` event, \n\
+  unless the item does not exist in the conversation history, in which case the \n\
+  server will respond with an error.\n"
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    maxLength: 512
+    type: string
+  item_id:
+    description: The ID of the item to delete.
+    type: string
+  type:
+    const: conversation.item.delete
+    description: The event type, must be `conversation.item.delete`.
+required:
+- type
+- item_id

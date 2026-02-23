@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateVoiceRequest
+type: object
+properties:
+  audio_sample:
+    description: 'The sample audio recording file. Maximum size is 10 MiB.
+
+
+      Supported MIME types:
+
+      `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/ogg`, `audio/aac`, `audio/flac`,
+      `audio/webm`, `audio/mp4`.
+
+      '
+    format: binary
+    type: string
+  consent:
+    description: The consent recording ID (for example, `cons_1234`).
+    type: string
+  name:
+    description: The name of the new voice.
+    type: string
+required:
+- name
+- audio_sample
+- consent
+additionalProperties: false

@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaObject
+description: 'Represents a message delta i.e. any changed fields on a message during
+  streaming.
+
+  '
+type: object
+properties:
+  delta:
+    description: The delta containing the fields that have changed on the Message.
+    properties:
+      content:
+        description: The content of the message in array of text and/or images.
+        items:
+          $ref: message_content_delta.yaml
+        type: array
+      role:
+        description: The entity that produced the message. One of `user` or `assistant`.
+        enum:
+        - user
+        - assistant
+        type: string
+    type: object
+  id:
+    description: The identifier of the message, which can be referenced in API endpoints.
+    type: string
+  object:
+    description: The object type, which is always `thread.message.delta`.
+    enum:
+    - thread.message.delta
+    type: string
+required:
+- id
+- object
+- delta

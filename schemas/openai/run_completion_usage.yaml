@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunCompletionUsage
+anyOf:
+- description: Usage statistics related to the run. This value will be `null` if the
+    run is not in a terminal state (i.e. `in_progress`, `queued`, etc.).
+  properties:
+    completion_tokens:
+      description: Number of completion tokens used over the course of the run.
+      type: integer
+    prompt_tokens:
+      description: Number of prompt tokens used over the course of the run.
+      type: integer
+    total_tokens:
+      description: Total number of tokens used (prompt + completion).
+      type: integer
+  required:
+  - prompt_tokens
+  - completion_tokens
+  - total_tokens
+  type: object
+- type: 'null'

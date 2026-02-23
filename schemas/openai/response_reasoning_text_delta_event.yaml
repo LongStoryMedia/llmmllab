@@ -1,0 +1,46 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseReasoningTextDeltaEvent
+description: Emitted when a delta is added to a reasoning text.
+type: object
+properties:
+  content_index:
+    description: 'The index of the reasoning content part this delta is associated
+      with.
+
+      '
+    type: integer
+  delta:
+    description: 'The text delta that was added to the reasoning content.
+
+      '
+    type: string
+  item_id:
+    description: 'The ID of the item this reasoning text delta is associated with.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item this reasoning text delta is associated
+      with.
+
+      '
+    type: integer
+  sequence_number:
+    description: 'The sequence number of this event.
+
+      '
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.reasoning_text.delta`.
+
+      '
+    enum:
+    - response.reasoning_text.delta
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- delta
+- sequence_number

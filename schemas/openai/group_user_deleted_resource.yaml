@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GroupUserDeletedResource
+description: Confirmation payload returned after removing a user from a group.
+type: object
+properties:
+  deleted:
+    description: Whether the group membership was removed.
+    type: boolean
+  object:
+    description: Always `group.user.deleted`.
+    enum:
+    - group.user.deleted
+    type: string
+required:
+- object
+- deleted

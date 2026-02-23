@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventInputAudioBufferCommitted
+description: 'Returned when an input audio buffer is committed, either by the client
+  or
+
+  automatically in server VAD mode. The `item_id` property is the ID of the user
+
+  message item that will be created, thus a `conversation.item.created` event
+
+  will also be sent to the client.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the user message item that will be created.
+    type: string
+  previous_item_id:
+    anyOf:
+    - description: 'The ID of the preceding item after which the new item will be
+        inserted.
+
+        Can be `null` if the item has no predecessor.
+
+        '
+      type: string
+    - type: 'null'
+  type:
+    const: input_audio_buffer.committed
+    description: The event type, must be `input_audio_buffer.committed`.
+required:
+- event_id
+- type
+- item_id

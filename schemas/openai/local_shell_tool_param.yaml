@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LocalShellToolParam
+description: A tool that allows the model to execute shell commands in a local environment.
+type: object
+properties:
+  type:
+    default: local_shell
+    description: The type of the local shell tool. Always `local_shell`.
+    enum:
+    - local_shell
+    type: string
+required:
+- type

@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseTextParam
+description: 'Configuration options for a text response from the model. Can be plain
+
+  text or structured JSON data. Learn more:
+
+  - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+
+  - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+
+  '
+type: object
+properties:
+  format:
+    $ref: text_response_format_configuration.yaml
+  verbosity:
+    $ref: verbosity.yaml

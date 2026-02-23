@@ -1,0 +1,188 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunObject
+description: Represents an execution run on a [thread](https://platform.openai.com/docs/api-reference/threads).
+type: object
+properties:
+  assistant_id:
+    description: The ID of the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+      used for execution of this run.
+    type: string
+  cancelled_at:
+    description: The Unix timestamp (in seconds) for when the run was cancelled.
+    nullable: true
+    type: integer
+  completed_at:
+    description: The Unix timestamp (in seconds) for when the run was completed.
+    nullable: true
+    type: integer
+  created_at:
+    description: The Unix timestamp (in seconds) for when the run was created.
+    type: integer
+  expires_at:
+    description: The Unix timestamp (in seconds) for when the run will expire.
+    nullable: true
+    type: integer
+  failed_at:
+    description: The Unix timestamp (in seconds) for when the run failed.
+    nullable: true
+    type: integer
+  id:
+    description: The identifier, which can be referenced in API endpoints.
+    type: string
+  incomplete_details:
+    description: Details on why the run is incomplete. Will be `null` if the run is
+      not incomplete.
+    nullable: true
+    properties:
+      reason:
+        description: The reason why the run is incomplete. This will point to which
+          specific token limit was reached over the course of the run.
+        enum:
+        - max_completion_tokens
+        - max_prompt_tokens
+        type: string
+    type: object
+  instructions:
+    description: The instructions that the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+      used for this run.
+    type: string
+  last_error:
+    description: The last error associated with this run. Will be `null` if there
+      are no errors.
+    nullable: true
+    properties:
+      code:
+        description: One of `server_error`, `rate_limit_exceeded`, or `invalid_prompt`.
+        enum:
+        - server_error
+        - rate_limit_exceeded
+        - invalid_prompt
+        type: string
+      message:
+        description: A human-readable description of the error.
+        type: string
+    required:
+    - code
+    - message
+    type: object
+  max_completion_tokens:
+    description: 'The maximum number of completion tokens specified to have been used
+      over the course of the run.
+
+      '
+    minimum: 256
+    nullable: true
+    type: integer
+  max_prompt_tokens:
+    description: 'The maximum number of prompt tokens specified to have been used
+      over the course of the run.
+
+      '
+    minimum: 256
+    nullable: true
+    type: integer
+  metadata:
+    $ref: metadata.yaml
+  model:
+    description: The model that the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+      used for this run.
+    type: string
+  object:
+    description: The object type, which is always `thread.run`.
+    enum:
+    - thread.run
+    type: string
+  parallel_tool_calls:
+    $ref: parallel_tool_calls.yaml
+  required_action:
+    description: Details on the action required to continue the run. Will be `null`
+      if no action is required.
+    nullable: true
+    properties:
+      submit_tool_outputs:
+        description: Details on the tool outputs needed for this run to continue.
+        properties:
+          tool_calls:
+            description: A list of the relevant tool calls.
+            items:
+              $ref: run_tool_call_object.yaml
+            type: array
+        required:
+        - tool_calls
+        type: object
+      type:
+        description: For now, this is always `submit_tool_outputs`.
+        enum:
+        - submit_tool_outputs
+        type: string
+    required:
+    - type
+    - submit_tool_outputs
+    type: object
+  response_format:
+    $ref: assistants_api_response_format_option.yaml
+    nullable: true
+  started_at:
+    description: The Unix timestamp (in seconds) for when the run was started.
+    nullable: true
+    type: integer
+  status:
+    $ref: run_status.yaml
+  temperature:
+    description: The sampling temperature used for this run. If not set, defaults
+      to 1.
+    nullable: true
+    type: number
+  thread_id:
+    description: The ID of the [thread](https://platform.openai.com/docs/api-reference/threads)
+      that was executed on as a part of this run.
+    type: string
+  tool_choice:
+    allOf:
+    - $ref: assistants_api_tool_choice_option.yaml
+    - nullable: true
+  tools:
+    default: []
+    description: The list of tools that the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+      used for this run.
+    items:
+      $ref: assistant_tool.yaml
+    maxItems: 20
+    type: array
+  top_p:
+    description: The nucleus sampling value used for this run. If not set, defaults
+      to 1.
+    nullable: true
+    type: number
+  truncation_strategy:
+    allOf:
+    - $ref: truncation_object.yaml
+    - nullable: true
+  usage:
+    $ref: run_completion_usage.yaml
+required:
+- id
+- object
+- created_at
+- thread_id
+- assistant_id
+- status
+- required_action
+- last_error
+- expires_at
+- started_at
+- cancelled_at
+- failed_at
+- completed_at
+- model
+- instructions
+- tools
+- metadata
+- usage
+- incomplete_details
+- max_prompt_tokens
+- max_completion_tokens
+- truncation_strategy
+- tool_choice
+- parallel_tool_calls
+- response_format

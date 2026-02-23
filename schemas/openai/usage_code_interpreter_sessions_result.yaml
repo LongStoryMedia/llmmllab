@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageCodeInterpreterSessionsResult
+description: The aggregated code interpreter sessions usage details of the specific
+  time bucket.
+type: object
+properties:
+  num_sessions:
+    description: The number of code interpreter sessions.
+    type: integer
+  object:
+    enum:
+    - organization.usage.code_interpreter_sessions.result
+    type: string
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+required:
+- object
+- sessions

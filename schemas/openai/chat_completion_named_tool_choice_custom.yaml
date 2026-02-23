@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionNamedToolChoiceCustom
+description: Specifies a tool the model should use. Use to force the model to call
+  a specific custom tool.
+type: object
+properties:
+  custom:
+    properties:
+      name:
+        description: The name of the custom tool to call.
+        type: string
+    required:
+    - name
+    type: object
+  type:
+    description: For custom tool calling, the type is always `custom`.
+    enum:
+    - custom
+    type: string
+required:
+- type
+- custom

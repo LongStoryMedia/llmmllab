@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaContentTextAnnotationsFileCitationObject
+description: A citation within the message that points to a specific quote from a
+  specific File associated with the assistant or the message. Generated when the assistant
+  uses the "file_search" tool to search files.
+type: object
+properties:
+  end_index:
+    minimum: 0
+    type: integer
+  file_citation:
+    properties:
+      file_id:
+        description: The ID of the specific File the citation is from.
+        type: string
+      quote:
+        description: The specific quote in the file.
+        type: string
+    type: object
+  index:
+    description: The index of the annotation in the text content part.
+    type: integer
+  start_index:
+    minimum: 0
+    type: integer
+  text:
+    description: The text in the message content that needs to be replaced.
+    type: string
+  type:
+    description: Always `file_citation`.
+    enum:
+    - file_citation
+    type: string
+required:
+- index
+- type

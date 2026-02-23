@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseImageGenCallCompletedEvent
+description: 'Emitted when an image generation tool call has completed and the final
+  image is available.
+
+  '
+type: object
+properties:
+  item_id:
+    description: The unique identifier of the image generation item being processed.
+    type: string
+  output_index:
+    description: The index of the output item in the response's output array.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.image_generation_call.completed'.
+    enum:
+    - response.image_generation_call.completed
+    type: string
+required:
+- type
+- output_index
+- item_id
+- sequence_number

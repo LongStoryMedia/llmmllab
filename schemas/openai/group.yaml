@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Group
+description: Summary information about a group returned in role assignment responses.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) when the group was created.
+    format: int64
+    type: integer
+  id:
+    description: Identifier for the group.
+    type: string
+  name:
+    description: Display name of the group.
+    type: string
+  object:
+    description: Always `group`.
+    enum:
+    - group
+    type: string
+  scim_managed:
+    description: Whether the group is managed through SCIM.
+    type: boolean
+required:
+- object
+- id
+- name
+- created_at
+- scim_managed

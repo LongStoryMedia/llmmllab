@@ -1,0 +1,55 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventError
+description: 'Returned when an error occurs, which could be a client problem or a
+  server
+
+  problem. Most errors are recoverable and the session will stay open, we
+
+  recommend to implementors to monitor and log error messages by default.
+
+  '
+type: object
+properties:
+  error:
+    description: Details of the error.
+    properties:
+      code:
+        anyOf:
+        - description: Error code, if any.
+          type: string
+        - type: 'null'
+      event_id:
+        anyOf:
+        - description: 'The event_id of the client event that caused the error, if
+            applicable.
+
+            '
+          type: string
+        - type: 'null'
+      message:
+        description: A human-readable error message.
+        type: string
+      param:
+        anyOf:
+        - description: Parameter related to the error, if any.
+          type: string
+        - type: 'null'
+      type:
+        description: 'The type of error (e.g., "invalid_request_error", "server_error").
+
+          '
+        type: string
+    required:
+    - type
+    - message
+    type: object
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  type:
+    const: error
+    description: The event type, must be `error`.
+required:
+- event_id
+- type
+- error

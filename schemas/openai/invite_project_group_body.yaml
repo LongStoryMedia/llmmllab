@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InviteProjectGroupBody
+description: Request payload for granting a group access to a project.
+type: object
+properties:
+  group_id:
+    description: Identifier of the group to add to the project.
+    type: string
+  role:
+    description: Identifier of the project role to grant to the group.
+    type: string
+required:
+- group_id
+- role

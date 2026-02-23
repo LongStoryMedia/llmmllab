@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DoubleClickAction
+description: A double click action.
+type: object
+properties:
+  type:
+    default: double_click
+    description: Specifies the event type. For a double click action, this property
+      is always set to `double_click`.
+    enum:
+    - double_click
+    type: string
+  x:
+    description: The x-coordinate where the double click occurred.
+    type: integer
+  y:
+    description: The y-coordinate where the double click occurred.
+    type: integer
+required:
+- type
+- x
+- y

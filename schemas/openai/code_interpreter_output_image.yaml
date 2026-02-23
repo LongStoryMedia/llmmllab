@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CodeInterpreterOutputImage
+description: The image output from the code interpreter.
+type: object
+properties:
+  type:
+    default: image
+    description: The type of the output. Always `image`.
+    enum:
+    - image
+    type: string
+  url:
+    description: The URL of the image output from the code interpreter.
+    type: string
+required:
+- type
+- url

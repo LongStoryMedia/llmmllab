@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Screenshot
+description: 'A screenshot action.
+
+  '
+type: object
+properties:
+  type:
+    default: screenshot
+    description: "Specifies the event type. For a screenshot action, this property\
+      \ is \nalways set to `screenshot`.\n"
+    enum:
+    - screenshot
+    type: string
+required:
+- type

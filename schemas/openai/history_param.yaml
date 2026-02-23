@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: HistoryParam
+description: Controls how much historical context is retained for the session.
+type: object
+properties:
+  enabled:
+    description: Enables chat users to access previous ChatKit threads. Defaults to
+      true.
+    type: boolean
+  recent_threads:
+    description: Number of recent ChatKit threads users have access to. Defaults to
+      unlimited when unset.
+    minimum: 1
+    type: integer
+required: []

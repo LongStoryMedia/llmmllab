@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuneSupervisedMethod
+description: Configuration for the supervised fine-tuning method.
+type: object
+properties:
+  hyperparameters:
+    $ref: fine_tune_supervised_hyperparameters.yaml

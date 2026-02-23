@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: StopConfiguration
+description: 'Not supported with latest reasoning models `o3` and `o4-mini`.
+
+
+  Up to 4 sequences where the API will stop generating further tokens. The
+
+  returned text will not contain the stop sequence.
+
+  '
+anyOf:
+- default: <|endoftext|>
+  example: '
+
+    '
+  nullable: true
+  type: string
+- items:
+    example: '["\n"]'
+    type: string
+  maxItems: 4
+  minItems: 1
+  type: array
+nullable: true

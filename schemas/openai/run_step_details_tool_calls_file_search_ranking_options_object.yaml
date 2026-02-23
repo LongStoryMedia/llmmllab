@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsToolCallsFileSearchRankingOptionsObject
+description: The ranking options for the file search.
+type: object
+properties:
+  ranker:
+    $ref: file_search_ranker.yaml
+  score_threshold:
+    description: The score threshold for the file search. All values must be a floating
+      point number between 0 and 1.
+    maximum: 1
+    minimum: 0
+    type: number
+required:
+- ranker
+- score_threshold

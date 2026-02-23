@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Tool
+description: 'A tool that can be used to generate a response.
+
+  '
+anyOf:
+- $ref: function_tool.yaml
+- $ref: file_search_tool.yaml
+- $ref: computer_use_preview_tool.yaml
+- $ref: web_search_tool.yaml
+- $ref: mcp_tool.yaml
+- $ref: code_interpreter_tool.yaml
+- $ref: image_gen_tool.yaml
+- $ref: local_shell_tool_param.yaml
+- $ref: function_shell_tool_param.yaml
+- $ref: custom_tool_param.yaml
+- $ref: web_search_preview_tool.yaml
+- $ref: apply_patch_tool_param.yaml
+discriminator:
+  propertyName: type

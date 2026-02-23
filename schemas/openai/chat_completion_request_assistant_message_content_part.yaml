@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestAssistantMessageContentPart
+anyOf:
+- $ref: chat_completion_request_message_content_part_text.yaml
+- $ref: chat_completion_request_message_content_part_refusal.yaml
+discriminator:
+  propertyName: type

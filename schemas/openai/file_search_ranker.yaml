@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileSearchRanker
+description: The ranker to use for the file search. If not specified will use the
+  `auto` ranker.
+type: string
+enum:
+- auto
+- default_2024_08_21

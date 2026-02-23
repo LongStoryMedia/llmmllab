@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaClientEventSessionUpdate
+description: 'Send this event to update the session’s default configuration.
+
+  The client may send this event at any time to update any field,
+
+  except for `voice`. However, note that once a session has been
+
+  initialized with a particular `model`, it can’t be changed to
+
+  another model using `session.update`.
+
+
+  When the server receives a `session.update`, it will respond
+
+  with a `session.updated` event showing the full, effective configuration.
+
+  Only the fields that are present are updated. To clear a field like
+
+  `instructions`, pass an empty string.
+
+  '
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    type: string
+  session:
+    $ref: realtime_session_create_request.yaml
+  type:
+    const: session.update
+    description: The event type, must be `session.update`.
+required:
+- type
+- session

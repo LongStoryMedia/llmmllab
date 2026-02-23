@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventConversationItemCreate
+description: "Add a new Item to the Conversation's context, including messages, function\
+  \ \ncalls, and function call responses. This event can be used both to populate\
+  \ a \n\"history\" of the conversation and to add new items mid-stream, but has the\
+  \ \ncurrent limitation that it cannot populate assistant audio messages.\n\nIf successful,\
+  \ the server will respond with a `conversation.item.created` \nevent, otherwise\
+  \ an `error` event will be sent.\n"
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    maxLength: 512
+    type: string
+  item:
+    $ref: realtime_conversation_item.yaml
+  previous_item_id:
+    description: "The ID of the preceding item after which the new item will be inserted.\
+      \ \nIf not set, the new item will be appended to the end of the conversation.\n\
+      If set to `root`, the new item will be added to the beginning of the conversation.\n\
+      If set to an existing ID, it allows an item to be inserted mid-conversation.\
+      \ If the\nID cannot be found, an error will be returned and the item will not\
+      \ be added.\n"
+    type: string
+  type:
+    const: conversation.item.create
+    description: The event type, must be `conversation.item.create`.
+required:
+- type
+- item

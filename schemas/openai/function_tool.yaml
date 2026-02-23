@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionTool
+description: Defines a function in your own code the model can choose to call. Learn
+  more about [function calling](https://platform.openai.com/docs/guides/function-calling).
+type: object
+properties:
+  description:
+    anyOf:
+    - description: A description of the function. Used by the model to determine whether
+        or not to call the function.
+      type: string
+    - type: 'null'
+  name:
+    description: The name of the function to call.
+    type: string
+  parameters:
+    anyOf:
+    - additionalProperties: {}
+      description: A JSON schema object describing the parameters of the function.
+      type: object
+    - type: 'null'
+  strict:
+    anyOf:
+    - description: Whether to enforce strict parameter validation. Default `true`.
+      type: boolean
+    - type: 'null'
+  type:
+    default: function
+    description: The type of the function tool. Always `function`.
+    enum:
+    - function
+    type: string
+required:
+- type
+- name
+- strict
+- parameters

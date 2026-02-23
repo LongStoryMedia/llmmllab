@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApplyPatchUpdateFileOperation
+description: Instruction describing how to update a file via the apply_patch tool.
+type: object
+properties:
+  diff:
+    description: Diff to apply.
+    type: string
+  path:
+    description: Path of the file to update.
+    type: string
+  type:
+    default: update_file
+    description: Update an existing file with the provided diff.
+    enum:
+    - update_file
+    type: string
+required:
+- type
+- path
+- diff

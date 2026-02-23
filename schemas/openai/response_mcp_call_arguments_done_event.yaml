@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseMCPCallArgumentsDoneEvent
+description: 'Emitted when the arguments for an MCP tool call are finalized.
+
+  '
+type: object
+properties:
+  arguments:
+    description: 'A JSON string containing the finalized arguments for the MCP tool
+      call.
+
+      '
+    type: string
+  item_id:
+    description: The unique identifier of the MCP tool call item being processed.
+    type: string
+  output_index:
+    description: The index of the output item in the response's output array.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.mcp_call_arguments.done'.
+    enum:
+    - response.mcp_call_arguments.done
+    type: string
+required:
+- type
+- output_index
+- item_id
+- arguments
+- sequence_number

@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VectorStoreSearchResultContentObject
+type: object
+properties:
+  text:
+    description: The text content returned from search.
+    type: string
+  type:
+    description: The type of content.
+    enum:
+    - text
+    type: string
+required:
+- type
+- text
+additionalProperties: false

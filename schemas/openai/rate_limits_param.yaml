@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RateLimitsParam
+description: Controls request rate limits for the session.
+type: object
+properties:
+  max_requests_per_1_minute:
+    description: Maximum number of requests allowed per minute for the session. Defaults
+      to 10.
+    minimum: 1
+    type: integer
+required: []

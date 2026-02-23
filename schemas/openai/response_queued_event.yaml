@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseQueuedEvent
+description: 'Emitted when a response is queued and waiting to be processed.
+
+  '
+type: object
+properties:
+  response:
+    $ref: response.yaml
+    description: The full response object that is queued.
+  sequence_number:
+    description: The sequence number for this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.queued'.
+    enum:
+    - response.queued
+    type: string
+required:
+- type
+- response
+- sequence_number

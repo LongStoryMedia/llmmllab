@@ -1,0 +1,73 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageCompletionsResult
+description: The aggregated completions usage details of the specific time bucket.
+type: object
+properties:
+  api_key_id:
+    anyOf:
+    - description: When `group_by=api_key_id`, this field provides the API key ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  batch:
+    anyOf:
+    - description: When `group_by=batch`, this field tells whether the grouped usage
+        result is batch or not.
+      type: boolean
+    - type: 'null'
+  input_audio_tokens:
+    description: The aggregated number of audio input tokens used, including cached
+      tokens.
+    type: integer
+  input_cached_tokens:
+    description: The aggregated number of text input tokens that has been cached from
+      previous requests. For customers subscribe to scale tier, this includes scale
+      tier tokens.
+    type: integer
+  input_tokens:
+    description: The aggregated number of text input tokens used, including cached
+      tokens. For customers subscribe to scale tier, this includes scale tier tokens.
+    type: integer
+  model:
+    anyOf:
+    - description: When `group_by=model`, this field provides the model name of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+  num_model_requests:
+    description: The count of requests made to the model.
+    type: integer
+  object:
+    enum:
+    - organization.usage.completions.result
+    type: string
+  output_audio_tokens:
+    description: The aggregated number of audio output tokens used.
+    type: integer
+  output_tokens:
+    description: The aggregated number of text output tokens used. For customers subscribe
+      to scale tier, this includes scale tier tokens.
+    type: integer
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  service_tier:
+    anyOf:
+    - description: When `group_by=service_tier`, this field provides the service tier
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  user_id:
+    anyOf:
+    - description: When `group_by=user_id`, this field provides the user ID of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+required:
+- object
+- input_tokens
+- output_tokens
+- num_model_requests

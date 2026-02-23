@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeAudioFormats
+anyOf:
+- description: The PCM audio format. Only a 24kHz sample rate is supported.
+  properties:
+    rate:
+      description: The sample rate of the audio. Always `24000`.
+      enum:
+      - 24000
+      type: integer
+    type:
+      description: The audio format. Always `audio/pcm`.
+      enum:
+      - audio/pcm
+      type: string
+  title: PCM audio format
+  type: object
+- description: The G.711 μ-law format.
+  properties:
+    type:
+      description: The audio format. Always `audio/pcmu`.
+      enum:
+      - audio/pcmu
+      type: string
+  title: PCMU audio format
+  type: object
+- description: The G.711 A-law format.
+  properties:
+    type:
+      description: The audio format. Always `audio/pcma`.
+      enum:
+      - audio/pcma
+      type: string
+  title: PCMA audio format
+  type: object
+discriminator:
+  propertyName: type

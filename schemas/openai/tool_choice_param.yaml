@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolChoiceParam
+description: 'How the model should select which tool (or tools) to use when generating
+
+  a response. See the `tools` parameter to see how to specify which tools
+
+  the model can call.
+
+  '
+anyOf:
+- $ref: tool_choice_options.yaml
+- $ref: tool_choice_allowed.yaml
+- $ref: tool_choice_types.yaml
+- $ref: tool_choice_function.yaml
+- $ref: tool_choice_mcp.yaml
+- $ref: tool_choice_custom.yaml
+- $ref: specific_apply_patch_param.yaml
+- $ref: specific_function_shell_param.yaml
+discriminator:
+  propertyName: type

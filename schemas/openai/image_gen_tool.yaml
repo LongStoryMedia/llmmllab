@@ -1,0 +1,128 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageGenTool
+description: 'A tool that generates images using the GPT image models.
+
+  '
+type: object
+properties:
+  background:
+    default: auto
+    description: 'Background type for the generated image. One of `transparent`,
+
+      `opaque`, or `auto`. Default: `auto`.
+
+      '
+    enum:
+    - transparent
+    - opaque
+    - auto
+    type: string
+  input_fidelity:
+    anyOf:
+    - $ref: input_fidelity.yaml
+    - type: 'null'
+  input_image_mask:
+    additionalProperties: false
+    description: 'Optional mask for inpainting. Contains `image_url`
+
+      (string, optional) and `file_id` (string, optional).
+
+      '
+    properties:
+      file_id:
+        description: 'File ID for the mask image.
+
+          '
+        type: string
+      image_url:
+        description: 'Base64-encoded mask image.
+
+          '
+        type: string
+    required: []
+    type: object
+  model:
+    anyOf:
+    - type: string
+    - default: gpt-image-1
+      description: 'The image generation model to use. Default: `gpt-image-1`.
+
+        '
+      enum:
+      - gpt-image-1
+      - gpt-image-1-mini
+      type: string
+  moderation:
+    default: auto
+    description: 'Moderation level for the generated image. Default: `auto`.
+
+      '
+    enum:
+    - auto
+    - low
+    type: string
+  output_compression:
+    default: 100
+    description: 'Compression level for the output image. Default: 100.
+
+      '
+    maximum: 100
+    minimum: 0
+    type: integer
+  output_format:
+    default: png
+    description: 'The output format of the generated image. One of `png`, `webp`,
+      or
+
+      `jpeg`. Default: `png`.
+
+      '
+    enum:
+    - png
+    - webp
+    - jpeg
+    type: string
+  partial_images:
+    default: 0
+    description: 'Number of partial images to generate in streaming mode, from 0 (default
+      value) to 3.
+
+      '
+    maximum: 3
+    minimum: 0
+    type: integer
+  quality:
+    default: auto
+    description: 'The quality of the generated image. One of `low`, `medium`, `high`,
+
+      or `auto`. Default: `auto`.
+
+      '
+    enum:
+    - low
+    - medium
+    - high
+    - auto
+    type: string
+  size:
+    default: auto
+    description: 'The size of the generated image. One of `1024x1024`, `1024x1536`,
+
+      `1536x1024`, or `auto`. Default: `auto`.
+
+      '
+    enum:
+    - 1024x1024
+    - 1024x1536
+    - 1536x1024
+    - auto
+    type: string
+  type:
+    description: 'The type of the image generation tool. Always `image_generation`.
+
+      '
+    enum:
+    - image_generation
+    type: string
+required:
+- type

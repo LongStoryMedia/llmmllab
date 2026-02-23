@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFormatJsonObject
+description: 'JSON object response format. An older method of generating JSON responses.
+
+  Using `json_schema` is recommended for models that support it. Note that the
+
+  model will not generate JSON without a system or user message instructing it
+
+  to do so.
+
+  '
+type: object
+properties:
+  type:
+    description: The type of response format being defined. Always `json_object`.
+    enum:
+    - json_object
+    type: string
+required:
+- type

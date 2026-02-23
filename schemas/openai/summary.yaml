@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Summary
+description: A summary text from the model.
+type: object
+properties:
+  text:
+    description: A summary of the reasoning output from the model so far.
+    type: string
+  type:
+    default: summary_text
+    description: The type of the object. Always `summary_text`.
+    enum:
+    - summary_text
+    type: string
+required:
+- type
+- text

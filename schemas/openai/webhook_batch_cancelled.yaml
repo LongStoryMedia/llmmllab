@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebhookBatchCancelled
+description: 'Sent when a batch API request has been cancelled.
+
+  '
+type: object
+properties:
+  created_at:
+    description: 'The Unix timestamp (in seconds) of when the batch API request was
+      cancelled.
+
+      '
+    type: integer
+  data:
+    description: 'Event data payload.
+
+      '
+    properties:
+      id:
+        description: 'The unique ID of the batch API request.
+
+          '
+        type: string
+    required:
+    - id
+    type: object
+  id:
+    description: 'The unique ID of the event.
+
+      '
+    type: string
+  object:
+    description: 'The object of the event. Always `event`.
+
+      '
+    enum:
+    - event
+    type: string
+  type:
+    description: 'The type of the event. Always `batch.cancelled`.
+
+      '
+    enum:
+    - batch.cancelled
+    type: string
+required:
+- created_at
+- id
+- data
+- type

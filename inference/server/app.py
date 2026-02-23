@@ -56,9 +56,9 @@ from server.routers import (
     db_admin,
     documents,
     ollama,
-    openai,
     api_key,
 )
+from server.routers.openai import ROUTERS as OPENAI_ROUTERS
 from server.middleware import (
     AuthMiddleware,
     db_init_middleware,
@@ -295,8 +295,9 @@ app.include_router(db_admin.router)
 # Include Ollama-compatible API endpoints
 app.include_router(ollama.router)
 
-# Include OpenAI-compatible API endpoints
-app.include_router(openai.router)
+# Include auto-generated OpenAI-compatible API endpoints
+for router in OPENAI_ROUTERS:
+    app.include_router(router, prefix="/v1")
 
 # Include API key management endpoints
 app.include_router(api_key.router)

@@ -1,0 +1,39 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaStepDetailsToolCallsCodeObject
+description: Details of the Code Interpreter tool call the run step was involved in.
+type: object
+properties:
+  code_interpreter:
+    description: The Code Interpreter tool call definition.
+    properties:
+      input:
+        description: The input to the Code Interpreter tool call.
+        type: string
+      outputs:
+        description: The outputs from the Code Interpreter tool call. Code Interpreter
+          can output one or more items, including text (`logs`) or images (`image`).
+          Each of these are represented by a different object type.
+        items:
+          anyOf:
+          - $ref: run_step_delta_step_details_tool_calls_code_output_logs_object.yaml
+          - $ref: run_step_delta_step_details_tool_calls_code_output_image_object.yaml
+          discriminator:
+            propertyName: type
+          type: object
+        type: array
+    type: object
+  id:
+    description: The ID of the tool call.
+    type: string
+  index:
+    description: The index of the tool call in the tool calls array.
+    type: integer
+  type:
+    description: The type of tool call. This is always going to be `code_interpreter`
+      for this type of tool call.
+    enum:
+    - code_interpreter
+    type: string
+required:
+- index
+- type

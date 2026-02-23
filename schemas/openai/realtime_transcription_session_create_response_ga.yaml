@@ -1,0 +1,112 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeTranscriptionSessionCreateResponseGA
+description: 'A Realtime transcription session configuration object.
+
+  '
+type: object
+properties:
+  audio:
+    description: 'Configuration for input audio for the session.
+
+      '
+    properties:
+      input:
+        properties:
+          format:
+            $ref: realtime_audio_formats.yaml
+          noise_reduction:
+            description: 'Configuration for input audio noise reduction.
+
+              '
+            properties:
+              type:
+                $ref: noise_reduction_type.yaml
+            type: object
+          transcription:
+            $ref: audio_transcription.yaml
+            description: 'Configuration of the transcription model.
+
+              '
+          turn_detection:
+            description: 'Configuration for turn detection. Can be set to `null` to
+              turn off. Server
+
+              VAD means that the model will detect the start and end of speech based
+              on
+
+              audio volume and respond at the end of user speech.
+
+              '
+            properties:
+              prefix_padding_ms:
+                description: 'Amount of audio to include before the VAD detected speech
+                  (in
+
+                  milliseconds). Defaults to 300ms.
+
+                  '
+                type: integer
+              silence_duration_ms:
+                description: 'Duration of silence to detect speech stop (in milliseconds).
+                  Defaults
+
+                  to 500ms. With shorter values the model will respond more quickly,
+
+                  but may jump in on short pauses from the user.
+
+                  '
+                type: integer
+              threshold:
+                description: 'Activation threshold for VAD (0.0 to 1.0), this defaults
+                  to 0.5. A
+
+                  higher threshold will require louder audio to activate the model,
+                  and
+
+                  thus might perform better in noisy environments.
+
+                  '
+                type: number
+              type:
+                description: 'Type of turn detection, only `server_vad` is currently
+                  supported.
+
+                  '
+                type: string
+            type: object
+        type: object
+    type: object
+  expires_at:
+    description: Expiration timestamp for the session, in seconds since epoch.
+    type: integer
+  id:
+    description: 'Unique identifier for the session that looks like `sess_1234567890abcdef`.
+
+      '
+    type: string
+  include:
+    description: 'Additional fields to include in server outputs.
+
+      - `item.input_audio_transcription.logprobs`: Include logprobs for input audio
+      transcription.
+
+      '
+    items:
+      enum:
+      - item.input_audio_transcription.logprobs
+      type: string
+    type: array
+  object:
+    description: The object type. Always `realtime.transcription_session`.
+    type: string
+  type:
+    description: 'The type of session. Always `transcription` for transcription sessions.
+
+      '
+    enum:
+    - transcription
+    type: string
+required:
+- type
+- id
+- object

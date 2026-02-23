@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: HybridSearchOptions
+type: object
+properties:
+  embedding_weight:
+    description: The weight of the embedding in the reciprocal ranking fusion.
+    type: number
+  text_weight:
+    description: The weight of the text in the reciprocal ranking fusion.
+    type: number
+required:
+- embedding_weight
+- text_weight

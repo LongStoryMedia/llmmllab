@@ -1,0 +1,79 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GraderScoreModel
+description: 'A ScoreModelGrader object that uses a model to assign a score to the
+  input.
+
+  '
+type: object
+properties:
+  input:
+    description: 'The input messages evaluated by the grader. Supports text, output
+      text, input image, and input audio content blocks, and may include template
+      strings.
+
+      '
+    items:
+      $ref: eval_item.yaml
+    type: array
+  model:
+    description: The model to use for the evaluation.
+    type: string
+  name:
+    description: The name of the grader.
+    type: string
+  range:
+    description: The range of the score. Defaults to `[0, 1]`.
+    items:
+      max_items: 2
+      min_items: 2
+      type: number
+    type: array
+  sampling_params:
+    description: The sampling parameters for the model.
+    properties:
+      max_completions_tokens:
+        anyOf:
+        - description: 'The maximum number of tokens the grader model may generate
+            in its response.
+
+            '
+          minimum: 1
+          type: integer
+        - type: 'null'
+      reasoning_effort:
+        $ref: reasoning_effort.yaml
+      seed:
+        anyOf:
+        - description: 'A seed value to initialize the randomness, during sampling.
+
+            '
+          type: integer
+        - type: 'null'
+      temperature:
+        anyOf:
+        - description: 'A higher temperature increases randomness in the outputs.
+
+            '
+          type: number
+        - type: 'null'
+      top_p:
+        anyOf:
+        - default: 1
+          description: 'An alternative to temperature for nucleus sampling; 1.0 includes
+            all tokens.
+
+            '
+          example: 1
+          type: number
+        - type: 'null'
+    type: object
+  type:
+    description: The object type, which is always `score_model`.
+    enum:
+    - score_model
+    type: string
+required:
+- type
+- name
+- input
+- model

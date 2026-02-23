@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TokenCountsResource
+type: object
+properties:
+  input_tokens:
+    type: integer
+  object:
+    default: response.input_tokens
+    enum:
+    - response.input_tokens
+    type: string
+required:
+- object
+- input_tokens
+example:
+  input_tokens: 123
+  object: response.input_tokens

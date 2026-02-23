@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageGenInputUsageDetails
+description: The input tokens detailed information for the image generation.
+type: object
+properties:
+  image_tokens:
+    description: The number of image tokens in the input prompt.
+    type: integer
+  text_tokens:
+    description: The number of text tokens in the input prompt.
+    type: integer
+required:
+- text_tokens
+- image_tokens

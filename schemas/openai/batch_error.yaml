@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: BatchError
+type: object
+properties:
+  code:
+    description: An error code identifying the error type.
+    type: string
+  line:
+    anyOf:
+    - description: The line number of the input file where the error occurred, if
+        applicable.
+      type: integer
+    - type: 'null'
+  message:
+    description: A human-readable message providing more details about the error.
+    type: string
+  param:
+    anyOf:
+    - description: The name of the parameter that caused the error, if applicable.
+      type: string
+    - type: 'null'

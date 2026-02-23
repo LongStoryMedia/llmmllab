@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectGroupListResource
+description: Paginated list of groups that have access to a project.
+type: object
+properties:
+  data:
+    description: Project group memberships returned in the current page.
+    items:
+      $ref: project_group.yaml
+    type: array
+  has_more:
+    description: Whether additional project group memberships are available.
+    type: boolean
+  next:
+    anyOf:
+    - type: string
+    - type: 'null'
+    description: Cursor to fetch the next page of results, or `null` when there are
+      no more results.
+  object:
+    description: Always `list`.
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- has_more
+- next

@@ -1,0 +1,61 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchActionSearch
+description: 'Action type "search" - Performs a web search query.
+
+  '
+type: object
+properties:
+  queries:
+    description: 'The search queries.
+
+      '
+    items:
+      description: 'A search query.
+
+        '
+      type: string
+    title: Search queries
+    type: array
+  query:
+    description: '[DEPRECATED] The search query.
+
+      '
+    type: string
+  sources:
+    description: 'The sources used in the search.
+
+      '
+    items:
+      description: 'A source used in the search.
+
+        '
+      properties:
+        type:
+          description: 'The type of source. Always `url`.
+
+            '
+          enum:
+          - url
+          type: string
+        url:
+          description: 'The URL of the source.
+
+            '
+          type: string
+      required:
+      - type
+      - url
+      title: Web search source
+      type: object
+    title: Web search sources
+    type: array
+  type:
+    description: 'The action type.
+
+      '
+    enum:
+    - search
+    type: string
+required:
+- type
+- query

@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CodeInterpreterContainerAuto
+description: Configuration for a code interpreter container. Optionally specify the
+  IDs of the files to run the code on.
+type: object
+properties:
+  file_ids:
+    description: An optional list of uploaded files to make available to your code.
+    items:
+      example: file-123
+      type: string
+    maxItems: 50
+    type: array
+  memory_limit:
+    anyOf:
+    - $ref: container_memory_limit.yaml
+      description: The memory limit for the code interpreter container.
+    - type: 'null'
+  type:
+    default: auto
+    description: Always `auto`.
+    enum:
+    - auto
+    type: string
+required:
+- type

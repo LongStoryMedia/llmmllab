@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileUploadParam
+description: Controls whether users can upload files.
+type: object
+properties:
+  enabled:
+    description: Enable uploads for this session. Defaults to false.
+    type: boolean
+  max_file_size:
+    description: Maximum size in megabytes for each uploaded file. Defaults to 512
+      MB, which is the maximum allowable size.
+    maximum: 512
+    minimum: 1
+    type: integer
+  max_files:
+    description: Maximum number of files that can be uploaded to the session. Defaults
+      to 10.
+    minimum: 1
+    type: integer
+required: []

@@ -1,0 +1,95 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateCompletionResponse
+description: 'Represents a completion response from the API. Note: both the streamed
+  and non-streamed response objects share the same shape (unlike the chat endpoint).
+
+  '
+type: object
+properties:
+  choices:
+    description: The list of completion choices the model generated for the input
+      prompt.
+    items:
+      properties:
+        finish_reason:
+          description: 'The reason the model stopped generating tokens. This will
+            be `stop` if the model hit a natural stop point or a provided stop sequence,
+
+            `length` if the maximum number of tokens specified in the request was
+            reached,
+
+            or `content_filter` if content was omitted due to a flag from our content
+            filters.
+
+            '
+          enum:
+          - stop
+          - length
+          - content_filter
+          type: string
+        index:
+          type: integer
+        logprobs:
+          anyOf:
+          - properties:
+              text_offset:
+                items:
+                  type: integer
+                type: array
+              token_logprobs:
+                items:
+                  type: number
+                type: array
+              tokens:
+                items:
+                  type: string
+                type: array
+              top_logprobs:
+                items:
+                  additionalProperties:
+                    type: number
+                  type: object
+                type: array
+            type: object
+          - type: 'null'
+        text:
+          type: string
+      required:
+      - finish_reason
+      - index
+      - logprobs
+      - text
+      type: object
+    type: array
+  created:
+    description: The Unix timestamp (in seconds) of when the completion was created.
+    type: integer
+  id:
+    description: A unique identifier for the completion.
+    type: string
+  model:
+    description: The model used for completion.
+    type: string
+  object:
+    description: The object type, which is always "text_completion"
+    enum:
+    - text_completion
+    type: string
+  system_fingerprint:
+    description: 'This fingerprint represents the backend configuration that the model
+      runs with.
+
+
+      Can be used in conjunction with the `seed` request parameter to understand when
+      backend changes have been made that might impact determinism.
+
+      '
+    type: string
+  usage:
+    $ref: completion_usage.yaml
+required:
+- id
+- object
+- created
+- model
+- choices

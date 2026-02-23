@@ -1,0 +1,133 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalRun
+description: 'A schema representing an evaluation run.
+
+  '
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) when the evaluation run was created.
+    type: integer
+  data_source:
+    anyOf:
+    - $ref: create_eval_jsonl_run_data_source.yaml
+    - $ref: create_eval_completions_run_data_source.yaml
+    - $ref: create_eval_responses_run_data_source.yaml
+    description: Information about the run's data source.
+    discriminator:
+      propertyName: type
+    type: object
+  error:
+    $ref: eval_api_error.yaml
+  eval_id:
+    description: The identifier of the associated evaluation.
+    type: string
+  id:
+    description: Unique identifier for the evaluation run.
+    type: string
+  metadata:
+    $ref: metadata.yaml
+  model:
+    description: The model that is evaluated, if applicable.
+    type: string
+  name:
+    description: The name of the evaluation run.
+    type: string
+  object:
+    default: eval.run
+    description: The type of the object. Always "eval.run".
+    enum:
+    - eval.run
+    type: string
+  per_model_usage:
+    description: Usage statistics for each model during the evaluation run.
+    items:
+      properties:
+        cached_tokens:
+          description: The number of tokens retrieved from cache.
+          type: integer
+        completion_tokens:
+          description: The number of completion tokens generated.
+          type: integer
+        invocation_count:
+          description: The number of invocations.
+          type: integer
+        model_name:
+          description: The name of the model.
+          type: string
+        prompt_tokens:
+          description: The number of prompt tokens used.
+          type: integer
+        total_tokens:
+          description: The total number of tokens used.
+          type: integer
+      required:
+      - model_name
+      - invocation_count
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+      - cached_tokens
+      type: object
+    type: array
+  per_testing_criteria_results:
+    description: Results per testing criteria applied during the evaluation run.
+    items:
+      properties:
+        failed:
+          description: Number of tests failed for this criteria.
+          type: integer
+        passed:
+          description: Number of tests passed for this criteria.
+          type: integer
+        testing_criteria:
+          description: A description of the testing criteria.
+          type: string
+      required:
+      - testing_criteria
+      - passed
+      - failed
+      type: object
+    type: array
+  report_url:
+    description: The URL to the rendered evaluation run report on the UI dashboard.
+    type: string
+  result_counts:
+    description: Counters summarizing the outcomes of the evaluation run.
+    properties:
+      errored:
+        description: Number of output items that resulted in an error.
+        type: integer
+      failed:
+        description: Number of output items that failed to pass the evaluation.
+        type: integer
+      passed:
+        description: Number of output items that passed the evaluation.
+        type: integer
+      total:
+        description: Total number of executed output items.
+        type: integer
+    required:
+    - total
+    - errored
+    - failed
+    - passed
+    type: object
+  status:
+    description: The status of the evaluation run.
+    type: string
+required:
+- object
+- id
+- eval_id
+- status
+- model
+- name
+- created_at
+- report_url
+- result_counts
+- per_model_usage
+- per_testing_criteria_results
+- data_source
+- metadata
+- error

@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptionWord
+type: object
+properties:
+  end:
+    description: End time of the word in seconds.
+    format: float
+    type: number
+  start:
+    description: Start time of the word in seconds.
+    format: float
+    type: number
+  word:
+    description: The text content of the word.
+    type: string
+required:
+- word
+- start
+- end

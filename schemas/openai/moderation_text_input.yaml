@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModerationTextInput
+description: An object describing text to classify.
+type: object
+properties:
+  text:
+    description: A string of text to classify.
+    example: I want to kill them
+    type: string
+  type:
+    description: Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- type
+- text

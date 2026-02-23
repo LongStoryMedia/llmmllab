@@ -1,0 +1,122 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeConversationItemWithReference
+description: The item to add to the conversation.
+type: object
+properties:
+  arguments:
+    description: 'The arguments of the function call (for `function_call` items).
+
+      '
+    type: string
+  call_id:
+    description: "The ID of the function call (for `function_call` and \n`function_call_output`\
+      \ items). If passed on a `function_call_output` \nitem, the server will check\
+      \ that a `function_call` item with the same \nID exists in the conversation\
+      \ history.\n"
+    type: string
+  content:
+    description: "The content of the message, applicable for `message` items. \n-\
+      \ Message items of role `system` support only `input_text` content\n- Message\
+      \ items of role `user` support `input_text` and `input_audio` \n  content\n\
+      - Message items of role `assistant` support `text` content.\n"
+    items:
+      properties:
+        audio:
+          description: 'Base64-encoded audio bytes, used for `input_audio` content
+            type.
+
+            '
+          type: string
+        id:
+          description: 'ID of a previous conversation item to reference (for `item_reference`
+
+            content types in `response.create` events). These can reference both
+
+            client and server created items.
+
+            '
+          type: string
+        text:
+          description: 'The text content, used for `input_text` and `text` content
+            types.
+
+            '
+          type: string
+        transcript:
+          description: 'The transcript of the audio, used for `input_audio` content
+            type.
+
+            '
+          type: string
+        type:
+          description: 'The content type (`input_text`, `input_audio`, `item_reference`,
+            `text`).
+
+            '
+          enum:
+          - input_text
+          - input_audio
+          - item_reference
+          - text
+          type: string
+      type: object
+    type: array
+  id:
+    description: 'For an item of type (`message` | `function_call` | `function_call_output`)
+
+      this field allows the client to assign the unique ID of the item. It is
+
+      not required because the server will generate one if not provided.
+
+
+      For an item of type `item_reference`, this field is required and is a
+
+      reference to any item that has previously existed in the conversation.
+
+      '
+    type: string
+  name:
+    description: 'The name of the function being called (for `function_call` items).
+
+      '
+    type: string
+  object:
+    description: 'Identifier for the API object being returned - always `realtime.item`.
+
+      '
+    enum:
+    - realtime.item
+    type: string
+  output:
+    description: 'The output of the function call (for `function_call_output` items).
+
+      '
+    type: string
+  role:
+    description: "The role of the message sender (`user`, `assistant`, `system`),\
+      \ only \napplicable for `message` items.\n"
+    enum:
+    - user
+    - assistant
+    - system
+    type: string
+  status:
+    description: "The status of the item (`completed`, `incomplete`, `in_progress`).\
+      \ These have no effect \non the conversation, but are accepted for consistency\
+      \ with the \n`conversation.item.created` event.\n"
+    enum:
+    - completed
+    - incomplete
+    - in_progress
+    type: string
+  type:
+    description: 'The type of the item (`message`, `function_call`, `function_call_output`,
+      `item_reference`).
+
+      '
+    enum:
+    - message
+    - function_call
+    - function_call_output
+    - item_reference
+    type: string

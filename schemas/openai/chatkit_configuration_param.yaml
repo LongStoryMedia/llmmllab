@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatkitConfigurationParam
+description: Optional per-session configuration settings for ChatKit behavior.
+type: object
+properties:
+  automatic_thread_titling:
+    $ref: automatic_thread_titling_param.yaml
+    description: Configuration for automatic thread titling. When omitted, automatic
+      thread titling is enabled by default.
+  file_upload:
+    $ref: file_upload_param.yaml
+    description: Configuration for upload enablement and limits. When omitted, uploads
+      are disabled by default (max_files 10, max_file_size 512 MB).
+  history:
+    $ref: history_param.yaml
+    description: Configuration for chat history retention. When omitted, history is
+      enabled by default with no limit on recent_threads (null).
+required: []

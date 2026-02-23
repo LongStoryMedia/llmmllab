@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFileSearchCallInProgressEvent
+description: Emitted when a file search call is initiated.
+type: object
+properties:
+  item_id:
+    description: 'The ID of the output item that the file search call is initiated.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item that the file search call is initiated.
+
+      '
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.file_search_call.in_progress`.
+
+      '
+    enum:
+    - response.file_search_call.in_progress
+    type: string
+required:
+- type
+- output_index
+- item_id
+- sequence_number

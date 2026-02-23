@@ -1,0 +1,23 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Prompt
+anyOf:
+- description: 'Reference to a prompt template and its variables.
+
+    [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
+
+    '
+  properties:
+    id:
+      description: The unique identifier of the prompt template to use.
+      type: string
+    variables:
+      $ref: response_prompt_variables.yaml
+    version:
+      anyOf:
+      - description: Optional version of the prompt template.
+        type: string
+      - type: 'null'
+  required:
+  - id
+  type: object
+- type: 'null'

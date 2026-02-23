@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AssistantToolsFunction
+type: object
+properties:
+  function:
+    $ref: function_object.yaml
+  type:
+    description: 'The type of tool being defined: `function`'
+    enum:
+    - function
+    type: string
+required:
+- type
+- function

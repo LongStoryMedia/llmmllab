@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsToolCallsFunctionObject
+type: object
+properties:
+  function:
+    description: The definition of the function that was called.
+    properties:
+      arguments:
+        description: The arguments passed to the function.
+        type: string
+      name:
+        description: The name of the function.
+        type: string
+      output:
+        anyOf:
+        - description: The output of the function. This will be `null` if the outputs
+            have not been [submitted](https://platform.openai.com/docs/api-reference/runs/submitToolOutputs)
+            yet.
+          type: string
+        - type: 'null'
+    required:
+    - name
+    - arguments
+    - output
+    type: object
+  id:
+    description: The ID of the tool call object.
+    type: string
+  type:
+    description: The type of tool call. This is always going to be `function` for
+      this type of tool call.
+    enum:
+    - function
+    type: string
+required:
+- id
+- type
+- function

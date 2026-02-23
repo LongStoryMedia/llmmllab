@@ -1,0 +1,97 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunGraderResponse
+type: object
+properties:
+  metadata:
+    properties:
+      errors:
+        properties:
+          formula_parse_error:
+            type: boolean
+          invalid_variable_error:
+            type: boolean
+          model_grader_parse_error:
+            type: boolean
+          model_grader_refusal_error:
+            type: boolean
+          model_grader_server_error:
+            type: boolean
+          model_grader_server_error_details:
+            anyOf:
+            - type: string
+            - type: 'null'
+          other_error:
+            type: boolean
+          python_grader_runtime_error:
+            type: boolean
+          python_grader_runtime_error_details:
+            anyOf:
+            - type: string
+            - type: 'null'
+          python_grader_server_error:
+            type: boolean
+          python_grader_server_error_type:
+            anyOf:
+            - type: string
+            - type: 'null'
+          sample_parse_error:
+            type: boolean
+          truncated_observation_error:
+            type: boolean
+          unresponsive_reward_error:
+            type: boolean
+        required:
+        - formula_parse_error
+        - sample_parse_error
+        - truncated_observation_error
+        - unresponsive_reward_error
+        - invalid_variable_error
+        - other_error
+        - python_grader_server_error
+        - python_grader_server_error_type
+        - python_grader_runtime_error
+        - python_grader_runtime_error_details
+        - model_grader_server_error
+        - model_grader_refusal_error
+        - model_grader_parse_error
+        - model_grader_server_error_details
+        type: object
+      execution_time:
+        type: number
+      name:
+        type: string
+      sampled_model_name:
+        anyOf:
+        - type: string
+        - type: 'null'
+      scores:
+        additionalProperties: {}
+        type: object
+      token_usage:
+        anyOf:
+        - type: integer
+        - type: 'null'
+      type:
+        type: string
+    required:
+    - name
+    - type
+    - errors
+    - execution_time
+    - scores
+    - token_usage
+    - sampled_model_name
+    type: object
+  model_grader_token_usage_per_model:
+    additionalProperties: {}
+    type: object
+  reward:
+    type: number
+  sub_rewards:
+    additionalProperties: {}
+    type: object
+required:
+- reward
+- metadata
+- sub_rewards
+- model_grader_token_usage_per_model

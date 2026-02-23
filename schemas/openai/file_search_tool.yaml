@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileSearchTool
+description: A tool that searches for relevant content from uploaded files. Learn
+  more about the [file search tool](https://platform.openai.com/docs/guides/tools-file-search).
+type: object
+properties:
+  filters:
+    anyOf:
+    - $ref: filters.yaml
+      description: A filter to apply.
+    - type: 'null'
+  max_num_results:
+    description: The maximum number of results to return. This number should be between
+      1 and 50 inclusive.
+    type: integer
+  ranking_options:
+    $ref: ranking_options.yaml
+    description: Ranking options for search.
+  type:
+    default: file_search
+    description: The type of the file search tool. Always `file_search`.
+    enum:
+    - file_search
+    type: string
+  vector_store_ids:
+    description: The IDs of the vector stores to search.
+    items:
+      type: string
+    type: array
+required:
+- type
+- vector_store_ids

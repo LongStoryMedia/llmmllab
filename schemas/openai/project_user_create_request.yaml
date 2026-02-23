@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectUserCreateRequest
+type: object
+properties:
+  role:
+    description: '`owner` or `member`'
+    enum:
+    - owner
+    - member
+    type: string
+  user_id:
+    description: The ID of the user.
+    type: string
+required:
+- user_id
+- role

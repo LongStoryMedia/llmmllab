@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolChoiceMCP
+description: 'Use this option to force the model to call a specific tool on a remote
+  MCP server.
+
+  '
+type: object
+properties:
+  name:
+    anyOf:
+    - description: 'The name of the tool to call on the server.
+
+        '
+      type: string
+    - type: 'null'
+  server_label:
+    description: 'The label of the MCP server to use.
+
+      '
+    type: string
+  type:
+    description: For MCP tools, the type is always `mcp`.
+    enum:
+    - mcp
+    type: string
+required:
+- type
+- server_label

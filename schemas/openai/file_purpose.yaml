@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FilePurpose
+description: 'The intended purpose of the uploaded file. One of: - `assistants`: Used
+  in the Assistants API - `batch`: Used in the Batch API - `fine-tune`: Used for fine-tuning
+  - `vision`: Images used for vision fine-tuning - `user_data`: Flexible file type
+  for any purpose - `evals`: Used for eval data sets
+
+  '
+type: string
+enum:
+- assistants
+- batch
+- fine-tune
+- vision
+- user_data
+- evals

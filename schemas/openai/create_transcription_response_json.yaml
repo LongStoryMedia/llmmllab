@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateTranscriptionResponseJson
+description: Represents a transcription response returned by model, based on the provided
+  input.
+type: object
+properties:
+  logprobs:
+    description: 'The log probabilities of the tokens in the transcription. Only returned
+      with the models `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` if `logprobs`
+      is added to the `include` array.
+
+      '
+    items:
+      properties:
+        bytes:
+          description: The bytes of the token.
+          items:
+            type: number
+          type: array
+        logprob:
+          description: The log probability of the token.
+          type: number
+        token:
+          description: The token in the transcription.
+          type: string
+      type: object
+    optional: true
+    type: array
+  text:
+    description: The transcribed text.
+    type: string
+  usage:
+    anyOf:
+    - $ref: transcript_text_usage_tokens.yaml
+      title: Token Usage
+    - $ref: transcript_text_usage_duration.yaml
+      title: Duration Usage
+    description: Token usage statistics for the request.
+    discriminator:
+      propertyName: type
+    type: object
+required:
+- text

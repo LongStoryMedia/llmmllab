@@ -1,0 +1,111 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeTranscriptionSessionCreateResponse
+description: 'A new Realtime transcription session configuration.
+
+
+  When a session is created on the server via REST API, the session object
+
+  also contains an ephemeral key. Default TTL for keys is 10 minutes. This
+
+  property is not present when a session is updated via the WebSocket API.
+
+  '
+type: object
+properties:
+  client_secret:
+    description: 'Ephemeral key returned by the API. Only present when the session
+      is
+
+      created on the server via REST API.
+
+      '
+    properties:
+      expires_at:
+        description: 'Timestamp for when the token expires. Currently, all tokens
+          expire
+
+          after one minute.
+
+          '
+        type: integer
+      value:
+        description: 'Ephemeral key usable in client environments to authenticate
+          connections
+
+          to the Realtime API. Use this in client-side environments rather than
+
+          a standard API token, which should only be used server-side.
+
+          '
+        type: string
+    required:
+    - value
+    - expires_at
+    type: object
+  input_audio_format:
+    description: 'The format of input audio. Options are `pcm16`, `g711_ulaw`, or
+      `g711_alaw`.
+
+      '
+    type: string
+  input_audio_transcription:
+    $ref: audio_transcription.yaml
+    description: 'Configuration of the transcription model.
+
+      '
+  modalities:
+    description: 'The set of modalities the model can respond with. To disable audio,
+
+      set this to ["text"].
+
+      '
+    items:
+      enum:
+      - text
+      - audio
+      type: string
+  turn_detection:
+    description: 'Configuration for turn detection. Can be set to `null` to turn off.
+      Server
+
+      VAD means that the model will detect the start and end of speech based on
+
+      audio volume and respond at the end of user speech.
+
+      '
+    properties:
+      prefix_padding_ms:
+        description: 'Amount of audio to include before the VAD detected speech (in
+
+          milliseconds). Defaults to 300ms.
+
+          '
+        type: integer
+      silence_duration_ms:
+        description: 'Duration of silence to detect speech stop (in milliseconds).
+          Defaults
+
+          to 500ms. With shorter values the model will respond more quickly,
+
+          but may jump in on short pauses from the user.
+
+          '
+        type: integer
+      threshold:
+        description: 'Activation threshold for VAD (0.0 to 1.0), this defaults to
+          0.5. A
+
+          higher threshold will require louder audio to activate the model, and
+
+          thus might perform better in noisy environments.
+
+          '
+        type: number
+      type:
+        description: 'Type of turn detection, only `server_vad` is currently supported.
+
+          '
+        type: string
+    type: object
+required:
+- client_secret

@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DoneEvent
+description: Occurs when a stream ends.
+type: object
+properties:
+  data:
+    enum:
+    - '[DONE]'
+    type: string
+  event:
+    enum:
+    - done
+    type: string
+required:
+- event
+- data

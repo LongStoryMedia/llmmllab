@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateTranscriptionResponseDiarizedJson
+description: 'Represents a diarized transcription response returned by the model,
+  including the combined transcript and speaker-segment annotations.
+
+  '
+type: object
+properties:
+  duration:
+    description: Duration of the input audio in seconds.
+    type: number
+  segments:
+    description: Segments of the transcript annotated with timestamps and speaker
+      labels.
+    items:
+      $ref: transcription_diarized_segment.yaml
+    type: array
+  task:
+    description: The type of task that was run. Always `transcribe`.
+    enum:
+    - transcribe
+    type: string
+  text:
+    description: The concatenated transcript text for the entire audio input.
+    type: string
+  usage:
+    anyOf:
+    - $ref: transcript_text_usage_tokens.yaml
+      title: Token Usage
+    - $ref: transcript_text_usage_duration.yaml
+      title: Duration Usage
+    description: Token or duration usage statistics for the request.
+    discriminator:
+      propertyName: type
+    type: object
+required:
+- task
+- duration
+- text
+- segments

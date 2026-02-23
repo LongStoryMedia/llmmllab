@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApplyPatchDeleteFileOperationParam
+description: Instruction for deleting an existing file via the apply_patch tool.
+type: object
+properties:
+  path:
+    description: Path of the file to delete relative to the workspace root.
+    minLength: 1
+    type: string
+  type:
+    default: delete_file
+    description: The operation type. Always `delete_file`.
+    enum:
+    - delete_file
+    type: string
+required:
+- type
+- path

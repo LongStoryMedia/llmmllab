@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventTranscriptionSessionCreated
+description: 'Returned when a transcription session is created.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  session:
+    $ref: realtime_transcription_session_create_response.yaml
+  type:
+    const: transcription_session.created
+    description: The event type, must be `transcription_session.created`.
+required:
+- event_id
+- type
+- session

@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsToolCallsFileSearchResultObject
+description: A result instance of the file search.
+type: object
+properties:
+  content:
+    description: The content of the result that was found. The content is only included
+      if requested via the include query parameter.
+    items:
+      properties:
+        text:
+          description: The text content of the file.
+          type: string
+        type:
+          description: The type of the content.
+          enum:
+          - text
+          type: string
+      type: object
+    type: array
+  file_id:
+    description: The ID of the file that result was found in.
+    type: string
+  file_name:
+    description: The name of the file that result was found in.
+    type: string
+  score:
+    description: The score of the result. All values must be a floating point number
+      between 0 and 1.
+    maximum: 1
+    minimum: 0
+    type: number
+required:
+- file_id
+- file_name
+- score

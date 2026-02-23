@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeCallReferRequest
+description: 'Parameters required to transfer a SIP call to a new destination using
+  the
+
+  Realtime API.'
+type: object
+properties:
+  target_uri:
+    description: 'URI that should appear in the SIP Refer-To header. Supports values
+      like
+
+      `tel:+14155550123` or `sip:agent@example.com`.'
+    example: tel:+14155550123
+    type: string
+required:
+- target_uri
+additionalProperties: false

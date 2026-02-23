@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventConversationItemDeleted
+description: "Returned when an item in the conversation is deleted by the client with\
+  \ a \n`conversation.item.delete` event. This event is used to synchronize the \n\
+  server's understanding of the conversation history with the client's view.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the item that was deleted.
+    type: string
+  type:
+    const: conversation.item.deleted
+    description: The event type, must be `conversation.item.deleted`.
+required:
+- event_id
+- type
+- item_id

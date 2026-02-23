@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CodeInterpreterTool
+description: 'A tool that runs Python code to help generate a response to a prompt.
+
+  '
+type: object
+properties:
+  container:
+    anyOf:
+    - description: The container ID.
+      type: string
+    - $ref: code_interpreter_container_auto.yaml
+    description: 'The code interpreter container. Can be a container ID or an object
+      that
+
+      specifies uploaded file IDs to make available to your code, along with an
+
+      optional `memory_limit` setting.
+
+      '
+  type:
+    description: 'The type of the code interpreter tool. Always `code_interpreter`.
+
+      '
+    enum:
+    - code_interpreter
+    type: string
+required:
+- type
+- container

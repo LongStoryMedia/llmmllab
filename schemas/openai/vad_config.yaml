@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VadConfig
+type: object
+properties:
+  prefix_padding_ms:
+    default: 300
+    description: "Amount of audio to include before the VAD detected speech (in \n\
+      milliseconds).\n"
+    type: integer
+  silence_duration_ms:
+    default: 200
+    description: "Duration of silence to detect speech stop (in milliseconds).\nWith\
+      \ shorter values the model will respond more quickly, \nbut may jump in on short\
+      \ pauses from the user.\n"
+    type: integer
+  threshold:
+    default: 0.5
+    description: "Sensitivity threshold (0.0 to 1.0) for voice activity detection.\
+      \ A \nhigher threshold will require louder audio to activate the model, and\
+      \ \nthus might perform better in noisy environments.\n"
+    type: number
+  type:
+    description: Must be set to `server_vad` to enable manual chunking using server
+      side VAD.
+    enum:
+    - server_vad
+    type: string
+required:
+- type
+additionalProperties: false

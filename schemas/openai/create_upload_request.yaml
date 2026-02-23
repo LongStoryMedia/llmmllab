@@ -1,0 +1,44 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateUploadRequest
+type: object
+properties:
+  bytes:
+    description: 'The number of bytes in the file you are uploading.
+
+      '
+    type: integer
+  expires_after:
+    $ref: file_expiration_after.yaml
+  filename:
+    description: 'The name of the file to upload.
+
+      '
+    type: string
+  mime_type:
+    description: 'The MIME type of the file.
+
+
+      This must fall within the supported MIME types for your file purpose. See the
+      supported MIME types for assistants and vision.
+
+      '
+    type: string
+  purpose:
+    description: 'The intended purpose of the uploaded file.
+
+
+      See the [documentation on File purposes](https://platform.openai.com/docs/api-reference/files/create#files-create-purpose).
+
+      '
+    enum:
+    - assistants
+    - batch
+    - fine-tune
+    - vision
+    type: string
+required:
+- filename
+- purpose
+- bytes
+- mime_type
+additionalProperties: false

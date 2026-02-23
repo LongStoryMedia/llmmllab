@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalJsonlRunDataSource
+description: "A JsonlRunDataSource object with that specifies a JSONL file that matches\
+  \ the eval \n"
+type: object
+properties:
+  source:
+    anyOf:
+    - $ref: eval_jsonl_file_content_source.yaml
+    - $ref: eval_jsonl_file_id_source.yaml
+    description: Determines what populates the `item` namespace in the data source.
+    discriminator:
+      propertyName: type
+  type:
+    default: jsonl
+    description: The type of data source. Always `jsonl`.
+    enum:
+    - jsonl
+    type: string
+required:
+- type
+- source

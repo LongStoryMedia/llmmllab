@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DragPoint
+description: 'An x/y coordinate pair, e.g. `{ x: 100, y: 200 }`.'
+type: object
+properties:
+  x:
+    description: The x-coordinate.
+    type: integer
+  y:
+    description: The y-coordinate.
+    type: integer
+required:
+- x
+- y

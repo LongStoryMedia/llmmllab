@@ -1,0 +1,65 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ReasoningItem
+description: 'A description of the chain of thought used by a reasoning model while
+  generating
+
+  a response. Be sure to include these items in your `input` to the Responses API
+
+  for subsequent turns of a conversation if you are manually
+
+  [managing context](https://platform.openai.com/docs/guides/conversation-state).
+
+  '
+type: object
+properties:
+  content:
+    description: 'Reasoning text content.
+
+      '
+    items:
+      $ref: reasoning_text_content.yaml
+    type: array
+  encrypted_content:
+    anyOf:
+    - description: 'The encrypted content of the reasoning item - populated when a
+        response is
+
+        generated with `reasoning.encrypted_content` in the `include` parameter.
+
+        '
+      type: string
+    - type: 'null'
+  id:
+    description: 'The unique identifier of the reasoning content.
+
+      '
+    type: string
+  status:
+    description: 'The status of the item. One of `in_progress`, `completed`, or
+
+      `incomplete`. Populated when items are returned via API.
+
+      '
+    enum:
+    - in_progress
+    - completed
+    - incomplete
+    type: string
+  summary:
+    description: 'Reasoning summary content.
+
+      '
+    items:
+      $ref: summary.yaml
+    type: array
+  type:
+    description: 'The type of the object. Always `reasoning`.
+
+      '
+    enum:
+    - reasoning
+    type: string
+required:
+- id
+- summary
+- type

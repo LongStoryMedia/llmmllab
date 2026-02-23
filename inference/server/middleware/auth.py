@@ -236,7 +236,6 @@ class JWTValidator:
             # Re-raise HTTP exceptions as is
             raise
         except Exception as e:
-            self.logger.error(f"Token validation failed: {e}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Token validation failed: {str(e)}",
@@ -358,6 +357,7 @@ class AuthMiddleware:
         # Check for Bearer token (OAuth2/JWT)
         if auth_header.startswith("Bearer "):
             token_str = auth_header[7:]  # Remove "Bearer " prefix
+            self.logger.debug(token_str)
 
             try:
                 # Validate JWT token
@@ -381,7 +381,41 @@ class AuthMiddleware:
                 return result
 
             except HTTPException:
-                raise
+                try:
+                    # Validate API key
+                    result = await self.api_key_validator.validate_api_key(token_str)
+
+                    if result is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid or expired API key",
+                        )
+
+                    # Generate request ID
+                    request_id = str(uuid.uuid4())
+
+                    # Store auth information in request state
+                    if not hasattr(request.state, "auth"):
+                        request.state.auth = {}
+
+                    request.state.auth[ContextKey.USER_ID] = result.user_id
+                    request.state.auth[ContextKey.TOKEN_CLAIMS] = result.claims
+                    request.state.auth[ContextKey.IS_ADMIN] = result.is_admin
+                    request.state.auth[ContextKey.REQUEST_ID] = request_id
+
+                    self.logger.debug(
+                        f"API key authentication successful for user {result.user_id}"
+                    )
+                    return result
+
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    self.logger.error(f"API key validation failed: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid API key",
+                    ) from e
             except Exception as e:
                 self.logger.error(f"JWT validation failed: {e}")
                 raise HTTPException(

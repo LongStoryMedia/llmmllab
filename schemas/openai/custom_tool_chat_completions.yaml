@@ -1,0 +1,84 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CustomToolChatCompletions
+description: 'A custom tool that processes input using a specified format.
+
+  '
+type: object
+properties:
+  custom:
+    description: 'Properties of the custom tool.
+
+      '
+    properties:
+      description:
+        description: 'Optional description of the custom tool, used to provide more
+          context.
+
+          '
+        type: string
+      format:
+        anyOf:
+        - additionalProperties: false
+          description: Unconstrained free-form text.
+          properties:
+            type:
+              description: Unconstrained text format. Always `text`.
+              enum:
+              - text
+              type: string
+          required:
+          - type
+          title: Text format
+          type: object
+        - additionalProperties: false
+          description: A grammar defined by the user.
+          properties:
+            grammar:
+              description: Your chosen grammar.
+              properties:
+                definition:
+                  description: The grammar definition.
+                  type: string
+                syntax:
+                  description: The syntax of the grammar definition. One of `lark`
+                    or `regex`.
+                  enum:
+                  - lark
+                  - regex
+                  type: string
+              required:
+              - definition
+              - syntax
+              title: Grammar format
+              type: object
+            type:
+              description: Grammar format. Always `grammar`.
+              enum:
+              - grammar
+              type: string
+          required:
+          - type
+          - grammar
+          title: Grammar format
+          type: object
+        description: 'The input format for the custom tool. Default is unconstrained
+          text.
+
+          '
+        discriminator:
+          propertyName: type
+      name:
+        description: The name of the custom tool, used to identify it in tool calls.
+        type: string
+    required:
+    - name
+    title: Custom tool properties
+    type: object
+  type:
+    description: The type of the custom tool. Always `custom`.
+    enum:
+    - custom
+    type: string
+required:
+- type
+- custom

@@ -1,0 +1,42 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseContentPartAddedEvent
+description: Emitted when a new content part is added.
+type: object
+properties:
+  content_index:
+    description: 'The index of the content part that was added.
+
+      '
+    type: integer
+  item_id:
+    description: 'The ID of the output item that the content part was added to.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item that the content part was added to.
+
+      '
+    type: integer
+  part:
+    $ref: output_content.yaml
+    description: 'The content part that was added.
+
+      '
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.content_part.added`.
+
+      '
+    enum:
+    - response.content_part.added
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- part
+- sequence_number

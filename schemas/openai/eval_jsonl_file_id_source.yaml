@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalJsonlFileIdSource
+type: object
+properties:
+  id:
+    description: The identifier of the file.
+    type: string
+  type:
+    default: file_id
+    description: The type of jsonl source. Always `file_id`.
+    enum:
+    - file_id
+    type: string
+required:
+- type
+- id

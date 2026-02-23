@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ContainerFileResource
+type: object
+properties:
+  bytes:
+    description: Size of the file in bytes.
+    type: integer
+  container_id:
+    description: The container this file belongs to.
+    type: string
+  created_at:
+    description: Unix timestamp (in seconds) when the file was created.
+    type: integer
+  id:
+    description: Unique identifier for the file.
+    type: string
+  object:
+    const: container.file
+    description: The type of this object (`container.file`).
+    type: string
+  path:
+    description: Path of the file in the container.
+    type: string
+  source:
+    description: Source of the file (e.g., `user`, `assistant`).
+    type: string
+required:
+- id
+- object
+- created_at
+- bytes
+- container_id
+- path
+- source

@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateTranscriptionResponseStreamEvent
+anyOf:
+- $ref: transcript_text_segment_event.yaml
+- $ref: transcript_text_delta_event.yaml
+- $ref: transcript_text_done_event.yaml
+discriminator:
+  propertyName: type

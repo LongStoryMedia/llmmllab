@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SpeechAudioDeltaEvent
+description: Emitted for each chunk of audio data generated during speech synthesis.
+type: object
+properties:
+  audio:
+    description: 'A chunk of Base64-encoded audio data.
+
+      '
+    type: string
+  type:
+    description: 'The type of the event. Always `speech.audio.delta`.
+
+      '
+    enum:
+    - speech.audio.delta
+    type: string
+required:
+- type
+- audio

@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFormatTextPython
+description: 'Configure the model to generate valid Python code. See the
+
+  [custom grammars guide](https://platform.openai.com/docs/guides/custom-grammars)
+  for more details.
+
+  '
+type: object
+properties:
+  type:
+    description: The type of response format being defined. Always `python`.
+    enum:
+    - python
+    type: string
+required:
+- type

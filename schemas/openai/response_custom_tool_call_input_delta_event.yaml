@@ -1,0 +1,31 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseCustomToolCallInputDeltaEvent
+description: 'Event representing a delta (partial update) to the input of a custom
+  tool call.
+
+  '
+type: object
+properties:
+  delta:
+    description: The incremental input data (delta) for the custom tool call.
+    type: string
+  item_id:
+    description: Unique identifier for the API item associated with this event.
+    type: string
+  output_index:
+    description: The index of the output this delta applies to.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The event type identifier.
+    enum:
+    - response.custom_tool_call_input.delta
+    type: string
+required:
+- type
+- output_index
+- item_id
+- delta
+- sequence_number

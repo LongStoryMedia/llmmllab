@@ -1,0 +1,6 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelIdsShared
+anyOf:
+- type: string
+- $ref: chat_model.yaml
+example: gpt-4o

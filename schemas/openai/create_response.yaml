@@ -1,0 +1,93 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateResponse
+allOf:
+- $ref: create_model_response_properties.yaml
+- $ref: response_properties.yaml
+- properties:
+    conversation:
+      anyOf:
+      - $ref: conversation_param.yaml
+      - type: 'null'
+    include:
+      anyOf:
+      - description: 'Specify additional output data to include in the model response.
+          Currently supported values are:
+
+          - `web_search_call.action.sources`: Include the sources of the web search
+          tool call.
+
+          - `code_interpreter_call.outputs`: Includes the outputs of python code execution
+          in code interpreter tool call items.
+
+          - `computer_call_output.output.image_url`: Include image urls from the computer
+          call output.
+
+          - `file_search_call.results`: Include the search results of the file search
+          tool call.
+
+          - `message.input_image.image_url`: Include image urls from the input message.
+
+          - `message.output_text.logprobs`: Include logprobs with assistant messages.
+
+          - `reasoning.encrypted_content`: Includes an encrypted version of reasoning
+          tokens in reasoning item outputs. This enables reasoning items to be used
+          in multi-turn conversations when using the Responses API statelessly (like
+          when the `store` parameter is set to `false`, or when an organization is
+          enrolled in the zero data retention program).'
+        items:
+          $ref: include_enum.yaml
+        type: array
+      - type: 'null'
+    input:
+      $ref: input_param.yaml
+    instructions:
+      anyOf:
+      - description: 'A system (or developer) message inserted into the model''s context.
+
+
+          When using along with `previous_response_id`, the instructions from a previous
+
+          response will not be carried over to the next response. This makes it simple
+
+          to swap out system (or developer) messages in new responses.
+
+          '
+        type: string
+      - type: 'null'
+    parallel_tool_calls:
+      anyOf:
+      - default: true
+        description: 'Whether to allow the model to run tool calls in parallel.
+
+          '
+        type: boolean
+      - type: 'null'
+    store:
+      anyOf:
+      - default: true
+        description: 'Whether to store the generated model response for later retrieval
+          via
+
+          API.
+
+          '
+        type: boolean
+      - type: 'null'
+    stream:
+      anyOf:
+      - default: false
+        description: 'If set to true, the model response data will be streamed to
+          the client
+
+          as it is generated using [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#Event_stream_format).
+
+          See the [Streaming section below](https://platform.openai.com/docs/api-reference/responses-streaming)
+
+          for more information.
+
+          '
+        type: boolean
+      - type: 'null'
+    stream_options:
+      $ref: response_stream_options.yaml
+  type: object

@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalItemContent
+description: 'Inputs to the model - can contain template strings. Supports text, output
+  text, input images, and input audio, either as a single item or an array of items.
+
+  '
+anyOf:
+- $ref: eval_item_content_item.yaml
+- $ref: eval_item_content_array.yaml

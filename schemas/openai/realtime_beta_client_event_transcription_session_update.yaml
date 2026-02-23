@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaClientEventTranscriptionSessionUpdate
+description: 'Send this event to update a transcription session.
+
+  '
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    type: string
+  session:
+    $ref: realtime_transcription_session_create_request.yaml
+  type:
+    const: transcription_session.update
+    description: The event type, must be `transcription_session.update`.
+required:
+- type
+- session

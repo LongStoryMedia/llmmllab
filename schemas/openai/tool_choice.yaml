@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolChoice
+description: Tool selection that the assistant should honor when executing the item.
+type: object
+properties:
+  id:
+    description: Identifier of the requested tool.
+    type: string
+required:
+- id

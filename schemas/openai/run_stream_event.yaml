@@ -1,0 +1,135 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStreamEvent
+anyOf:
+- description: Occurs when a new [run](https://platform.openai.com/docs/api-reference/runs/object)
+    is created.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.created
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    moves to a `queued` status.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.queued
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    moves to an `in_progress` status.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.in_progress
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    moves to a `requires_action` status.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.requires_action
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    is completed.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.completed
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    ends with status `incomplete`.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.incomplete
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    fails.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.failed
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    moves to a `cancelling` status.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.cancelling
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    is cancelled.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.cancelled
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [run](https://platform.openai.com/docs/api-reference/runs/object)
+    expires.
+  properties:
+    data:
+      $ref: run_object.yaml
+    event:
+      enum:
+      - thread.run.expired
+      type: string
+  required:
+  - event
+  - data
+  type: object
+discriminator:
+  propertyName: event

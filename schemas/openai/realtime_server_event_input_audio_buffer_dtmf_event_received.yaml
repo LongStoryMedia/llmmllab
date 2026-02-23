@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventInputAudioBufferDtmfEventReceived
+description: '**SIP Only:** Returned when an DTMF event is received. A DTMF event
+  is a message that
+
+  represents a telephone keypad press (0–9, *, #, A–D). The `event` property
+
+  is the keypad that the user press. The `received_at` is the UTC Unix Timestamp
+
+  that the server received the event.
+
+  '
+type: object
+properties:
+  event:
+    description: The telephone keypad that was pressed by the user.
+    type: string
+  received_at:
+    description: 'UTC Unix Timestamp when DTMF Event was received by server.
+
+      '
+    type: integer
+  type:
+    const: input_audio_buffer.dtmf_event_received
+    description: The event type, must be `input_audio_buffer.dtmf_event_received`.
+required:
+- type
+- event
+- received_at

@@ -1,0 +1,70 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeTranscriptionSessionCreateRequestGA
+description: Realtime transcription session object configuration.
+type: object
+properties:
+  audio:
+    description: 'Configuration for input and output audio.
+
+      '
+    properties:
+      input:
+        properties:
+          format:
+            $ref: realtime_audio_formats.yaml
+          noise_reduction:
+            description: 'Configuration for input audio noise reduction. This can
+              be set to `null` to turn off.
+
+              Noise reduction filters audio added to the input audio buffer before
+              it is sent to VAD and the model.
+
+              Filtering the audio can improve VAD and turn detection accuracy (reducing
+              false positives) and model performance by improving perception of the
+              input audio.
+
+              '
+            properties:
+              type:
+                $ref: noise_reduction_type.yaml
+            type: object
+          transcription:
+            $ref: audio_transcription.yaml
+            description: 'Configuration for input audio transcription, defaults to
+              off and can be set to `null` to turn off once on. Input audio transcription
+              is not native to the model, since the model consumes audio directly.
+              Transcription runs asynchronously through [the /audio/transcriptions
+              endpoint](https://platform.openai.com/docs/api-reference/audio/createTranscription)
+              and should be treated as guidance of input audio content rather than
+              precisely what the model heard. The client can optionally set the language
+              and prompt for transcription, these offer additional guidance to the
+              transcription service.
+
+              '
+          turn_detection:
+            $ref: realtime_turn_detection.yaml
+        type: object
+    type: object
+  include:
+    description: 'Additional fields to include in server outputs.
+
+
+      `item.input_audio_transcription.logprobs`: Include logprobs for input audio
+      transcription.
+
+      '
+    items:
+      enum:
+      - item.input_audio_transcription.logprobs
+      type: string
+    type: array
+  type:
+    description: 'The type of session to create. Always `transcription` for transcription
+      sessions.
+
+      '
+    enum:
+    - transcription
+    type: string
+required:
+- type

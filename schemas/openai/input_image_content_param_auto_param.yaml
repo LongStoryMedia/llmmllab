@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputImageContentParamAutoParam
+description: An image input to the model. Learn about [image inputs](https://platform.openai.com/docs/guides/vision)
+type: object
+properties:
+  detail:
+    anyOf:
+    - $ref: detail_enum.yaml
+      description: The detail level of the image to be sent to the model. One of `high`,
+        `low`, or `auto`. Defaults to `auto`.
+    - type: 'null'
+  file_id:
+    anyOf:
+    - description: The ID of the file to be sent to the model.
+      example: file-123
+      type: string
+    - type: 'null'
+  image_url:
+    anyOf:
+    - description: The URL of the image to be sent to the model. A fully qualified
+        URL or base64 encoded image in a data URL.
+      maxLength: 20971520
+      type: string
+    - type: 'null'
+  type:
+    default: input_image
+    description: The type of the input item. Always `input_image`.
+    enum:
+    - input_image
+    type: string
+required:
+- type

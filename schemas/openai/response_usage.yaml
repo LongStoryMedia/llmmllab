@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseUsage
+description: 'Represents token usage details including input tokens, output tokens,
+
+  a breakdown of output tokens, and the total tokens used.
+
+  '
+type: object
+properties:
+  input_tokens:
+    description: The number of input tokens.
+    type: integer
+  input_tokens_details:
+    description: A detailed breakdown of the input tokens.
+    properties:
+      cached_tokens:
+        description: "The number of tokens that were retrieved from the cache. \n\
+          [More on prompt caching](https://platform.openai.com/docs/guides/prompt-caching).\n"
+        type: integer
+    required:
+    - cached_tokens
+    type: object
+  output_tokens:
+    description: The number of output tokens.
+    type: integer
+  output_tokens_details:
+    description: A detailed breakdown of the output tokens.
+    properties:
+      reasoning_tokens:
+        description: The number of reasoning tokens.
+        type: integer
+    required:
+    - reasoning_tokens
+    type: object
+  total_tokens:
+    description: The total number of tokens used.
+    type: integer
+required:
+- input_tokens
+- input_tokens_details
+- output_tokens
+- output_tokens_details
+- total_tokens

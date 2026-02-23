@@ -1,0 +1,23 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventResponseDone
+description: "Returned when a Response is done streaming. Always emitted, no matter\
+  \ the \nfinal state. The Response object included in the `response.done` event will\
+  \ \ninclude all output Items in the Response but will omit the raw audio data.\n\
+  \nClients should check the `status` field of the Response to determine if it was\
+  \ successful\n(`completed`) or if there was another outcome: `cancelled`, `failed`,\
+  \ or `incomplete`.\n\nA response will contain all output items that were generated\
+  \ during the response, excluding\nany audio content.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  response:
+    $ref: realtime_response.yaml
+  type:
+    const: response.done
+    description: The event type, must be `response.done`.
+required:
+- event_id
+- type
+- response

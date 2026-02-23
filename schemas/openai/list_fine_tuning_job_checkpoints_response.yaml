@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ListFineTuningJobCheckpointsResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: fine_tuning_job_checkpoint.yaml
+    type: array
+  first_id:
+    anyOf:
+    - type: string
+    - type: 'null'
+  has_more:
+    type: boolean
+  last_id:
+    anyOf:
+    - type: string
+    - type: 'null'
+  object:
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- has_more

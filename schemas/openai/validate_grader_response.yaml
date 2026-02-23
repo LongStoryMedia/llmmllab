@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ValidateGraderResponse
+type: object
+properties:
+  grader:
+    anyOf:
+    - $ref: grader_string_check.yaml
+    - $ref: grader_text_similarity.yaml
+    - $ref: grader_python.yaml
+    - $ref: grader_score_model.yaml
+    - $ref: grader_multi.yaml
+    description: The grader used for the fine-tuning job.
+    type: object

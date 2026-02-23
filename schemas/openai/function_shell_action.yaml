@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellAction
+description: Execute a shell command.
+type: object
+properties:
+  commands:
+    items:
+      description: A list of commands to run.
+      type: string
+    type: array
+  max_output_length:
+    anyOf:
+    - description: Optional maximum number of characters to return from each command.
+      type: integer
+    - type: 'null'
+  timeout_ms:
+    anyOf:
+    - description: Optional timeout in milliseconds for the commands.
+      type: integer
+    - type: 'null'
+required:
+- commands
+- timeout_ms
+- max_output_length

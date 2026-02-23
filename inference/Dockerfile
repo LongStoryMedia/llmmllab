@@ -44,7 +44,7 @@ RUN cmake -B build \
     cmake --build build --config Release -j6
 
 # Install ollama binary
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # Runtime stage - minimal CUDA runtime
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
@@ -107,7 +107,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /llama.cpp /llama.cpp
 
 # Copy ollama binary from builder
-COPY --from=builder /usr/local/bin/ollama /usr/local/bin/ollama
+# COPY --from=builder /usr/local/bin/ollama /usr/local/bin/ollama
 
 # Set working directory
 WORKDIR /app
@@ -153,7 +153,7 @@ RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
     echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
 
 # Expose ports  
-EXPOSE 8000 11434 11435
+EXPOSE 8000
 
 # Default command - use startup.sh which runs both services
 CMD ["/app/startup.sh"]

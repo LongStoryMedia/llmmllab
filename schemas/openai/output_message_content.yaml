@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: OutputMessageContent
+anyOf:
+- $ref: output_text_content.yaml
+- $ref: refusal_content.yaml
+discriminator:
+  propertyName: type

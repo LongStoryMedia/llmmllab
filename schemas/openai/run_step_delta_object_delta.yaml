@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaObjectDelta
+description: The delta containing the fields that have changed on the run step.
+type: object
+properties:
+  step_details:
+    anyOf:
+    - $ref: run_step_delta_step_details_message_creation_object.yaml
+    - $ref: run_step_delta_step_details_tool_calls_object.yaml
+    description: The details of the run step.
+    discriminator:
+      propertyName: type
+    type: object

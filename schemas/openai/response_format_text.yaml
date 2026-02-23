@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFormatText
+description: 'Default response format. Used to generate text responses.
+
+  '
+type: object
+properties:
+  type:
+    description: The type of response format being defined. Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- type

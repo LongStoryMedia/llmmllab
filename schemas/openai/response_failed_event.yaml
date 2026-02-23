@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFailedEvent
+description: 'An event that is emitted when a response fails.
+
+  '
+type: object
+properties:
+  response:
+    $ref: response.yaml
+    description: 'The response that failed.
+
+      '
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.failed`.
+
+      '
+    enum:
+    - response.failed
+    type: string
+required:
+- type
+- response
+- sequence_number

@@ -1,0 +1,56 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptionSegment
+type: object
+properties:
+  avg_logprob:
+    description: Average logprob of the segment. If the value is lower than -1, consider
+      the logprobs failed.
+    format: float
+    type: number
+  compression_ratio:
+    description: Compression ratio of the segment. If the value is greater than 2.4,
+      consider the compression failed.
+    format: float
+    type: number
+  end:
+    description: End time of the segment in seconds.
+    format: float
+    type: number
+  id:
+    description: Unique identifier of the segment.
+    type: integer
+  no_speech_prob:
+    description: Probability of no speech in the segment. If the value is higher than
+      1.0 and the `avg_logprob` is below -1, consider this segment silent.
+    format: float
+    type: number
+  seek:
+    description: Seek offset of the segment.
+    type: integer
+  start:
+    description: Start time of the segment in seconds.
+    format: float
+    type: number
+  temperature:
+    description: Temperature parameter used for generating the segment.
+    format: float
+    type: number
+  text:
+    description: Text content of the segment.
+    type: string
+  tokens:
+    description: Array of token IDs for the text content.
+    items:
+      type: integer
+    type: array
+required:
+- id
+- seek
+- start
+- end
+- text
+- tokens
+- temperature
+- avg_logprob
+- compression_ratio
+- no_speech_prob

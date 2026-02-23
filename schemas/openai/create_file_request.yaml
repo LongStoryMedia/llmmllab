@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateFileRequest
+type: object
+properties:
+  expires_after:
+    $ref: file_expiration_after.yaml
+  file:
+    description: 'The File object (not file name) to be uploaded.
+
+      '
+    format: binary
+    type: string
+  purpose:
+    $ref: file_purpose.yaml
+required:
+- file
+- purpose
+additionalProperties: false

@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectGroupDeletedResource
+description: Confirmation payload returned after removing a group from a project.
+type: object
+properties:
+  deleted:
+    description: Whether the group membership in the project was removed.
+    type: boolean
+  object:
+    description: Always `project.group.deleted`.
+    enum:
+    - project.group.deleted
+    type: string
+required:
+- object
+- deleted

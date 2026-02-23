@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchPreviewTool
+description: This tool searches the web for relevant results to use in a response.
+  Learn more about the [web search tool](https://platform.openai.com/docs/guides/tools-web-search).
+type: object
+properties:
+  search_context_size:
+    $ref: search_context_size.yaml
+    description: High level guidance for the amount of context window space to use
+      for the search. One of `low`, `medium`, or `high`. `medium` is the default.
+  type:
+    default: web_search_preview
+    description: The type of the web search tool. One of `web_search_preview` or `web_search_preview_2025_03_11`.
+    enum:
+    - web_search_preview
+    - web_search_preview_2025_03_11
+    type: string
+  user_location:
+    anyOf:
+    - $ref: approximate_location.yaml
+      description: The user's location.
+    - type: 'null'
+required:
+- type

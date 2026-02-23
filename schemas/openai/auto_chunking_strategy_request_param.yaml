@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AutoChunkingStrategyRequestParam
+description: The default strategy. This strategy currently uses a `max_chunk_size_tokens`
+  of `800` and `chunk_overlap_tokens` of `400`.
+type: object
+properties:
+  type:
+    description: Always `auto`.
+    enum:
+    - auto
+    type: string
+required:
+- type
+additionalProperties: false

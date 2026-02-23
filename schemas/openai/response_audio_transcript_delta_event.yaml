@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseAudioTranscriptDeltaEvent
+description: Emitted when there is a partial transcript of audio.
+type: object
+properties:
+  delta:
+    description: 'The partial transcript of the audio response.
+
+      '
+    type: string
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.audio.transcript.delta`.
+
+      '
+    enum:
+    - response.audio.transcript.delta
+    type: string
+required:
+- type
+- response_id
+- delta
+- sequence_number

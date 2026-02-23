@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: OutputTextContent
+description: A text output from the model.
+type: object
+properties:
+  annotations:
+    description: The annotations of the text output.
+    items:
+      $ref: annotation.yaml
+    type: array
+  logprobs:
+    items:
+      $ref: log_prob.yaml
+    type: array
+  text:
+    description: The text output from the model.
+    type: string
+  type:
+    default: output_text
+    description: The type of the output text. Always `output_text`.
+    enum:
+    - output_text
+    type: string
+required:
+- type
+- text
+- annotations

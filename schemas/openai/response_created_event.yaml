@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseCreatedEvent
+description: 'An event that is emitted when a response is created.
+
+  '
+type: object
+properties:
+  response:
+    $ref: response.yaml
+    description: 'The response that was created.
+
+      '
+  sequence_number:
+    description: The sequence number for this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.created`.
+
+      '
+    enum:
+    - response.created
+    type: string
+required:
+- type
+- response
+- sequence_number

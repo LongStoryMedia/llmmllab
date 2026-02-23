@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepCompletionUsage
+anyOf:
+- description: Usage statistics related to the run step. This value will be `null`
+    while the run step's status is `in_progress`.
+  properties:
+    completion_tokens:
+      description: Number of completion tokens used over the course of the run step.
+      type: integer
+    prompt_tokens:
+      description: Number of prompt tokens used over the course of the run step.
+      type: integer
+    total_tokens:
+      description: Total number of tokens used (prompt + completion).
+      type: integer
+  required:
+  - prompt_tokens
+  - completion_tokens
+  - total_tokens
+  type: object
+- type: 'null'

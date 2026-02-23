@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserRoleAssignment
+description: Role assignment linking a user to a role.
+type: object
+properties:
+  object:
+    description: Always `user.role`.
+    enum:
+    - user.role
+    type: string
+  role:
+    $ref: role.yaml
+  user:
+    $ref: user.yaml
+required:
+- object
+- user
+- role

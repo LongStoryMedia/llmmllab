@@ -1,0 +1,64 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateSpeechRequest
+type: object
+properties:
+  input:
+    description: The text to generate audio for. The maximum length is 4096 characters.
+    maxLength: 4096
+    type: string
+  instructions:
+    description: Control the voice of your generated audio with additional instructions.
+      Does not work with `tts-1` or `tts-1-hd`.
+    maxLength: 4096
+    type: string
+  model:
+    anyOf:
+    - type: string
+    - enum:
+      - tts-1
+      - tts-1-hd
+      - gpt-4o-mini-tts
+      - gpt-4o-mini-tts-2025-12-15
+      type: string
+    description: 'One of the available [TTS models](https://platform.openai.com/docs/models#tts):
+      `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`, or `gpt-4o-mini-tts-2025-12-15`.
+
+      '
+  response_format:
+    default: mp3
+    description: The format to audio in. Supported formats are `mp3`, `opus`, `aac`,
+      `flac`, `wav`, and `pcm`.
+    enum:
+    - mp3
+    - opus
+    - aac
+    - flac
+    - wav
+    - pcm
+    type: string
+  speed:
+    default: 1
+    description: The speed of the generated audio. Select a value from `0.25` to `4.0`.
+      `1.0` is the default.
+    maximum: 4
+    minimum: 0.25
+    type: number
+  stream_format:
+    default: audio
+    description: The format to stream the audio in. Supported formats are `sse` and
+      `audio`. `sse` is not supported for `tts-1` or `tts-1-hd`.
+    enum:
+    - sse
+    - audio
+    type: string
+  voice:
+    $ref: voice_ids_shared.yaml
+    description: The voice to use when generating the audio. Supported built-in voices
+      are `alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `onyx`, `nova`, `sage`,
+      `shimmer`, `verse`, `marin`, and `cedar`. Previews of the voices are available
+      in the [Text to speech guide](https://platform.openai.com/docs/guides/text-to-speech#voice-options).
+required:
+- model
+- input
+- voice
+additionalProperties: false

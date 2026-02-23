@@ -1,0 +1,104 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateChatCompletionResponse
+description: Represents a chat completion response returned by model, based on the
+  provided input.
+type: object
+properties:
+  choices:
+    description: A list of chat completion choices. Can be more than one if `n` is
+      greater than 1.
+    items:
+      properties:
+        finish_reason:
+          description: 'The reason the model stopped generating tokens. This will
+            be `stop` if the model hit a natural stop point or a provided stop sequence,
+
+            `length` if the maximum number of tokens specified in the request was
+            reached,
+
+            `content_filter` if content was omitted due to a flag from our content
+            filters,
+
+            `tool_calls` if the model called a tool, or `function_call` (deprecated)
+            if the model called a function.
+
+            '
+          enum:
+          - stop
+          - length
+          - tool_calls
+          - content_filter
+          - function_call
+          type: string
+        index:
+          description: The index of the choice in the list of choices.
+          type: integer
+        logprobs:
+          anyOf:
+          - description: Log probability information for the choice.
+            properties:
+              content:
+                anyOf:
+                - description: A list of message content tokens with log probability
+                    information.
+                  items:
+                    $ref: chat_completion_token_logprob.yaml
+                  type: array
+                - type: 'null'
+              refusal:
+                anyOf:
+                - description: A list of message refusal tokens with log probability
+                    information.
+                  items:
+                    $ref: chat_completion_token_logprob.yaml
+                  type: array
+                - type: 'null'
+            required:
+            - content
+            - refusal
+            type: object
+          - type: 'null'
+        message:
+          $ref: chat_completion_response_message.yaml
+      required:
+      - finish_reason
+      - index
+      - message
+      - logprobs
+      type: object
+    type: array
+  created:
+    description: The Unix timestamp (in seconds) of when the chat completion was created.
+    type: integer
+  id:
+    description: A unique identifier for the chat completion.
+    type: string
+  model:
+    description: The model used for the chat completion.
+    type: string
+  object:
+    description: The object type, which is always `chat.completion`.
+    enum:
+    - chat.completion
+    type: string
+  service_tier:
+    $ref: service_tier.yaml
+  system_fingerprint:
+    deprecated: true
+    description: 'This fingerprint represents the backend configuration that the model
+      runs with.
+
+
+      Can be used in conjunction with the `seed` request parameter to understand when
+      backend changes have been made that might impact determinism.
+
+      '
+    type: string
+  usage:
+    $ref: completion_usage.yaml
+required:
+- choices
+- created
+- id
+- model
+- object

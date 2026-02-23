@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaContentImageUrlObject
+description: References an image URL in the content of a message.
+type: object
+properties:
+  image_url:
+    properties:
+      detail:
+        default: auto
+        description: Specifies the detail level of the image. `low` uses fewer tokens,
+          you can opt in to high resolution using `high`.
+        enum:
+        - auto
+        - low
+        - high
+        type: string
+      url:
+        description: 'The URL of the image, must be a supported image types: jpeg,
+          jpg, png, gif, webp.'
+        type: string
+    type: object
+  index:
+    description: The index of the content part in the message.
+    type: integer
+  type:
+    description: Always `image_url`.
+    enum:
+    - image_url
+    type: string
+required:
+- index
+- type

@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventConversationItemTruncated
+description: "Returned when an earlier assistant audio message item is truncated by\
+  \ the \nclient with a `conversation.item.truncate` event. This event is used to\
+  \ \nsynchronize the server's understanding of the audio with the client's playback.\n\
+  \nThis action will truncate the audio and remove the server-side text transcript\
+  \ \nto ensure there is no text in the context that hasn't been heard by the user.\n"
+type: object
+properties:
+  audio_end_ms:
+    description: 'The duration up to which the audio was truncated, in milliseconds.
+
+      '
+    type: integer
+  content_index:
+    description: The index of the content part that was truncated.
+    type: integer
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the assistant message item that was truncated.
+    type: string
+  type:
+    const: conversation.item.truncated
+    description: The event type, must be `conversation.item.truncated`.
+required:
+- event_id
+- type
+- item_id
+- content_index
+- audio_end_ms

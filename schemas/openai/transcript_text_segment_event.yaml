@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptTextSegmentEvent
+description: 'Emitted when a diarized transcription returns a completed segment with
+  speaker information. Only emitted when you [create a transcription](https://platform.openai.com/docs/api-reference/audio/create-transcription)
+  with `stream` set to `true` and `response_format` set to `diarized_json`.
+
+  '
+type: object
+properties:
+  end:
+    description: End timestamp of the segment in seconds.
+    format: float
+    type: number
+  id:
+    description: Unique identifier for the segment.
+    type: string
+  speaker:
+    description: Speaker label for this segment.
+    type: string
+  start:
+    description: Start timestamp of the segment in seconds.
+    format: float
+    type: number
+  text:
+    description: Transcript text for this segment.
+    type: string
+  type:
+    description: The type of the event. Always `transcript.text.segment`.
+    enum:
+    - transcript.text.segment
+    type: string
+required:
+- type
+- id
+- start
+- end
+- text
+- speaker

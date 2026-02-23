@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InferenceOptions
+description: Model and tool overrides applied when generating the assistant response.
+type: object
+properties:
+  model:
+    anyOf:
+    - description: Model name that generated the response. Defaults to null when using
+        the session default.
+      type: string
+    - type: 'null'
+  tool_choice:
+    anyOf:
+    - $ref: tool_choice.yaml
+      description: Preferred tool to invoke. Defaults to null when ChatKit should
+        auto-select.
+    - type: 'null'
+required:
+- tool_choice
+- model

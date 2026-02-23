@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaContentTextObject
+description: The text content that is part of a message.
+type: object
+properties:
+  index:
+    description: The index of the content part in the message.
+    type: integer
+  text:
+    properties:
+      annotations:
+        items:
+          $ref: text_annotation_delta.yaml
+        type: array
+      value:
+        description: The data that makes up the text.
+        type: string
+    type: object
+  type:
+    description: Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- index
+- type

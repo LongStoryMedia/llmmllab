@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellCallOutputExitOutcomeParam
+description: Indicates that the shell commands finished and returned an exit code.
+type: object
+properties:
+  exit_code:
+    description: The exit code returned by the shell process.
+    type: integer
+  type:
+    default: exit
+    description: The outcome type. Always `exit`.
+    enum:
+    - exit
+    type: string
+required:
+- type
+- exit_code

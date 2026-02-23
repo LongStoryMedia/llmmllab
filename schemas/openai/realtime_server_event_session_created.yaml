@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventSessionCreated
+description: 'Returned when a Session is created. Emitted automatically when a new
+
+  connection is established as the first server event. This event will contain
+
+  the default Session configuration.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  session:
+    anyOf:
+    - $ref: realtime_session_create_request_ga.yaml
+    - $ref: realtime_transcription_session_create_request_ga.yaml
+    description: The session configuration.
+  type:
+    const: session.created
+    description: The event type, must be `session.created`.
+required:
+- event_id
+- type
+- session

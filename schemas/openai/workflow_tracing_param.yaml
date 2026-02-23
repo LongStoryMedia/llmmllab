@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WorkflowTracingParam
+description: Controls diagnostic tracing during the session.
+type: object
+properties:
+  enabled:
+    description: Whether tracing is enabled during the session. Defaults to true.
+    type: boolean
+required: []

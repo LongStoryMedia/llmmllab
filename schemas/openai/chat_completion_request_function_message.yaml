@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestFunctionMessage
+type: object
+properties:
+  content:
+    anyOf:
+    - description: The contents of the function message.
+      type: string
+    - type: 'null'
+  name:
+    description: The name of the function to call.
+    type: string
+  role:
+    description: The role of the messages author, in this case `function`.
+    enum:
+    - function
+    type: string
+required:
+- role
+- content
+- name
+deprecated: true

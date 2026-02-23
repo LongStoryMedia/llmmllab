@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserListResource
+description: Paginated list of user objects returned when inspecting group membership.
+type: object
+properties:
+  data:
+    description: Users in the current page.
+    items:
+      $ref: user.yaml
+    type: array
+  has_more:
+    description: Whether more users are available when paginating.
+    type: boolean
+  next:
+    anyOf:
+    - type: string
+    - type: 'null'
+    description: Cursor to fetch the next page of results, or `null` when no further
+      users are available.
+  object:
+    description: Always `list`.
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- has_more
+- next

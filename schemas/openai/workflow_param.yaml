@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WorkflowParam
+description: Workflow reference and overrides applied to the chat session.
+type: object
+properties:
+  id:
+    description: Identifier for the workflow invoked by the session.
+    type: string
+  state_variables:
+    additionalProperties:
+      anyOf:
+      - maxLength: 10485760
+        type: string
+      - type: integer
+      - type: boolean
+      - type: number
+    description: State variables forwarded to the workflow. Keys may be up to 64 characters,
+      values must be primitive types, and the map defaults to an empty object.
+    maxProperties: 64
+    type: object
+  tracing:
+    $ref: workflow_tracing_param.yaml
+    description: Optional tracing overrides for the workflow invocation. When omitted,
+      tracing is enabled by default.
+  version:
+    description: Specific workflow version to run. Defaults to the latest deployed
+      version.
+    type: string
+required:
+- id

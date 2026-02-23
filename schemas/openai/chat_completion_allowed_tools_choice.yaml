@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionAllowedToolsChoice
+description: 'Constrains the tools available to the model to a pre-defined set.
+
+  '
+type: object
+properties:
+  allowed_tools:
+    $ref: chat_completion_allowed_tools.yaml
+  type:
+    description: Allowed tool configuration type. Always `allowed_tools`.
+    enum:
+    - allowed_tools
+    type: string
+required:
+- type
+- allowed_tools

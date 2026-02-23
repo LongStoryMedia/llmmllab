@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptTextUsageDuration
+description: Usage statistics for models billed by audio input duration.
+type: object
+properties:
+  seconds:
+    description: Duration of the input audio in seconds.
+    type: number
+  type:
+    description: The type of the usage object. Always `duration` for this variant.
+    enum:
+    - duration
+    type: string
+required:
+- type
+- seconds

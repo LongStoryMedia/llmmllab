@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuneReinforcementRequestInput
+description: 'Per-line training example for reinforcement fine-tuning. Note that `messages`
+  and `tools` are the only reserved keywords.
+
+  Any other arbitrary key-value data can be included on training datapoints and will
+  be available to reference during grading under the `{{ item.XXX }}` template variable.
+
+  Input messages may contain text or image content only. Audio and file input messages
+
+  are not currently supported for fine-tuning.
+
+  '
+type: object
+properties:
+  messages:
+    items:
+      anyOf:
+      - $ref: chat_completion_request_developer_message.yaml
+      - $ref: chat_completion_request_user_message.yaml
+      - $ref: fine_tune_chat_completion_request_assistant_message.yaml
+      - $ref: chat_completion_request_tool_message.yaml
+    minItems: 1
+    type: array
+  tools:
+    description: A list of tools the model may generate JSON inputs for.
+    items:
+      $ref: chat_completion_tool.yaml
+    type: array
+required:
+- messages
+unevaluatedProperties: true

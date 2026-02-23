@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CompoundFilter
+description: Combine multiple filters using `and` or `or`.
+type: object
+properties:
+  filters:
+    description: Array of filters to combine. Items can be `ComparisonFilter` or `CompoundFilter`.
+    items:
+      anyOf:
+      - $ref: comparison_filter.yaml
+      - $recursiveRef: '#'
+      discriminator:
+        propertyName: type
+    type: array
+  type:
+    description: 'Type of operation: `and` or `or`.'
+    enum:
+    - and
+    - or
+    type: string
+required:
+- type
+- filters
+additionalProperties: false
+$recursiveAnchor: true

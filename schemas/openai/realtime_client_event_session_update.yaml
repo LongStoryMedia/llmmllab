@@ -1,0 +1,48 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventSessionUpdate
+description: 'Send this event to update the session’s configuration.
+
+  The client may send this event at any time to update any field
+
+  except for `voice` and `model`. `voice` can be updated only if there have been no
+  other audio outputs yet.
+
+
+  When the server receives a `session.update`, it will respond
+
+  with a `session.updated` event showing the full, effective configuration.
+
+  Only the fields that are present in the `session.update` are updated. To clear a
+  field like
+
+  `instructions`, pass an empty string. To clear a field like `tools`, pass an empty
+  array.
+
+  To clear a field like `turn_detection`, pass `null`.
+
+  '
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event. This is
+      an arbitrary string that a client may assign. It will be passed back if there
+      is an error with the event, but the corresponding `session.updated` event will
+      not include it.
+    maxLength: 512
+    type: string
+  session:
+    anyOf:
+    - $ref: realtime_session_create_request_ga.yaml
+    - $ref: realtime_transcription_session_create_request_ga.yaml
+    description: 'Update the Realtime session. Choose either a realtime
+
+      session or a transcription session.
+
+      '
+    type: object
+  type:
+    const: session.update
+    description: The event type, must be `session.update`.
+required:
+- type
+- session

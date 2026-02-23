@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: StaticChunkingStrategyResponseParam
+type: object
+properties:
+  static:
+    $ref: static_chunking_strategy.yaml
+  type:
+    description: Always `static`.
+    enum:
+    - static
+    type: string
+required:
+- type
+- static
+additionalProperties: false

@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GraderStringCheck
+description: 'A StringCheckGrader object that performs a string comparison between
+  input and reference using a specified operation.
+
+  '
+type: object
+properties:
+  input:
+    description: The input text. This may include template strings.
+    type: string
+  name:
+    description: The name of the grader.
+    type: string
+  operation:
+    description: The string check operation to perform. One of `eq`, `ne`, `like`,
+      or `ilike`.
+    enum:
+    - eq
+    - ne
+    - like
+    - ilike
+    type: string
+  reference:
+    description: The reference text. This may include template strings.
+    type: string
+  type:
+    description: The object type, which is always `string_check`.
+    enum:
+    - string_check
+    type: string
+required:
+- type
+- name
+- input
+- reference
+- operation

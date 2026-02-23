@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectUserUpdateRequest
+type: object
+properties:
+  role:
+    description: '`owner` or `member`'
+    enum:
+    - owner
+    - member
+    type: string
+required:
+- role

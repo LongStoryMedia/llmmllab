@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageVectorStoresResult
+description: The aggregated vector stores usage details of the specific time bucket.
+type: object
+properties:
+  object:
+    enum:
+    - organization.usage.vector_stores.result
+    type: string
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  usage_bytes:
+    description: The vector stores usage in bytes.
+    type: integer
+required:
+- object
+- usage_bytes

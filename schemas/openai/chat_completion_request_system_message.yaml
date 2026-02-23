@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestSystemMessage
+description: 'Developer-provided instructions that the model should follow, regardless
+  of
+
+  messages sent by the user. With o1 models and newer, use `developer` messages
+
+  for this purpose instead.
+
+  '
+type: object
+properties:
+  content:
+    anyOf:
+    - description: The contents of the system message.
+      title: Text content
+      type: string
+    - description: An array of content parts with a defined type. For system messages,
+        only type `text` is supported.
+      items:
+        $ref: chat_completion_request_system_message_content_part.yaml
+      minItems: 1
+      title: Array of content parts
+      type: array
+    description: The contents of the system message.
+  name:
+    description: An optional name for the participant. Provides the model information
+      to differentiate between participants of the same role.
+    type: string
+  role:
+    description: The role of the messages author, in this case `system`.
+    enum:
+    - system
+    type: string
+required:
+- content
+- role

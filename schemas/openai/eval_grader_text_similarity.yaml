@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalGraderTextSimilarity
+type: object
+allOf:
+- $ref: grader_text_similarity.yaml
+- properties:
+    pass_threshold:
+      description: The threshold for the score.
+      type: number
+  required:
+  - pass_threshold
+  type: object

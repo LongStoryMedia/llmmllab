@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApplyPatchToolParam
+description: Allows the assistant to create, delete, or update files using unified
+  diffs.
+type: object
+properties:
+  type:
+    default: apply_patch
+    description: The type of the tool. Always `apply_patch`.
+    enum:
+    - apply_patch
+    type: string
+required:
+- type

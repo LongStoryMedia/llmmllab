@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserMessageInputText
+description: Text block that a user contributed to the thread.
+type: object
+properties:
+  text:
+    description: Plain-text content supplied by the user.
+    type: string
+  type:
+    default: input_text
+    description: Type discriminator that is always `input_text`.
+    enum:
+    - input_text
+    type: string
+required:
+- type
+- text

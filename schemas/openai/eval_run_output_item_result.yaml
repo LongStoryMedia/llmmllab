@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalRunOutputItemResult
+description: 'A single grader result for an evaluation run output item.
+
+  '
+type: object
+properties:
+  name:
+    description: The name of the grader.
+    type: string
+  passed:
+    description: Whether the grader considered the output a pass.
+    type: boolean
+  sample:
+    anyOf:
+    - additionalProperties: true
+      type: object
+    - type: 'null'
+    description: Optional sample or intermediate data produced by the grader.
+  score:
+    description: The numeric score produced by the grader.
+    type: number
+  type:
+    description: The grader type (for example, "string-check-grader").
+    type: string
+required:
+- name
+- score
+- passed
+additionalProperties: true

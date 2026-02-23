@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageAudioSpeechesResult
+description: The aggregated audio speeches usage details of the specific time bucket.
+type: object
+properties:
+  api_key_id:
+    anyOf:
+    - description: When `group_by=api_key_id`, this field provides the API key ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  characters:
+    description: The number of characters processed.
+    type: integer
+  model:
+    anyOf:
+    - description: When `group_by=model`, this field provides the model name of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+  num_model_requests:
+    description: The count of requests made to the model.
+    type: integer
+  object:
+    enum:
+    - organization.usage.audio_speeches.result
+    type: string
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  user_id:
+    anyOf:
+    - description: When `group_by=user_id`, this field provides the user ID of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+required:
+- object
+- characters
+- num_model_requests

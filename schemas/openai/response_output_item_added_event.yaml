@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseOutputItemAddedEvent
+description: Emitted when a new output item is added.
+type: object
+properties:
+  item:
+    $ref: output_item.yaml
+    description: 'The output item that was added.
+
+      '
+  output_index:
+    description: 'The index of the output item that was added.
+
+      '
+    type: integer
+  sequence_number:
+    description: 'The sequence number of this event.
+
+      '
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.output_item.added`.
+
+      '
+    enum:
+    - response.output_item.added
+    type: string
+required:
+- type
+- output_index
+- item
+- sequence_number

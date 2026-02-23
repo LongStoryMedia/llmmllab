@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LogProbProperties
+description: 'A log probability object.
+
+  '
+type: object
+properties:
+  bytes:
+    description: 'The bytes that were used to generate the log probability.
+
+      '
+    items:
+      type: integer
+    type: array
+  logprob:
+    description: 'The log probability of the token.
+
+      '
+    type: number
+  token:
+    description: 'The token that was used to generate the log probability.
+
+      '
+    type: string
+required:
+- token
+- logprob
+- bytes

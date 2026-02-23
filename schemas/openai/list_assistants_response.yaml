@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ListAssistantsResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: assistant_object.yaml
+    type: array
+  first_id:
+    example: asst_abc123
+    type: string
+  has_more:
+    example: false
+    type: boolean
+  last_id:
+    example: asst_abc456
+    type: string
+  object:
+    example: list
+    type: string
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

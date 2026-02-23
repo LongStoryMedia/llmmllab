@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseCodeInterpreterCallCodeDeltaEvent
+description: Emitted when a partial code snippet is streamed by the code interpreter.
+type: object
+properties:
+  delta:
+    description: The partial code snippet being streamed by the code interpreter.
+    type: string
+  item_id:
+    description: The unique identifier of the code interpreter tool call item.
+    type: string
+  output_index:
+    description: The index of the output item in the response for which the code is
+      being streamed.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event, used to order streaming events.
+    type: integer
+  type:
+    description: The type of the event. Always `response.code_interpreter_call_code.delta`.
+    enum:
+    - response.code_interpreter_call_code.delta
+    type: string
+required:
+- type
+- output_index
+- item_id
+- delta
+- sequence_number

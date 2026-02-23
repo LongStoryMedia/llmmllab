@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventInputAudioBufferCleared
+description: "Returned when the input audio buffer is cleared by the client with a\
+  \ \n`input_audio_buffer.clear` event.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  type:
+    const: input_audio_buffer.cleared
+    description: The event type, must be `input_audio_buffer.cleared`.
+required:
+- event_id
+- type

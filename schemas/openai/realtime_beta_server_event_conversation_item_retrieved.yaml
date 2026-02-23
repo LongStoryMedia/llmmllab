@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventConversationItemRetrieved
+description: 'Returned when a conversation item is retrieved with `conversation.item.retrieve`.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item:
+    $ref: realtime_conversation_item.yaml
+  type:
+    const: conversation.item.retrieved
+    description: The event type, must be `conversation.item.retrieved`.
+required:
+- event_id
+- type
+- item

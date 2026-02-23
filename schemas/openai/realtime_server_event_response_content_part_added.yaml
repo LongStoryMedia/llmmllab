@@ -1,0 +1,55 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventResponseContentPartAdded
+description: 'Returned when a new content part is added to an assistant message item
+  during
+
+  response generation.
+
+  '
+type: object
+properties:
+  content_index:
+    description: The index of the content part in the item's content array.
+    type: integer
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the item to which the content part was added.
+    type: string
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  part:
+    description: The content part that was added.
+    properties:
+      audio:
+        description: Base64-encoded audio data (if type is "audio").
+        type: string
+      text:
+        description: The text content (if type is "text").
+        type: string
+      transcript:
+        description: The transcript of the audio (if type is "audio").
+        type: string
+      type:
+        description: The content type ("text", "audio").
+        enum:
+        - text
+        - audio
+        type: string
+    type: object
+  response_id:
+    description: The ID of the response.
+    type: string
+  type:
+    const: response.content_part.added
+    description: The event type, must be `response.content_part.added`.
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- content_index
+- part

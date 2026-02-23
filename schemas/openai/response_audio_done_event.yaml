@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseAudioDoneEvent
+description: Emitted when the audio response is complete.
+type: object
+properties:
+  sequence_number:
+    description: 'The sequence number of the delta.
+
+      '
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.audio.done`.
+
+      '
+    enum:
+    - response.audio.done
+    type: string
+required:
+- type
+- sequence_number
+- response_id

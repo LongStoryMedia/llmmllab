@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageRequestContentTextObject
+description: The text content that is part of a message.
+type: object
+properties:
+  text:
+    description: Text content to be sent to the model
+    type: string
+  type:
+    description: Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- type
+- text

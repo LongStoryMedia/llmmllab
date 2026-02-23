@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VectorStoreSearchResultsPage
+type: object
+properties:
+  data:
+    description: The list of search result items.
+    items:
+      $ref: vector_store_search_result_item.yaml
+    type: array
+  has_more:
+    description: Indicates if there are more results to fetch.
+    type: boolean
+  next_page:
+    anyOf:
+    - description: The token for the next page, if any.
+      type: string
+    - type: 'null'
+  object:
+    description: The object type, which is always `vector_store.search_results.page`
+    enum:
+    - vector_store.search_results.page
+    type: string
+  search_query:
+    items:
+      description: The query used for this search.
+      minItems: 1
+      type: string
+    type: array
+required:
+- object
+- search_query
+- data
+- has_more
+- next_page
+additionalProperties: false

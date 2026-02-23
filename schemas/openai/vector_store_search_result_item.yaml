@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VectorStoreSearchResultItem
+type: object
+properties:
+  attributes:
+    $ref: vector_store_file_attributes.yaml
+  content:
+    description: Content chunks from the file.
+    items:
+      $ref: vector_store_search_result_content_object.yaml
+    type: array
+  file_id:
+    description: The ID of the vector store file.
+    type: string
+  filename:
+    description: The name of the vector store file.
+    type: string
+  score:
+    description: The similarity score for the result.
+    maximum: 1
+    minimum: 0
+    type: number
+required:
+- file_id
+- filename
+- score
+- attributes
+- content
+additionalProperties: false

@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ThreadItem
+anyOf:
+- $ref: user_message_item.yaml
+- $ref: assistant_message_item.yaml
+- $ref: widget_message_item.yaml
+- $ref: client_tool_call_item.yaml
+- $ref: task_item.yaml
+- $ref: task_group_item.yaml
+discriminator:
+  propertyName: type

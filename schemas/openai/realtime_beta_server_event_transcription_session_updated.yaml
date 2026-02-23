@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventTranscriptionSessionUpdated
+description: "Returned when a transcription session is updated with a `transcription_session.update`\
+  \ event, unless \nthere is an error.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  session:
+    $ref: realtime_transcription_session_create_response.yaml
+  type:
+    const: transcription_session.updated
+    description: The event type, must be `transcription_session.updated`.
+required:
+- event_id
+- type
+- session

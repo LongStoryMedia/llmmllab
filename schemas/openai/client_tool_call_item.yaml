@@ -1,0 +1,55 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ClientToolCallItem
+description: Record of a client side tool invocation initiated by the assistant.
+type: object
+properties:
+  arguments:
+    description: JSON-encoded arguments that were sent to the tool.
+    type: string
+  call_id:
+    description: Identifier for the client tool call.
+    type: string
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  id:
+    description: Identifier of the thread item.
+    type: string
+  name:
+    description: Tool name that was invoked.
+    type: string
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  output:
+    anyOf:
+    - description: JSON-encoded output captured from the tool. Defaults to null while
+        execution is in progress.
+      type: string
+    - type: 'null'
+  status:
+    $ref: client_tool_call_status.yaml
+    description: Execution status for the tool call.
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.client_tool_call
+    description: Type discriminator that is always `chatkit.client_tool_call`.
+    enum:
+    - chatkit.client_tool_call
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- status
+- call_id
+- name
+- arguments
+- output

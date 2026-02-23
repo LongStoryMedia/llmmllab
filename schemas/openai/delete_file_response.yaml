@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DeleteFileResponse
+type: object
+properties:
+  deleted:
+    type: boolean
+  id:
+    type: string
+  object:
+    enum:
+    - file
+    type: string
+required:
+- id
+- object
+- deleted

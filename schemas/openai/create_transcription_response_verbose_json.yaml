@@ -1,0 +1,31 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateTranscriptionResponseVerboseJson
+description: Represents a verbose json transcription response returned by model, based
+  on the provided input.
+type: object
+properties:
+  duration:
+    description: The duration of the input audio.
+    type: number
+  language:
+    description: The language of the input audio.
+    type: string
+  segments:
+    description: Segments of the transcribed text and their corresponding details.
+    items:
+      $ref: transcription_segment.yaml
+    type: array
+  text:
+    description: The transcribed text.
+    type: string
+  usage:
+    $ref: transcript_text_usage_duration.yaml
+  words:
+    description: Extracted words and their corresponding timestamps.
+    items:
+      $ref: transcription_word.yaml
+    type: array
+required:
+- language
+- duration
+- text

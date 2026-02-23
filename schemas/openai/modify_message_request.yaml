@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModifyMessageRequest
+type: object
+properties:
+  metadata:
+    $ref: metadata.yaml
+additionalProperties: false

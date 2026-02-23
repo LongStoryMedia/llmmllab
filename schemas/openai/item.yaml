@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Item
+description: 'Content item used to generate a response.
+
+  '
+type: object
+anyOf:
+- $ref: input_message.yaml
+- $ref: output_message.yaml
+- $ref: file_search_tool_call.yaml
+- $ref: computer_tool_call.yaml
+- $ref: computer_call_output_item_param.yaml
+- $ref: web_search_tool_call.yaml
+- $ref: function_tool_call.yaml
+- $ref: function_call_output_item_param.yaml
+- $ref: reasoning_item.yaml
+- $ref: compaction_summary_item_param.yaml
+- $ref: image_gen_tool_call.yaml
+- $ref: code_interpreter_tool_call.yaml
+- $ref: local_shell_tool_call.yaml
+- $ref: local_shell_tool_call_output.yaml
+- $ref: function_shell_call_item_param.yaml
+- $ref: function_shell_call_output_item_param.yaml
+- $ref: apply_patch_tool_call_item_param.yaml
+- $ref: apply_patch_tool_call_output_item_param.yaml
+- $ref: mcp_list_tools.yaml
+- $ref: mcp_approval_request.yaml
+- $ref: mcp_approval_response.yaml
+- $ref: mcp_tool_call.yaml
+- $ref: custom_tool_call_output.yaml
+- $ref: custom_tool_call.yaml
+discriminator:
+  propertyName: type

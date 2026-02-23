@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TaskItem
+description: Task emitted by the workflow to show progress and status updates.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  heading:
+    anyOf:
+    - description: Optional heading for the task. Defaults to null when not provided.
+      type: string
+    - type: 'null'
+  id:
+    description: Identifier of the thread item.
+    type: string
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  summary:
+    anyOf:
+    - description: Optional summary that describes the task. Defaults to null when
+        omitted.
+      type: string
+    - type: 'null'
+  task_type:
+    $ref: task_type.yaml
+    description: Subtype for the task.
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.task
+    description: Type discriminator that is always `chatkit.task`.
+    enum:
+    - chatkit.task
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- task_type
+- heading
+- summary

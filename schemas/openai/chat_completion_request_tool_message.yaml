@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestToolMessage
+type: object
+properties:
+  content:
+    anyOf:
+    - description: The contents of the tool message.
+      title: Text content
+      type: string
+    - description: An array of content parts with a defined type. For tool messages,
+        only type `text` is supported.
+      items:
+        $ref: chat_completion_request_tool_message_content_part.yaml
+      minItems: 1
+      title: Array of content parts
+      type: array
+    description: The contents of the tool message.
+  role:
+    description: The role of the messages author, in this case `tool`.
+    enum:
+    - tool
+    type: string
+  tool_call_id:
+    description: Tool call that this message is responding to.
+    type: string
+required:
+- role
+- content
+- tool_call_id

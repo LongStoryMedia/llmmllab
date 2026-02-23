@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectUserDeleteResponse
+type: object
+properties:
+  deleted:
+    type: boolean
+  id:
+    type: string
+  object:
+    enum:
+    - organization.project.user.deleted
+    type: string
+required:
+- object
+- id
+- deleted

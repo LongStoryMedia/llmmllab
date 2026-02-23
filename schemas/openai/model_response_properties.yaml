@@ -1,0 +1,98 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ModelResponseProperties
+type: object
+properties:
+  metadata:
+    $ref: metadata.yaml
+  prompt_cache_key:
+    description: 'Used by OpenAI to cache responses for similar requests to optimize
+      your cache hit rates. Replaces the `user` field. [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
+
+      '
+    example: prompt-cache-key-1234
+    type: string
+  prompt_cache_retention:
+    anyOf:
+    - description: 'The retention policy for the prompt cache. Set to `24h` to enable
+        extended prompt caching, which keeps cached prefixes active for longer, up
+        to a maximum of 24 hours. [Learn more](https://platform.openai.com/docs/guides/prompt-caching#prompt-cache-retention).
+
+        '
+      enum:
+      - in-memory
+      - 24h
+      type: string
+    - type: 'null'
+  safety_identifier:
+    description: 'A stable identifier used to help detect users of your application
+      that may be violating OpenAI''s usage policies.
+
+      The IDs should be a string that uniquely identifies each user. We recommend
+      hashing their username or email address, in order to avoid sending us any identifying
+      information. [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+
+      '
+    example: safety-identifier-1234
+    type: string
+  service_tier:
+    $ref: service_tier.yaml
+  temperature:
+    anyOf:
+    - default: 1
+      description: 'What sampling temperature to use, between 0 and 2. Higher values
+        like 0.8 will make the output more random, while lower values like 0.2 will
+        make it more focused and deterministic.
+
+        We generally recommend altering this or `top_p` but not both.
+
+        '
+      example: 1
+      maximum: 2
+      minimum: 0
+      type: number
+    - type: 'null'
+  top_logprobs:
+    anyOf:
+    - description: 'An integer between 0 and 20 specifying the number of most likely
+        tokens to
+
+        return at each token position, each with an associated log probability.
+
+        '
+      maximum: 20
+      minimum: 0
+      type: integer
+    - type: 'null'
+  top_p:
+    anyOf:
+    - default: 1
+      description: 'An alternative to sampling with temperature, called nucleus sampling,
+
+        where the model considers the results of the tokens with top_p probability
+
+        mass. So 0.1 means only the tokens comprising the top 10% probability mass
+
+        are considered.
+
+
+        We generally recommend altering this or `temperature` but not both.
+
+        '
+      example: 1
+      maximum: 1
+      minimum: 0
+      type: number
+    - type: 'null'
+  user:
+    deprecated: true
+    description: 'This field is being replaced by `safety_identifier` and `prompt_cache_key`.
+      Use `prompt_cache_key` instead to maintain caching optimizations.
+
+      A stable identifier for your end-users.
+
+      Used to boost cache hit rates by better bucketing similar requests and  to help
+      OpenAI detect and prevent abuse. [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+
+      '
+    example: user-1234
+    type: string

@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: KeyPressAction
+description: A collection of keypresses the model would like to perform.
+type: object
+properties:
+  keys:
+    description: The combination of keys the model is requesting to be pressed. This
+      is an array of strings, each representing a key.
+    items:
+      description: One of the keys the model is requesting to be pressed.
+      type: string
+    type: array
+  type:
+    default: keypress
+    description: Specifies the event type. For a keypress action, this property is
+      always set to `keypress`.
+    enum:
+    - keypress
+    type: string
+required:
+- type
+- keys

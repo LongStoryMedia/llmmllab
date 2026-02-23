@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserMessageQuotedText
+description: Quoted snippet that the user referenced in their message.
+type: object
+properties:
+  text:
+    description: Quoted text content.
+    type: string
+  type:
+    default: quoted_text
+    description: Type discriminator that is always `quoted_text`.
+    enum:
+    - quoted_text
+    type: string
+required:
+- type
+- text

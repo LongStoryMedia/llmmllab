@@ -52,33 +52,6 @@ log "INFO" "-----------------------------------------------------------" "${GREE
 SERVICE_STATUS_FILE="/tmp/service_status"
 echo "# Service status file - $(date)" > $SERVICE_STATUS_FILE
 
-run_ollama() {
-    log "INFO" "Starting Ollama server (port 11434)..." "${BLUE}"
-    # Start Ollama bound to 0.0.0.0 so it's accessible from outside the pod
-    OLLAMA_HOST=0.0.0.0:11434 ollama serve 2>&1 | tee /var/log/ollama.log &
-    OLLAMA_PID=$!
-    if [ $? -eq 0 ]; then
-        log "INFO" "Ollama server started on 0.0.0.0:11434 with PID $OLLAMA_PID" "${GREEN}"
-        echo "ollama:running:$OLLAMA_PID" >> $SERVICE_STATUS_FILE
-        # Wait for Ollama to become available by checking /api/tags endpoint
-        log "INFO" "Waiting for Ollama to become available at http://localhost:11434/api/tags..." "${BLUE}"
-        for (( i=1; i<=20; i++ )); do
-            if curl --fail --silent --show-error --output /dev/null "http://localhost:11434/api/tags"; then
-                log "INFO" "Ollama is available" "${GREEN}"
-                return 0
-            fi
-            log "INFO" "Attempt $i/20: Ollama not available yet, waiting 2s..." "${YELLOW}"
-            sleep 2
-        done
-        log "ERROR" "Timed out waiting for Ollama to become available" "${RED}"
-        return 1
-    else
-        log "ERROR" "Failed to start Ollama server" "${RED}"
-        echo "ollama:failed:0" >> $SERVICE_STATUS_FILE
-        return 1
-    fi
-}
-
 run_server() {
     log "INFO" "Starting REST API server..." "${BLUE}"
     # This check can be improved to see if the port is already in use
@@ -97,21 +70,21 @@ run_server() {
     fi
 }
 
-run_local_api_server() {
-    log "INFO" "Starting local API server (port 11435)..." "${BLUE}"
-    # Local API server for Ollama and OpenAI endpoints (IDE integration)
-    cd /app/server && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11435 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
-    LOCAL_API_PID=$!
-    if [ $? -eq 0 ]; then
-        log "INFO" "Local API server started on port 11435 with PID $LOCAL_API_PID" "${GREEN}"
-        echo "local_api:running:$LOCAL_API_PID" >> $SERVICE_STATUS_FILE
-        # Wait for the local API server to become available (check /health endpoint)
-        wait_for_service "Local API" "localhost" "11435" 12 5
-    else
-        log "ERROR" "Failed to start local API server" "${RED}"
-        echo "local_api:failed:0" >> $SERVICE_STATUS_FILE
-    fi
-}
+# run_local_api_server() {
+#     log "INFO" "Starting local API server (port 11435)..." "${BLUE}"
+#     # Local API server for Ollama and OpenAI endpoints (IDE integration)
+#     cd /app/server && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11435 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
+#     LOCAL_API_PID=$!
+#     if [ $? -eq 0 ]; then
+#         log "INFO" "Local API server started on port 11435 with PID $LOCAL_API_PID" "${GREEN}"
+#         echo "local_api:running:$LOCAL_API_PID" >> $SERVICE_STATUS_FILE
+#         # Wait for the local API server to become available (check /health endpoint)
+#         wait_for_service "Local API" "localhost" "11435" 12 5
+#     else
+#         log "ERROR" "Failed to start local API server" "${RED}"
+#         echo "local_api:failed:0" >> $SERVICE_STATUS_FILE
+#     fi
+# }
 
 # Start server if app.py exists
 if [ -f /app/server/app.py ]; then
@@ -122,16 +95,13 @@ else
     echo "rest_api:missing:0" >> $SERVICE_STATUS_FILE
 fi
 
-# Start Ollama before other services
-run_ollama
-
-# Start local API server if local_api_server.py exists
-if [ -f /app/server/local_api_server.py ]; then
-    run_local_api_server
-else
-    log "WARNING" "local_api_server.py not found in /app/server directory" "${YELLOW}"
-    echo "local_api:missing:0" >> $SERVICE_STATUS_FILE
-fi
+# # Start local API server if local_api_server.py exists
+# if [ -f /app/server/local_api_server.py ]; then
+#     run_local_api_server
+# else
+#     log "WARNING" "local_api_server.py not found in /app/server directory" "${YELLOW}"
+#     echo "local_api:missing:0" >> $SERVICE_STATUS_FILE
+# fi
 
 # Start gRPC server if grpc_server.py exists
 # if [ -f /app/server/grpc_server.py ]; then
@@ -175,9 +145,6 @@ monitor_services() {
                     if [ "$pid" -eq "$SERVER_PID" ]; then
                         log "INFO" "Restarting $service..." "${BLUE}"
                         run_server
-                    elif [ "$pid" -eq "$OLLAMA_PID" ]; then
-                        log "INFO" "Restarting $service..." "${BLUE}"
-                        run_ollama
                     fi
                 else
                     log "INFO" "$service (PID $pid) is running" "${GREEN}"

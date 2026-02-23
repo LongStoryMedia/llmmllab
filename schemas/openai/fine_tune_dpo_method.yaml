@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuneDPOMethod
+description: Configuration for the DPO fine-tuning method.
+type: object
+properties:
+  hyperparameters:
+    $ref: fine_tune_dpo_hyperparameters.yaml

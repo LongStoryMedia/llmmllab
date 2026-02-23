@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalRunRequest
+type: object
+properties:
+  data_source:
+    anyOf:
+    - $ref: create_eval_jsonl_run_data_source.yaml
+    - $ref: create_eval_completions_run_data_source.yaml
+    - $ref: create_eval_responses_run_data_source.yaml
+    description: Details about the run's data source.
+    type: object
+  metadata:
+    $ref: metadata.yaml
+  name:
+    description: The name of the run.
+    type: string
+required:
+- data_source

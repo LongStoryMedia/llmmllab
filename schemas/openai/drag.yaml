@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Drag
+description: 'A drag action.
+
+  '
+type: object
+properties:
+  path:
+    description: "An array of coordinates representing the path of the drag action.\
+      \ Coordinates will appear as an array\nof objects, eg\n```\n[\n  { x: 100, y:\
+      \ 200 },\n  { x: 200, y: 300 }\n]\n```\n"
+    items:
+      $ref: drag_point.yaml
+    type: array
+  type:
+    default: drag
+    description: "Specifies the event type. For a drag action, this property is \n\
+      always set to `drag`.\n"
+    enum:
+    - drag
+    type: string
+required:
+- type
+- path

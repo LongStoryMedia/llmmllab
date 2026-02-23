@@ -1,0 +1,51 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VectorStoreSearchRequest
+type: object
+properties:
+  filters:
+    anyOf:
+    - $ref: comparison_filter.yaml
+    - $ref: compound_filter.yaml
+    description: A filter to apply based on file attributes.
+  max_num_results:
+    default: 10
+    description: The maximum number of results to return. This number should be between
+      1 and 50 inclusive.
+    maximum: 50
+    minimum: 1
+    type: integer
+  query:
+    anyOf:
+    - type: string
+    - items:
+        description: A list of queries to search for.
+        minItems: 1
+        type: string
+      type: array
+    description: A query string for a search
+  ranking_options:
+    additionalProperties: false
+    description: Ranking options for search.
+    properties:
+      ranker:
+        default: auto
+        description: Enable re-ranking; set to `none` to disable, which can help reduce
+          latency.
+        enum:
+        - none
+        - auto
+        - default-2024-11-15
+        type: string
+      score_threshold:
+        default: 0
+        maximum: 1
+        minimum: 0
+        type: number
+    type: object
+  rewrite_query:
+    default: false
+    description: Whether to rewrite the natural language query for vector search.
+    type: boolean
+required:
+- query
+additionalProperties: false

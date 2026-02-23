@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComputerToolCallOutputResource
+allOf:
+- $ref: computer_tool_call_output.yaml
+- properties:
+    id:
+      description: 'The unique ID of the computer call tool output.
+
+        '
+      type: string
+  required:
+  - id
+  type: object

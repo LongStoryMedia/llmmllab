@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventResponseAudioTranscriptDelta
+description: 'Returned when the model-generated transcription of audio output is updated.
+
+  '
+type: object
+properties:
+  content_index:
+    description: The index of the content part in the item's content array.
+    type: integer
+  delta:
+    description: The transcript delta.
+    type: string
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the item.
+    type: string
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  response_id:
+    description: The ID of the response.
+    type: string
+  type:
+    const: response.output_audio_transcript.delta
+    description: The event type, must be `response.output_audio_transcript.delta`.
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- content_index
+- delta

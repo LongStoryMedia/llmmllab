@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaObject
+description: 'Represents a run step delta i.e. any changed fields on a run step during
+  streaming.
+
+  '
+type: object
+properties:
+  delta:
+    $ref: run_step_delta_object_delta.yaml
+  id:
+    description: The identifier of the run step, which can be referenced in API endpoints.
+    type: string
+  object:
+    description: The object type, which is always `thread.run.step.delta`.
+    enum:
+    - thread.run.step.delta
+    type: string
+required:
+- id
+- object
+- delta

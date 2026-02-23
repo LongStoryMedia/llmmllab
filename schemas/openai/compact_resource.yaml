@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CompactResource
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) when the compacted conversation was created.
+    type: integer
+  id:
+    description: The unique identifier for the compacted response.
+    type: string
+  object:
+    default: response.compaction
+    description: The object type. Always `response.compaction`.
+    enum:
+    - response.compaction
+    type: string
+  output:
+    description: The compacted list of output items. This is a list of all user messages,
+      followed by a single compaction item.
+    items:
+      $ref: output_item.yaml
+    type: array
+  usage:
+    $ref: response_usage.yaml
+    description: Token accounting for the compaction pass, including cached, reasoning,
+      and total tokens.
+required:
+- id
+- object
+- output
+- created_at
+- usage

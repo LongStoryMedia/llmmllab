@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CustomGrammarFormatParam
+description: A grammar defined by the user.
+type: object
+properties:
+  definition:
+    description: The grammar definition.
+    type: string
+  syntax:
+    $ref: grammar_syntax1.yaml
+    description: The syntax of the grammar definition. One of `lark` or `regex`.
+  type:
+    default: grammar
+    description: Grammar format. Always `grammar`.
+    enum:
+    - grammar
+    type: string
+required:
+- type
+- syntax
+- definition

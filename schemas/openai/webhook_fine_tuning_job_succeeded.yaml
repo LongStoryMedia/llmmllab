@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebhookFineTuningJobSucceeded
+description: 'Sent when a fine-tuning job has succeeded.
+
+  '
+type: object
+properties:
+  created_at:
+    description: 'The Unix timestamp (in seconds) of when the fine-tuning job succeeded.
+
+      '
+    type: integer
+  data:
+    description: 'Event data payload.
+
+      '
+    properties:
+      id:
+        description: 'The unique ID of the fine-tuning job.
+
+          '
+        type: string
+    required:
+    - id
+    type: object
+  id:
+    description: 'The unique ID of the event.
+
+      '
+    type: string
+  object:
+    description: 'The object of the event. Always `event`.
+
+      '
+    enum:
+    - event
+    type: string
+  type:
+    description: 'The type of the event. Always `fine_tuning.job.succeeded`.
+
+      '
+    enum:
+    - fine_tuning.job.succeeded
+    type: string
+required:
+- created_at
+- id
+- data
+- type

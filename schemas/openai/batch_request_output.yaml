@@ -1,0 +1,42 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: BatchRequestOutput
+description: The per-line object of the batch output and error files
+type: object
+properties:
+  custom_id:
+    description: A developer-provided per-request id that will be used to match outputs
+      to inputs.
+    type: string
+  error:
+    anyOf:
+    - description: For requests that failed with a non-HTTP error, this will contain
+        more information on the cause of the failure.
+      properties:
+        code:
+          description: "A machine-readable error code.\n\nPossible values:\n- `batch_expired`:\
+            \ The request could not be executed before the\n  completion window ended.\n\
+            - `batch_cancelled`: The batch was cancelled before this request\n  executed.\n\
+            - `request_timeout`: The underlying call to the model timed out.\n"
+          type: string
+        message:
+          description: A human-readable error message.
+          type: string
+      type: object
+    - type: 'null'
+  id:
+    type: string
+  response:
+    anyOf:
+    - properties:
+        body:
+          description: The JSON body of the response
+          type: object
+        request_id:
+          description: An unique identifier for the OpenAI API request. Please include
+            this request ID when contacting support.
+          type: string
+        status_code:
+          description: The HTTP status code of the response
+          type: integer
+      type: object
+    - type: 'null'

@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateChatSessionBody
+description: Parameters for provisioning a new ChatKit session.
+type: object
+properties:
+  chatkit_configuration:
+    $ref: chatkit_configuration_param.yaml
+    description: Optional overrides for ChatKit runtime configuration features
+  expires_after:
+    $ref: expires_after_param.yaml
+    description: Optional override for session expiration timing in seconds from creation.
+      Defaults to 10 minutes.
+  rate_limits:
+    $ref: rate_limits_param.yaml
+    description: Optional override for per-minute request limits. When omitted, defaults
+      to 10.
+  user:
+    description: A free-form string that identifies your end user; ensures this Session
+      can access other objects that have the same `user` scope.
+    minLength: 1
+    type: string
+  workflow:
+    $ref: workflow_param.yaml
+    description: Workflow that powers the session.
+required:
+- workflow
+- user

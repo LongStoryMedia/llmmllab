@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VoiceIdsOrCustomVoice
+description: 'A built-in voice name or a custom voice reference.
+
+  '
+anyOf:
+- allOf:
+  - $ref: voice_ids_shared.yaml
+  type: string
+- additionalProperties: false
+  description: Custom voice reference.
+  properties:
+    id:
+      description: The custom voice ID, e.g. `voice_1234`.
+      example: voice_1234
+      type: string
+  required:
+  - id
+  type: object

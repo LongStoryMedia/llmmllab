@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChunkingStrategyRequestParam
+description: The chunking strategy used to chunk the file(s). If not set, will use
+  the `auto` strategy. Only applicable if `file_ids` is non-empty.
+type: object
+anyOf:
+- $ref: auto_chunking_strategy_request_param.yaml
+- $ref: static_chunking_strategy_request_param.yaml
+discriminator:
+  propertyName: type

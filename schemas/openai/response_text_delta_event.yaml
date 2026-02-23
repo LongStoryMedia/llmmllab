@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseTextDeltaEvent
+description: Emitted when there is an additional text delta.
+type: object
+properties:
+  content_index:
+    description: 'The index of the content part that the text delta was added to.
+
+      '
+    type: integer
+  delta:
+    description: 'The text delta that was added.
+
+      '
+    type: string
+  item_id:
+    description: 'The ID of the output item that the text delta was added to.
+
+      '
+    type: string
+  logprobs:
+    description: 'The log probabilities of the tokens in the delta.
+
+      '
+    items:
+      $ref: response_log_prob.yaml
+    type: array
+  output_index:
+    description: 'The index of the output item that the text delta was added to.
+
+      '
+    type: integer
+  sequence_number:
+    description: The sequence number for this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.output_text.delta`.
+
+      '
+    enum:
+    - response.output_text.delta
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- delta
+- sequence_number
+- logprobs

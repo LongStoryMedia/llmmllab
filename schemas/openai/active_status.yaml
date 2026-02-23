@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ActiveStatus
+description: Indicates that a thread is active.
+type: object
+properties:
+  type:
+    default: active
+    description: Status discriminator that is always `active`.
+    enum:
+    - active
+    type: string
+required:
+- type

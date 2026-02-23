@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalItemContentOutputText
+description: 'A text output from the model.
+
+  '
+type: object
+properties:
+  text:
+    description: 'The text output from the model.
+
+      '
+    type: string
+  type:
+    description: 'The type of the output text. Always `output_text`.
+
+      '
+    enum:
+    - output_text
+    type: string
+required:
+- type
+- text

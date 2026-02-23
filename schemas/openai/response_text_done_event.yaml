@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseTextDoneEvent
+description: Emitted when text content is finalized.
+type: object
+properties:
+  content_index:
+    description: 'The index of the content part that the text content is finalized.
+
+      '
+    type: integer
+  item_id:
+    description: 'The ID of the output item that the text content is finalized.
+
+      '
+    type: string
+  logprobs:
+    description: 'The log probabilities of the tokens in the delta.
+
+      '
+    items:
+      $ref: response_log_prob.yaml
+    type: array
+  output_index:
+    description: 'The index of the output item that the text content is finalized.
+
+      '
+    type: integer
+  sequence_number:
+    description: The sequence number for this event.
+    type: integer
+  text:
+    description: 'The text content that is finalized.
+
+      '
+    type: string
+  type:
+    description: 'The type of the event. Always `response.output_text.done`.
+
+      '
+    enum:
+    - response.output_text.done
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- text
+- sequence_number
+- logprobs

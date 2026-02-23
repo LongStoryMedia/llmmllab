@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ListCertificatesResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: certificate.yaml
+    type: array
+  first_id:
+    example: cert_abc
+    type: string
+  has_more:
+    type: boolean
+  last_id:
+    example: cert_abc
+    type: string
+  object:
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- has_more

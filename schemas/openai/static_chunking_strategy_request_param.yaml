@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: StaticChunkingStrategyRequestParam
+description: Customize your own chunking strategy by setting chunk size and chunk
+  overlap.
+type: object
+properties:
+  static:
+    $ref: static_chunking_strategy.yaml
+  type:
+    description: Always `static`.
+    enum:
+    - static
+    type: string
+required:
+- type
+- static
+additionalProperties: false

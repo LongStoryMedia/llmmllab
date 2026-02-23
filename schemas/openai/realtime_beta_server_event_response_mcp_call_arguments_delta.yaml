@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventResponseMCPCallArgumentsDelta
+description: Returned when MCP tool call arguments are updated during response generation.
+type: object
+properties:
+  delta:
+    description: The JSON-encoded arguments delta.
+    type: string
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the MCP tool call item.
+    type: string
+  obfuscation:
+    anyOf:
+    - description: If present, indicates the delta text was obfuscated.
+      type: string
+    - type: 'null'
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  response_id:
+    description: The ID of the response.
+    type: string
+  type:
+    const: response.mcp_call_arguments.delta
+    description: The event type, must be `response.mcp_call_arguments.delta`.
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- delta

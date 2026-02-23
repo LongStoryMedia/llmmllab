@@ -1,0 +1,77 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageEditPartialImageEvent
+description: 'Emitted when a partial image is available during image editing streaming.
+
+  '
+type: object
+properties:
+  b64_json:
+    description: 'Base64-encoded partial image data, suitable for rendering as an
+      image.
+
+      '
+    type: string
+  background:
+    description: 'The background setting for the requested edited image.
+
+      '
+    enum:
+    - transparent
+    - opaque
+    - auto
+    type: string
+  created_at:
+    description: 'The Unix timestamp when the event was created.
+
+      '
+    type: integer
+  output_format:
+    description: 'The output format for the requested edited image.
+
+      '
+    enum:
+    - png
+    - webp
+    - jpeg
+    type: string
+  partial_image_index:
+    description: '0-based index for the partial image (streaming).
+
+      '
+    type: integer
+  quality:
+    description: 'The quality setting for the requested edited image.
+
+      '
+    enum:
+    - low
+    - medium
+    - high
+    - auto
+    type: string
+  size:
+    description: 'The size of the requested edited image.
+
+      '
+    enum:
+    - 1024x1024
+    - 1024x1536
+    - 1536x1024
+    - auto
+    type: string
+  type:
+    description: 'The type of the event. Always `image_edit.partial_image`.
+
+      '
+    enum:
+    - image_edit.partial_image
+    type: string
+required:
+- type
+- b64_json
+- created_at
+- size
+- quality
+- background
+- output_format
+- partial_image_index

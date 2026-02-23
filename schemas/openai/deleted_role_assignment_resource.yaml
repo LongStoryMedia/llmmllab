@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DeletedRoleAssignmentResource
+description: Confirmation payload returned after unassigning a role.
+type: object
+properties:
+  deleted:
+    description: Whether the assignment was removed.
+    type: boolean
+  object:
+    description: Identifier for the deleted assignment, such as `group.role.deleted`
+      or `user.role.deleted`.
+    type: string
+required:
+- object
+- deleted

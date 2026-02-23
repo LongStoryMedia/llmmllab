@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SpeechAudioDoneEvent
+description: Emitted when the speech synthesis is complete and all audio has been
+  streamed.
+type: object
+properties:
+  type:
+    description: 'The type of the event. Always `speech.audio.done`.
+
+      '
+    enum:
+    - speech.audio.done
+    type: string
+  usage:
+    description: 'Token usage statistics for the request.
+
+      '
+    properties:
+      input_tokens:
+        description: Number of input tokens in the prompt.
+        type: integer
+      output_tokens:
+        description: Number of output tokens generated.
+        type: integer
+      total_tokens:
+        description: Total number of tokens used (input + output).
+        type: integer
+    required:
+    - input_tokens
+    - output_tokens
+    - total_tokens
+    type: object
+required:
+- type
+- usage

@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatSessionChatkitConfiguration
+description: ChatKit configuration for the session.
+type: object
+properties:
+  automatic_thread_titling:
+    $ref: chat_session_automatic_thread_titling.yaml
+    description: Automatic thread titling preferences.
+  file_upload:
+    $ref: chat_session_file_upload.yaml
+    description: Upload settings for the session.
+  history:
+    $ref: chat_session_history.yaml
+    description: History retention configuration.
+required:
+- automatic_thread_titling
+- file_upload
+- history

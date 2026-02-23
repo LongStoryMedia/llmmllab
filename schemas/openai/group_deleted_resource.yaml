@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: GroupDeletedResource
+description: Confirmation payload returned after deleting a group.
+type: object
+properties:
+  deleted:
+    description: Whether the group was deleted.
+    type: boolean
+  id:
+    description: Identifier of the deleted group.
+    type: string
+  object:
+    description: Always `group.deleted`.
+    enum:
+    - group.deleted
+    type: string
+required:
+- object
+- id
+- deleted

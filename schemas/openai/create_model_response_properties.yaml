@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateModelResponseProperties
+allOf:
+- $ref: model_response_properties.yaml
+- properties:
+    top_logprobs:
+      description: 'An integer between 0 and 20 specifying the number of most likely
+        tokens to
+
+        return at each token position, each with an associated log probability.
+
+        '
+      maximum: 20
+      minimum: 0
+      type: integer
+  type: object

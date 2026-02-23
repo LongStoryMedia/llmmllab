@@ -1,0 +1,31 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFunctionCallArgumentsDoneEvent
+description: Emitted when function-call arguments are finalized.
+type: object
+properties:
+  arguments:
+    description: The function-call arguments.
+    type: string
+  item_id:
+    description: The ID of the item.
+    type: string
+  name:
+    description: The name of the function that was called.
+    type: string
+  output_index:
+    description: The index of the output item.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    enum:
+    - response.function_call_arguments.done
+    type: string
+required:
+- type
+- item_id
+- name
+- output_index
+- arguments
+- sequence_number

@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseAudioDeltaEvent
+description: Emitted when there is a partial audio response.
+type: object
+properties:
+  delta:
+    description: 'A chunk of Base64 encoded response audio bytes.
+
+      '
+    type: string
+  sequence_number:
+    description: 'A sequence number for this chunk of the stream response.
+
+      '
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.audio.delta`.
+
+      '
+    enum:
+    - response.audio.delta
+    type: string
+required:
+- type
+- delta
+- sequence_number

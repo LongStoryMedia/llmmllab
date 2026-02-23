@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UrlCitationBody
+description: A citation for a web resource used to generate a model response.
+type: object
+properties:
+  end_index:
+    description: The index of the last character of the URL citation in the message.
+    type: integer
+  start_index:
+    description: The index of the first character of the URL citation in the message.
+    type: integer
+  title:
+    description: The title of the web resource.
+    type: string
+  type:
+    default: url_citation
+    description: The type of the URL citation. Always `url_citation`.
+    enum:
+    - url_citation
+    type: string
+  url:
+    description: The URL of the web resource.
+    type: string
+required:
+- type
+- url
+- start_index
+- end_index
+- title

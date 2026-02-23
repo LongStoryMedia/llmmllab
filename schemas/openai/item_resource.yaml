@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ItemResource
+description: 'Content item used to generate a response.
+
+  '
+anyOf:
+- $ref: input_message_resource.yaml
+- $ref: output_message.yaml
+- $ref: file_search_tool_call.yaml
+- $ref: computer_tool_call.yaml
+- $ref: computer_tool_call_output_resource.yaml
+- $ref: web_search_tool_call.yaml
+- $ref: function_tool_call_resource.yaml
+- $ref: function_tool_call_output_resource.yaml
+- $ref: image_gen_tool_call.yaml
+- $ref: code_interpreter_tool_call.yaml
+- $ref: local_shell_tool_call.yaml
+- $ref: local_shell_tool_call_output.yaml
+- $ref: function_shell_call.yaml
+- $ref: function_shell_call_output.yaml
+- $ref: apply_patch_tool_call.yaml
+- $ref: apply_patch_tool_call_output.yaml
+- $ref: mcp_list_tools.yaml
+- $ref: mcp_approval_request.yaml
+- $ref: mcp_approval_response_resource.yaml
+- $ref: mcp_tool_call.yaml
+discriminator:
+  propertyName: type

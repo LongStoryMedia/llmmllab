@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TaskGroupTask
+description: Task entry that appears within a TaskGroup.
+type: object
+properties:
+  heading:
+    anyOf:
+    - description: Optional heading for the grouped task. Defaults to null when not
+        provided.
+      type: string
+    - type: 'null'
+  summary:
+    anyOf:
+    - description: Optional summary that describes the grouped task. Defaults to null
+        when omitted.
+      type: string
+    - type: 'null'
+  type:
+    $ref: task_type.yaml
+    description: Subtype for the grouped task.
+required:
+- type
+- heading
+- summary

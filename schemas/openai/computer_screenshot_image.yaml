@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComputerScreenshotImage
+description: 'A computer screenshot image used with the computer use tool.
+
+  '
+type: object
+properties:
+  file_id:
+    description: The identifier of an uploaded file that contains the screenshot.
+    type: string
+  image_url:
+    description: The URL of the screenshot image.
+    type: string
+  type:
+    default: computer_screenshot
+    description: "Specifies the event type. For a computer screenshot, this property\
+      \ is \nalways set to `computer_screenshot`.\n"
+    enum:
+    - computer_screenshot
+    type: string
+required:
+- type

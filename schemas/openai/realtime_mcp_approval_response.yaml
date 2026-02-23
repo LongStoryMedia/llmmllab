@@ -1,0 +1,31 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeMCPApprovalResponse
+description: 'A Realtime item responding to an MCP approval request.
+
+  '
+type: object
+properties:
+  approval_request_id:
+    description: The ID of the approval request being answered.
+    type: string
+  approve:
+    description: Whether the request was approved.
+    type: boolean
+  id:
+    description: The unique ID of the approval response.
+    type: string
+  reason:
+    anyOf:
+    - description: Optional reason for the decision.
+      type: string
+    - type: 'null'
+  type:
+    description: The type of the item. Always `mcp_approval_response`.
+    enum:
+    - mcp_approval_response
+    type: string
+required:
+- type
+- id
+- approval_request_id
+- approve

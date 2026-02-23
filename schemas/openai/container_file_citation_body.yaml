@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ContainerFileCitationBody
+description: A citation for a container file used to generate a model response.
+type: object
+properties:
+  container_id:
+    description: The ID of the container file.
+    type: string
+  end_index:
+    description: The index of the last character of the container file citation in
+      the message.
+    type: integer
+  file_id:
+    description: The ID of the file.
+    type: string
+  filename:
+    description: The filename of the container file cited.
+    type: string
+  start_index:
+    description: The index of the first character of the container file citation in
+      the message.
+    type: integer
+  type:
+    default: container_file_citation
+    description: The type of the container file citation. Always `container_file_citation`.
+    enum:
+    - container_file_citation
+    type: string
+required:
+- type
+- container_id
+- file_id
+- start_index
+- end_index
+- filename

@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseMCPListToolsFailedEvent
+description: 'Emitted when the attempt to list available MCP tools has failed.
+
+  '
+type: object
+properties:
+  item_id:
+    description: The ID of the MCP tool call item that failed.
+    type: string
+  output_index:
+    description: The index of the output item that failed.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.mcp_list_tools.failed'.
+    enum:
+    - response.mcp_list_tools.failed
+    type: string
+required:
+- type
+- item_id
+- output_index
+- sequence_number

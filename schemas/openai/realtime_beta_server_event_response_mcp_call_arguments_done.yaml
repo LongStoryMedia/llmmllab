@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventResponseMCPCallArgumentsDone
+description: Returned when MCP tool call arguments are finalized during response generation.
+type: object
+properties:
+  arguments:
+    description: The final JSON-encoded arguments string.
+    type: string
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the MCP tool call item.
+    type: string
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  response_id:
+    description: The ID of the response.
+    type: string
+  type:
+    const: response.mcp_call_arguments.done
+    description: The event type, must be `response.mcp_call_arguments.done`.
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- arguments

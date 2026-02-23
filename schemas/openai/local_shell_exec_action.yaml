@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LocalShellExecAction
+description: Execute a shell command on the server.
+type: object
+properties:
+  command:
+    description: The command to run.
+    items:
+      type: string
+    type: array
+  env:
+    additionalProperties:
+      type: string
+    description: Environment variables to set for the command.
+    type: object
+  timeout_ms:
+    anyOf:
+    - description: Optional timeout in milliseconds for the command.
+      type: integer
+    - type: 'null'
+  type:
+    default: exec
+    description: The type of the local shell action. Always `exec`.
+    enum:
+    - exec
+    type: string
+  user:
+    anyOf:
+    - description: Optional user to run the command as.
+      type: string
+    - type: 'null'
+  working_directory:
+    anyOf:
+    - description: Optional working directory to run the command in.
+      type: string
+    - type: 'null'
+required:
+- type
+- command
+- env

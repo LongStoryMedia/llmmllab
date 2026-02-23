@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseCodeInterpreterCallInterpretingEvent
+description: Emitted when the code interpreter is actively interpreting the code snippet.
+type: object
+properties:
+  item_id:
+    description: The unique identifier of the code interpreter tool call item.
+    type: string
+  output_index:
+    description: The index of the output item in the response for which the code interpreter
+      is interpreting code.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event, used to order streaming events.
+    type: integer
+  type:
+    description: The type of the event. Always `response.code_interpreter_call.interpreting`.
+    enum:
+    - response.code_interpreter_call.interpreting
+    type: string
+required:
+- type
+- output_index
+- item_id
+- sequence_number

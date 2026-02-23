@@ -1,0 +1,81 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileSearchToolCall
+description: 'The results of a file search tool call. See the
+
+  [file search guide](https://platform.openai.com/docs/guides/tools-file-search) for
+  more information.
+
+  '
+type: object
+properties:
+  id:
+    description: 'The unique ID of the file search tool call.
+
+      '
+    type: string
+  queries:
+    description: 'The queries used to search for files.
+
+      '
+    items:
+      type: string
+    type: array
+  results:
+    anyOf:
+    - description: 'The results of the file search tool call.
+
+        '
+      items:
+        properties:
+          attributes:
+            $ref: vector_store_file_attributes.yaml
+          file_id:
+            description: 'The unique ID of the file.
+
+              '
+            type: string
+          filename:
+            description: 'The name of the file.
+
+              '
+            type: string
+          score:
+            description: 'The relevance score of the file - a value between 0 and
+              1.
+
+              '
+            format: float
+            type: number
+          text:
+            description: 'The text that was retrieved from the file.
+
+              '
+            type: string
+        type: object
+      type: array
+    - type: 'null'
+  status:
+    description: 'The status of the file search tool call. One of `in_progress`,
+
+      `searching`, `incomplete` or `failed`,
+
+      '
+    enum:
+    - in_progress
+    - searching
+    - completed
+    - incomplete
+    - failed
+    type: string
+  type:
+    description: 'The type of the file search tool call. Always `file_search_call`.
+
+      '
+    enum:
+    - file_search_call
+    type: string
+required:
+- id
+- type
+- status
+- queries

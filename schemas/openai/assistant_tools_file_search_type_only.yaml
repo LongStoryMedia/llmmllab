@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AssistantToolsFileSearchTypeOnly
+type: object
+properties:
+  type:
+    description: 'The type of tool being defined: `file_search`'
+    enum:
+    - file_search
+    type: string
+required:
+- type

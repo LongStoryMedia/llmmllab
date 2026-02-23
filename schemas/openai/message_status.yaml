@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageStatus
+type: string
+enum:
+- in_progress
+- completed
+- incomplete

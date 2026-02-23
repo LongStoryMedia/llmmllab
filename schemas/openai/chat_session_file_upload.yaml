@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatSessionFileUpload
+description: Upload permissions and limits applied to the session.
+type: object
+properties:
+  enabled:
+    description: Indicates if uploads are enabled for the session.
+    type: boolean
+  max_file_size:
+    anyOf:
+    - description: Maximum upload size in megabytes.
+      type: integer
+    - type: 'null'
+  max_files:
+    anyOf:
+    - description: Maximum number of uploads allowed during the session.
+      type: integer
+    - type: 'null'
+required:
+- enabled
+- max_file_size
+- max_files

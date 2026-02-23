@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageContentTextObject
+description: The text content that is part of a message.
+type: object
+properties:
+  text:
+    properties:
+      annotations:
+        items:
+          $ref: text_annotation.yaml
+        type: array
+      value:
+        description: The data that makes up the text.
+        type: string
+    required:
+    - value
+    - annotations
+    type: object
+  type:
+    description: Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- type
+- text

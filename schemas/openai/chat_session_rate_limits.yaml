@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatSessionRateLimits
+description: Active per-minute request limit for the session.
+type: object
+properties:
+  max_requests_per_1_minute:
+    description: Maximum allowed requests per one-minute window.
+    type: integer
+required:
+- max_requests_per_1_minute

@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalRequest
+type: object
+properties:
+  data_source_config:
+    anyOf:
+    - $ref: create_eval_custom_data_source_config.yaml
+    - $ref: create_eval_logs_data_source_config.yaml
+    - $ref: create_eval_stored_completions_data_source_config.yaml
+    description: The configuration for the data source used for the evaluation runs.
+      Dictates the schema of the data used in the evaluation.
+    discriminator:
+      propertyName: type
+    type: object
+  metadata:
+    $ref: metadata.yaml
+  name:
+    description: The name of the evaluation.
+    type: string
+  testing_criteria:
+    description: A list of graders for all eval runs in this group. Graders can reference
+      variables in the data source using double curly braces notation, like `{{item.variable_name}}`.
+      To reference the model's output, use the `sample` namespace (ie, `{{sample.output_text}}`).
+    items:
+      anyOf:
+      - $ref: create_eval_label_model_grader.yaml
+      - $ref: eval_grader_string_check.yaml
+      - $ref: eval_grader_text_similarity.yaml
+      - $ref: eval_grader_python.yaml
+      - $ref: eval_grader_score_model.yaml
+      discriminator:
+        propertyName: type
+    type: array
+required:
+- data_source_config
+- testing_criteria

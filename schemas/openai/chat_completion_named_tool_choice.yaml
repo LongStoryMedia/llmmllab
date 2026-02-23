@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionNamedToolChoice
+description: Specifies a tool the model should use. Use to force the model to call
+  a specific function.
+type: object
+properties:
+  function:
+    properties:
+      name:
+        description: The name of the function to call.
+        type: string
+    required:
+    - name
+    type: object
+  type:
+    description: For function calling, the type is always `function`.
+    enum:
+    - function
+    type: string
+required:
+- type
+- function

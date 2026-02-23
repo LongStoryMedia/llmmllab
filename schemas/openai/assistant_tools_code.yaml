@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AssistantToolsCode
+type: object
+properties:
+  type:
+    description: 'The type of tool being defined: `code_interpreter`'
+    enum:
+    - code_interpreter
+    type: string
+required:
+- type

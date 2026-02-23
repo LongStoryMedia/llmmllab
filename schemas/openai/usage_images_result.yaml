@@ -1,0 +1,55 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageImagesResult
+description: The aggregated images usage details of the specific time bucket.
+type: object
+properties:
+  api_key_id:
+    anyOf:
+    - description: When `group_by=api_key_id`, this field provides the API key ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  images:
+    description: The number of images processed.
+    type: integer
+  model:
+    anyOf:
+    - description: When `group_by=model`, this field provides the model name of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+  num_model_requests:
+    description: The count of requests made to the model.
+    type: integer
+  object:
+    enum:
+    - organization.usage.images.result
+    type: string
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped usage result.
+      type: string
+    - type: 'null'
+  size:
+    anyOf:
+    - description: When `group_by=size`, this field provides the image size of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+  source:
+    anyOf:
+    - description: When `group_by=source`, this field provides the source of the grouped
+        usage result, possible values are `image.generation`, `image.edit`, `image.variation`.
+      type: string
+    - type: 'null'
+  user_id:
+    anyOf:
+    - description: When `group_by=user_id`, this field provides the user ID of the
+        grouped usage result.
+      type: string
+    - type: 'null'
+required:
+- object
+- images
+- num_model_requests

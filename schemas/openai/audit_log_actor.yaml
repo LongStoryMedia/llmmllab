@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AuditLogActor
+description: The actor who performed the audit logged action.
+type: object
+properties:
+  api_key:
+    $ref: audit_log_actor_api_key.yaml
+  session:
+    $ref: audit_log_actor_session.yaml
+  type:
+    description: The type of actor. Is either `session` or `api_key`.
+    enum:
+    - session
+    - api_key
+    type: string

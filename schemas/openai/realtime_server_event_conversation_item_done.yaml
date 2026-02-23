@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventConversationItemDone
+description: 'Returned when a conversation item is finalized.
+
+
+  The event will include the full content of the Item except for audio data, which
+  can be retrieved separately with a `conversation.item.retrieve` event if needed.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item:
+    $ref: realtime_conversation_item.yaml
+  previous_item_id:
+    anyOf:
+    - description: 'The ID of the item that precedes this one, if any. This is used
+        to
+
+        maintain ordering when items are inserted.
+
+        '
+      type: string
+    - type: 'null'
+  type:
+    const: conversation.item.done
+    description: The event type, must be `conversation.item.done`.
+required:
+- event_id
+- type
+- item

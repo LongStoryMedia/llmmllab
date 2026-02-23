@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CustomTextFormatParam
+description: Unconstrained free-form text.
+type: object
+properties:
+  type:
+    default: text
+    description: Unconstrained text format. Always `text`.
+    enum:
+    - text
+    type: string
+required:
+- type

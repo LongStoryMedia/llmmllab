@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebhookEvalRunFailed
+description: 'Sent when an eval run has failed.
+
+  '
+type: object
+properties:
+  created_at:
+    description: 'The Unix timestamp (in seconds) of when the eval run failed.
+
+      '
+    type: integer
+  data:
+    description: 'Event data payload.
+
+      '
+    properties:
+      id:
+        description: 'The unique ID of the eval run.
+
+          '
+        type: string
+    required:
+    - id
+    type: object
+  id:
+    description: 'The unique ID of the event.
+
+      '
+    type: string
+  object:
+    description: 'The object of the event. Always `event`.
+
+      '
+    enum:
+    - event
+    type: string
+  type:
+    description: 'The type of the event. Always `eval.run.failed`.
+
+      '
+    enum:
+    - eval.run.failed
+    type: string
+required:
+- created_at
+- id
+- data
+- type

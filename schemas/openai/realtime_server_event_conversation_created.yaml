@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventConversationCreated
+description: 'Returned when a conversation is created. Emitted right after session
+  creation.
+
+  '
+type: object
+properties:
+  conversation:
+    description: The conversation resource.
+    properties:
+      id:
+        description: The unique ID of the conversation.
+        type: string
+      object:
+        const: realtime.conversation
+        description: The object type, must be `realtime.conversation`.
+    type: object
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  type:
+    const: conversation.created
+    description: The event type, must be `conversation.created`.
+required:
+- event_id
+- type
+- conversation

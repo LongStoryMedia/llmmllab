@@ -1,0 +1,115 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepObject
+description: 'Represents a step in execution of a run.
+
+  '
+type: object
+properties:
+  assistant_id:
+    description: The ID of the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+      associated with the run step.
+    type: string
+  cancelled_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the run step was cancelled.
+      type: integer
+    - type: 'null'
+  completed_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the run step completed.
+      type: integer
+    - type: 'null'
+  created_at:
+    description: The Unix timestamp (in seconds) for when the run step was created.
+    type: integer
+  expired_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the run step expired.
+        A step is considered expired if the parent run is expired.
+      type: integer
+    - type: 'null'
+  failed_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the run step failed.
+      type: integer
+    - type: 'null'
+  id:
+    description: The identifier of the run step, which can be referenced in API endpoints.
+    type: string
+  last_error:
+    anyOf:
+    - description: The last error associated with this run step. Will be `null` if
+        there are no errors.
+      properties:
+        code:
+          description: One of `server_error` or `rate_limit_exceeded`.
+          enum:
+          - server_error
+          - rate_limit_exceeded
+          type: string
+        message:
+          description: A human-readable description of the error.
+          type: string
+      required:
+      - code
+      - message
+      type: object
+    - type: 'null'
+  metadata:
+    $ref: metadata.yaml
+  object:
+    description: The object type, which is always `thread.run.step`.
+    enum:
+    - thread.run.step
+    type: string
+  run_id:
+    description: The ID of the [run](https://platform.openai.com/docs/api-reference/runs)
+      that this run step is a part of.
+    type: string
+  status:
+    description: The status of the run step, which can be either `in_progress`, `cancelled`,
+      `failed`, `completed`, or `expired`.
+    enum:
+    - in_progress
+    - cancelled
+    - failed
+    - completed
+    - expired
+    type: string
+  step_details:
+    anyOf:
+    - $ref: run_step_details_message_creation_object.yaml
+    - $ref: run_step_details_tool_calls_object.yaml
+    description: The details of the run step.
+    discriminator:
+      propertyName: type
+    type: object
+  thread_id:
+    description: The ID of the [thread](https://platform.openai.com/docs/api-reference/threads)
+      that was run.
+    type: string
+  type:
+    description: The type of run step, which can be either `message_creation` or `tool_calls`.
+    enum:
+    - message_creation
+    - tool_calls
+    type: string
+  usage:
+    $ref: run_step_completion_usage.yaml
+required:
+- id
+- object
+- created_at
+- assistant_id
+- thread_id
+- run_id
+- type
+- status
+- step_details
+- last_error
+- expired_at
+- cancelled_at
+- failed_at
+- completed_at
+- metadata
+- usage

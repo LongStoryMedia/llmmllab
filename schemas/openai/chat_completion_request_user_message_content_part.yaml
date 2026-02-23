@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestUserMessageContentPart
+anyOf:
+- $ref: chat_completion_request_message_content_part_text.yaml
+- $ref: chat_completion_request_message_content_part_image.yaml
+- $ref: chat_completion_request_message_content_part_audio.yaml
+- $ref: chat_completion_request_message_content_part_file.yaml
+discriminator:
+  propertyName: type

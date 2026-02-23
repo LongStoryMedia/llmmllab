@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalStoredCompletionsDataSourceConfig
+description: 'Deprecated in favor of LogsDataSourceConfig.
+
+  '
+type: object
+properties:
+  metadata:
+    additionalProperties: true
+    description: Metadata filters for the stored completions data source.
+    type: object
+  type:
+    default: stored_completions
+    description: The type of data source. Always `stored_completions`.
+    enum:
+    - stored_completions
+    type: string
+required:
+- type
+deprecated: true

@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateFineTuningCheckpointPermissionRequest
+type: object
+properties:
+  project_ids:
+    description: The project identifiers to grant access to.
+    items:
+      type: string
+    type: array
+required:
+- project_ids
+additionalProperties: false

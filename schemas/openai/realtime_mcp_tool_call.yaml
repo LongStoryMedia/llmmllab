@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeMCPToolCall
+description: 'A Realtime item representing an invocation of a tool on an MCP server.
+
+  '
+type: object
+properties:
+  approval_request_id:
+    anyOf:
+    - description: The ID of an associated approval request, if any.
+      type: string
+    - type: 'null'
+  arguments:
+    description: A JSON string of the arguments passed to the tool.
+    type: string
+  error:
+    anyOf:
+    - anyOf:
+      - $ref: realtime_mcp_protocol_error.yaml
+      - $ref: realtime_mcp_tool_execution_error.yaml
+      - $ref: realtime_mcphttp_error.yaml
+      description: The error from the tool call, if any.
+      discriminator:
+        propertyName: type
+    - type: 'null'
+  id:
+    description: The unique ID of the tool call.
+    type: string
+  name:
+    description: The name of the tool that was run.
+    type: string
+  output:
+    anyOf:
+    - description: The output from the tool call.
+      type: string
+    - type: 'null'
+  server_label:
+    description: The label of the MCP server running the tool.
+    type: string
+  type:
+    description: The type of the item. Always `mcp_call`.
+    enum:
+    - mcp_call
+    type: string
+required:
+- type
+- id
+- server_label
+- name
+- arguments

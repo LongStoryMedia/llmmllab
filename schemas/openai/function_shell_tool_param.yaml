@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellToolParam
+description: A tool that allows the model to execute shell commands.
+type: object
+properties:
+  type:
+    default: shell
+    description: The type of the shell tool. Always `shell`.
+    enum:
+    - shell
+    type: string
+required:
+- type

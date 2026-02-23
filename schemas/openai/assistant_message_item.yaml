@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AssistantMessageItem
+description: Assistant-authored message within a thread.
+type: object
+properties:
+  content:
+    description: Ordered assistant response segments.
+    items:
+      $ref: response_output_text.yaml
+    type: array
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  id:
+    description: Identifier of the thread item.
+    type: string
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.assistant_message
+    description: Type discriminator that is always `chatkit.assistant_message`.
+    enum:
+    - chatkit.assistant_message
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- content

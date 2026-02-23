@@ -1,0 +1,55 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptTextDeltaEvent
+description: Emitted when there is an additional text delta. This is also the first
+  event emitted when the transcription starts. Only emitted when you [create a transcription](https://platform.openai.com/docs/api-reference/audio/create-transcription)
+  with the `Stream` parameter set to `true`.
+type: object
+properties:
+  delta:
+    description: 'The text delta that was additionally transcribed.
+
+      '
+    type: string
+  logprobs:
+    description: 'The log probabilities of the delta. Only included if you [create
+      a transcription](https://platform.openai.com/docs/api-reference/audio/create-transcription)
+      with the `include[]` parameter set to `logprobs`.
+
+      '
+    items:
+      properties:
+        bytes:
+          description: 'The bytes that were used to generate the log probability.
+
+            '
+          items:
+            type: integer
+          type: array
+        logprob:
+          description: 'The log probability of the token.
+
+            '
+          type: number
+        token:
+          description: 'The token that was used to generate the log probability.
+
+            '
+          type: string
+      type: object
+    type: array
+  segment_id:
+    description: 'Identifier of the diarized segment that this delta belongs to. Only
+      present when using `gpt-4o-transcribe-diarize`.
+
+      '
+    type: string
+  type:
+    description: 'The type of the event. Always `transcript.text.delta`.
+
+      '
+    enum:
+    - transcript.text.delta
+    type: string
+required:
+- type
+- delta

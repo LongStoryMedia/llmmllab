@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventOutputAudioBufferStarted
+description: '**WebRTC/SIP Only:** Emitted when the server begins streaming audio
+  to the client. This event is
+
+  emitted after an audio content part has been added (`response.content_part.added`)
+
+  to the response.
+
+  [Learn more](https://platform.openai.com/docs/guides/realtime-conversations#client-and-server-events-for-audio-in-webrtc).
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  response_id:
+    description: The unique ID of the response that produced the audio.
+    type: string
+  type:
+    const: output_audio_buffer.started
+    description: The event type, must be `output_audio_buffer.started`.
+required:
+- event_id
+- type
+- response_id

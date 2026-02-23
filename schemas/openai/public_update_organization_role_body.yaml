@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: PublicUpdateOrganizationRoleBody
+description: Request payload for updating an existing role.
+type: object
+properties:
+  description:
+    anyOf:
+    - type: string
+    - type: 'null'
+    description: New description for the role.
+  permissions:
+    anyOf:
+    - items:
+        type: string
+      type: array
+    - type: 'null'
+    description: Updated set of permissions for the role.
+  role_name:
+    anyOf:
+    - type: string
+    - type: 'null'
+    description: New name for the role.

@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventResponseAudioTranscriptDone
+description: 'Returned when the model-generated transcription of audio output is done
+
+  streaming. Also emitted when a Response is interrupted, incomplete, or
+
+  cancelled.
+
+  '
+type: object
+properties:
+  content_index:
+    description: The index of the content part in the item's content array.
+    type: integer
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the item.
+    type: string
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  response_id:
+    description: The ID of the response.
+    type: string
+  transcript:
+    description: The final transcript of the audio.
+    type: string
+  type:
+    const: response.output_audio_transcript.done
+    description: The event type, must be `response.output_audio_transcript.done`.
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- content_index
+- transcript

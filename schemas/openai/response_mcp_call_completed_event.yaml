@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseMCPCallCompletedEvent
+description: 'Emitted when an MCP  tool call has completed successfully.
+
+  '
+type: object
+properties:
+  item_id:
+    description: The ID of the MCP tool call item that completed.
+    type: string
+  output_index:
+    description: The index of the output item that completed.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The type of the event. Always 'response.mcp_call.completed'.
+    enum:
+    - response.mcp_call.completed
+    type: string
+required:
+- type
+- item_id
+- output_index
+- sequence_number

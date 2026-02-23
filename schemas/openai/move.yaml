@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Move
+description: 'A mouse move action.
+
+  '
+type: object
+properties:
+  type:
+    default: move
+    description: "Specifies the event type. For a move action, this property is \n\
+      always set to `move`.\n"
+    enum:
+    - move
+    type: string
+  x:
+    description: 'The x-coordinate to move to.
+
+      '
+    type: integer
+  y:
+    description: 'The y-coordinate to move to.
+
+      '
+    type: integer
+required:
+- type
+- x
+- y

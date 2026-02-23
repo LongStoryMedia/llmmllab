@@ -1,0 +1,56 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UserMessageItem
+description: User-authored messages within a thread.
+type: object
+properties:
+  attachments:
+    description: Attachments associated with the user message. Defaults to an empty
+      list.
+    items:
+      $ref: attachment.yaml
+    type: array
+  content:
+    description: Ordered content elements supplied by the user.
+    items:
+      anyOf:
+      - $ref: user_message_input_text.yaml
+      - $ref: user_message_quoted_text.yaml
+      description: Content blocks that comprise a user message.
+      discriminator:
+        propertyName: type
+    type: array
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  id:
+    description: Identifier of the thread item.
+    type: string
+  inference_options:
+    anyOf:
+    - $ref: inference_options.yaml
+      description: Inference overrides applied to the message. Defaults to null when
+        unset.
+    - type: 'null'
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.user_message
+    enum:
+    - chatkit.user_message
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- content
+- attachments
+- inference_options

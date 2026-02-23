@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeCallRejectRequest
+description: Parameters used to decline an incoming SIP call handled by the Realtime
+  API.
+type: object
+properties:
+  status_code:
+    description: 'SIP response code to send back to the caller. Defaults to `603`
+      (Decline)
+
+      when omitted.'
+    example: 486
+    type: integer
+additionalProperties: false

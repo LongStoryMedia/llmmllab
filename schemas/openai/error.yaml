@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Error
+type: object
+properties:
+  code:
+    anyOf:
+    - type: string
+    - type: 'null'
+  message:
+    type: string
+  param:
+    anyOf:
+    - type: string
+    - type: 'null'
+  type:
+    type: string
+required:
+- type
+- message
+- param
+- code

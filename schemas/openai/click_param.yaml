@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ClickParam
+description: A click action.
+type: object
+properties:
+  button:
+    $ref: click_button_type.yaml
+    description: Indicates which mouse button was pressed during the click. One of
+      `left`, `right`, `wheel`, `back`, or `forward`.
+  type:
+    default: click
+    description: Specifies the event type. For a click action, this property is always
+      `click`.
+    enum:
+    - click
+    type: string
+  x:
+    description: The x-coordinate where the click occurred.
+    type: integer
+  y:
+    description: The y-coordinate where the click occurred.
+    type: integer
+required:
+- type
+- button
+- x
+- y

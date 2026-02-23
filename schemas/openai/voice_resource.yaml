@@ -1,0 +1,25 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VoiceResource
+description: A custom voice that can be used for audio output.
+type: object
+properties:
+  created_at:
+    description: The Unix timestamp (in seconds) for when the voice was created.
+    type: integer
+  id:
+    description: The voice identifier, which can be referenced in API endpoints.
+    type: string
+  name:
+    description: The name of the voice.
+    type: string
+  object:
+    description: The object type, which is always `audio.voice`.
+    enum:
+    - audio.voice
+    type: string
+required:
+- object
+- id
+- name
+- created_at
+additionalProperties: false

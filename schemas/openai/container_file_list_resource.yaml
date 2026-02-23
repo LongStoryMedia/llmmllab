@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ContainerFileListResource
+type: object
+properties:
+  data:
+    description: A list of container files.
+    items:
+      $ref: container_file_resource.yaml
+    type: array
+  first_id:
+    description: The ID of the first file in the list.
+    type: string
+  has_more:
+    description: Whether there are more files available.
+    type: boolean
+  last_id:
+    description: The ID of the last file in the list.
+    type: string
+  object:
+    const: list
+    description: The type of object returned, must be 'list'.
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

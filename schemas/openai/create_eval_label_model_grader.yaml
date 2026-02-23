@@ -1,0 +1,44 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalLabelModelGrader
+description: 'A LabelModelGrader object which uses a model to assign labels to each
+  item
+
+  in the evaluation.
+
+  '
+type: object
+properties:
+  input:
+    description: A list of chat messages forming the prompt or context. May include
+      variable references to the `item` namespace, ie {{item.name}}.
+    items:
+      $ref: create_eval_item.yaml
+    type: array
+  labels:
+    description: The labels to classify to each item in the evaluation.
+    items:
+      type: string
+    type: array
+  model:
+    description: The model to use for the evaluation. Must support structured outputs.
+    type: string
+  name:
+    description: The name of the grader.
+    type: string
+  passing_labels:
+    description: The labels that indicate a passing result. Must be a subset of labels.
+    items:
+      type: string
+    type: array
+  type:
+    description: The object type, which is always `label_model`.
+    enum:
+    - label_model
+    type: string
+required:
+- type
+- model
+- input
+- passing_labels
+- labels
+- name

@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateGroupBody
+description: Request payload for creating a new group in the organization.
+type: object
+properties:
+  name:
+    description: Human readable name for the group.
+    maxLength: 255
+    minLength: 1
+    type: string
+required:
+- name

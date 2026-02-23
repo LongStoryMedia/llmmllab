@@ -1,0 +1,23 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Model
+description: Describes an OpenAI model offering that can be used with the API.
+properties:
+  created:
+    description: The Unix timestamp (in seconds) when the model was created.
+    type: integer
+  id:
+    description: The model identifier, which can be referenced in the API endpoints.
+    type: string
+  object:
+    description: The object type, which is always "model".
+    enum:
+    - model
+    type: string
+  owned_by:
+    description: The organization that owns the model.
+    type: string
+required:
+- id
+- object
+- created
+- owned_by

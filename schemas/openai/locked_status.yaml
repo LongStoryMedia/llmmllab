@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LockedStatus
+description: Indicates that a thread is locked and cannot accept new input.
+type: object
+properties:
+  reason:
+    anyOf:
+    - description: Reason that the thread was locked. Defaults to null when no reason
+        is recorded.
+      type: string
+    - type: 'null'
+  type:
+    default: locked
+    description: Status discriminator that is always `locked`.
+    enum:
+    - locked
+    type: string
+required:
+- type
+- reason

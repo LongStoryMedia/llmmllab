@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuneChatCompletionRequestAssistantMessage
+required:
+- role
+allOf:
+- deprecated: false
+  properties:
+    weight:
+      description: Controls whether the assistant message is trained against (0 or
+        1)
+      enum:
+      - 0
+      - 1
+      type: integer
+  title: Assistant message
+  type: object
+- $ref: chat_completion_request_assistant_message.yaml

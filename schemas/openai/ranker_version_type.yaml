@@ -1,0 +1,6 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RankerVersionType
+type: string
+enum:
+- auto
+- default-2024-11-15

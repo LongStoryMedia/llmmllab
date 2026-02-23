@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CustomToolParam
+description: A custom tool that processes input using a specified format. Learn more
+  about   [custom tools](https://platform.openai.com/docs/guides/function-calling#custom-tools)
+type: object
+properties:
+  description:
+    description: Optional description of the custom tool, used to provide more context.
+    type: string
+  format:
+    anyOf:
+    - $ref: custom_text_format_param.yaml
+    - $ref: custom_grammar_format_param.yaml
+    description: The input format for the custom tool. Default is unconstrained text.
+    discriminator:
+      propertyName: type
+  name:
+    description: The name of the custom tool, used to identify it in tool calls.
+    type: string
+  type:
+    default: custom
+    description: The type of the custom tool. Always `custom`.
+    enum:
+    - custom
+    type: string
+required:
+- type
+- name

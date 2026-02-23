@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaStepDetailsToolCallsCodeOutputLogsObject
+description: Text output from the Code Interpreter tool call as part of a run step.
+type: object
+properties:
+  index:
+    description: The index of the output in the outputs array.
+    type: integer
+  logs:
+    description: The text output from the Code Interpreter tool call.
+    type: string
+  type:
+    description: Always `logs`.
+    enum:
+    - logs
+    type: string
+required:
+- index
+- type

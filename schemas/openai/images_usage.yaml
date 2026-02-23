@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImagesUsage
+description: 'For the GPT image models only, the token usage information for the image
+  generation.
+
+  '
+type: object
+properties:
+  input_tokens:
+    description: The number of tokens (images and text) in the input prompt.
+    type: integer
+  input_tokens_details:
+    description: The input tokens detailed information for the image generation.
+    properties:
+      image_tokens:
+        description: The number of image tokens in the input prompt.
+        type: integer
+      text_tokens:
+        description: The number of text tokens in the input prompt.
+        type: integer
+    required:
+    - text_tokens
+    - image_tokens
+    type: object
+  output_tokens:
+    description: The number of image tokens in the output image.
+    type: integer
+  total_tokens:
+    description: 'The total number of tokens (images and text) used for the image
+      generation.
+
+      '
+    type: integer
+required:
+- total_tokens
+- input_tokens
+- output_tokens
+- input_tokens_details

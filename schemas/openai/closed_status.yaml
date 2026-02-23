@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ClosedStatus
+description: Indicates that a thread has been closed.
+type: object
+properties:
+  reason:
+    anyOf:
+    - description: Reason that the thread was closed. Defaults to null when no reason
+        is recorded.
+      type: string
+    - type: 'null'
+  type:
+    default: closed
+    description: Status discriminator that is always `closed`.
+    enum:
+    - closed
+    type: string
+required:
+- type
+- reason

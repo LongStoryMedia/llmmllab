@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ThreadStreamEvent
+anyOf:
+- description: Occurs when a new [thread](https://platform.openai.com/docs/api-reference/threads/object)
+    is created.
+  properties:
+    data:
+      $ref: thread_object.yaml
+    enabled:
+      description: Whether to enable input audio transcription.
+      type: boolean
+    event:
+      enum:
+      - thread.created
+      type: string
+  required:
+  - event
+  - data
+  type: object
+discriminator:
+  propertyName: event

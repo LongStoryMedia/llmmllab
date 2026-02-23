@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ErrorEvent
+description: Occurs when an [error](https://platform.openai.com/docs/guides/error-codes#api-errors)
+  occurs. This can happen due to an internal server error or a timeout.
+type: object
+properties:
+  data:
+    $ref: error.yaml
+  event:
+    enum:
+    - error
+    type: string
+required:
+- event
+- data

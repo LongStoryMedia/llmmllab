@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ItemReferenceParam
+description: An internal identifier for an item to reference.
+type: object
+properties:
+  id:
+    description: The ID of the item to reference.
+    type: string
+  type:
+    anyOf:
+    - default: item_reference
+      description: The type of item to reference. Always `item_reference`.
+      enum:
+      - item_reference
+      type: string
+    - type: 'null'
+required:
+- id

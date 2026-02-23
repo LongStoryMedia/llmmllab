@@ -1,0 +1,57 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateImageVariationRequest
+type: object
+properties:
+  image:
+    description: The image to use as the basis for the variation(s). Must be a valid
+      PNG file, less than 4MB, and square.
+    format: binary
+    type: string
+  model:
+    anyOf:
+    - type: string
+    - enum:
+      - dall-e-2
+      type: string
+    description: The model to use for image generation. Only `dall-e-2` is supported
+      at this time.
+    nullable: true
+  n:
+    default: 1
+    description: The number of images to generate. Must be between 1 and 10.
+    example: 1
+    maximum: 10
+    minimum: 1
+    nullable: true
+    type: integer
+  response_format:
+    default: url
+    description: The format in which the generated images are returned. Must be one
+      of `url` or `b64_json`. URLs are only valid for 60 minutes after the image has
+      been generated.
+    enum:
+    - url
+    - b64_json
+    example: url
+    nullable: true
+    type: string
+  size:
+    default: 1024x1024
+    description: The size of the generated images. Must be one of `256x256`, `512x512`,
+      or `1024x1024`.
+    enum:
+    - 256x256
+    - 512x512
+    - 1024x1024
+    example: 1024x1024
+    nullable: true
+    type: string
+  user:
+    description: 'A unique identifier representing your end-user, which can help OpenAI
+      to monitor and detect abuse. [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#end-user-ids).
+
+      '
+    example: user-1234
+    type: string
+required:
+- image

@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatSessionResource
+description: Represents a ChatKit session and its resolved configuration.
+type: object
+properties:
+  chatkit_configuration:
+    $ref: chat_session_chatkit_configuration.yaml
+    description: Resolved ChatKit feature configuration for the session.
+  client_secret:
+    description: Ephemeral client secret that authenticates session requests.
+    type: string
+  expires_at:
+    description: Unix timestamp (in seconds) for when the session expires.
+    type: integer
+  id:
+    description: Identifier for the ChatKit session.
+    type: string
+  max_requests_per_1_minute:
+    description: Convenience copy of the per-minute request limit.
+    type: integer
+  object:
+    default: chatkit.session
+    description: Type discriminator that is always `chatkit.session`.
+    enum:
+    - chatkit.session
+    type: string
+  rate_limits:
+    $ref: chat_session_rate_limits.yaml
+    description: Resolved rate limit values.
+  status:
+    $ref: chat_session_status.yaml
+    description: Current lifecycle state of the session.
+  user:
+    description: User identifier associated with the session.
+    type: string
+  workflow:
+    $ref: chatkit_workflow.yaml
+    description: Workflow metadata for the session.
+required:
+- id
+- object
+- expires_at
+- client_secret
+- workflow
+- user
+- rate_limits
+- max_requests_per_1_minute
+- status
+- chatkit_configuration

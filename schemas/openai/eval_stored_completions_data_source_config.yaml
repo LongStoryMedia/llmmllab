@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalStoredCompletionsDataSourceConfig
+description: 'Deprecated in favor of LogsDataSourceConfig.
+
+  '
+type: object
+properties:
+  metadata:
+    $ref: metadata.yaml
+  schema:
+    additionalProperties: true
+    description: 'The json schema for the run data source items.
+
+      Learn how to build JSON schemas [here](https://json-schema.org/).
+
+      '
+    type: object
+  type:
+    default: stored_completions
+    description: The type of data source. Always `stored_completions`.
+    enum:
+    - stored_completions
+    type: string
+required:
+- type
+- schema
+deprecated: true

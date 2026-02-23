@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageDetail
+type: string
+enum:
+- low
+- high
+- auto

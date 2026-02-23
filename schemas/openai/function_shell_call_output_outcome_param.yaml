@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellCallOutputOutcomeParam
+description: The exit or timeout outcome associated with this shell call.
+anyOf:
+- $ref: function_shell_call_output_timeout_outcome_param.yaml
+- $ref: function_shell_call_output_exit_outcome_param.yaml
+discriminator:
+  propertyName: type

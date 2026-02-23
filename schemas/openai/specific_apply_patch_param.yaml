@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SpecificApplyPatchParam
+description: Forces the model to call the apply_patch tool when executing a tool call.
+type: object
+properties:
+  type:
+    default: apply_patch
+    description: The tool to call. Always `apply_patch`.
+    enum:
+    - apply_patch
+    type: string
+required:
+- type

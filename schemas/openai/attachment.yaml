@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Attachment
+description: Attachment metadata included on thread items.
+type: object
+properties:
+  id:
+    description: Identifier for the attachment.
+    type: string
+  mime_type:
+    description: MIME type of the attachment.
+    type: string
+  name:
+    description: Original display name for the attachment.
+    type: string
+  preview_url:
+    anyOf:
+    - description: Preview URL for rendering the attachment inline.
+      type: string
+    - type: 'null'
+  type:
+    $ref: attachment_type.yaml
+    description: Attachment discriminator.
+required:
+- type
+- id
+- name
+- mime_type
+- preview_url

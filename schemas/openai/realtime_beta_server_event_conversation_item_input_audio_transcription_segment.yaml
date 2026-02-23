@@ -1,0 +1,45 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventConversationItemInputAudioTranscriptionSegment
+description: Returned when an input audio transcription segment is identified for
+  an item.
+type: object
+properties:
+  content_index:
+    description: The index of the input audio content part within the item.
+    type: integer
+  end:
+    description: End time of the segment in seconds.
+    format: float
+    type: number
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  id:
+    description: The segment identifier.
+    type: string
+  item_id:
+    description: The ID of the item containing the input audio content.
+    type: string
+  speaker:
+    description: The detected speaker label for this segment.
+    type: string
+  start:
+    description: Start time of the segment in seconds.
+    format: float
+    type: number
+  text:
+    description: The text for this segment.
+    type: string
+  type:
+    const: conversation.item.input_audio_transcription.segment
+    description: The event type, must be `conversation.item.input_audio_transcription.segment`.
+required:
+- event_id
+- type
+- item_id
+- content_index
+- text
+- id
+- speaker
+- start
+- end

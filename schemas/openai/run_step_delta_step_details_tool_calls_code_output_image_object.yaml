@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaStepDetailsToolCallsCodeOutputImageObject
+type: object
+properties:
+  image:
+    properties:
+      file_id:
+        description: The [file](https://platform.openai.com/docs/api-reference/files)
+          ID of the image.
+        type: string
+    type: object
+  index:
+    description: The index of the output in the outputs array.
+    type: integer
+  type:
+    description: Always `image`.
+    enum:
+    - image
+    type: string
+required:
+- index
+- type

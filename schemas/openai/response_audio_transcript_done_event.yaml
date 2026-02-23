@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseAudioTranscriptDoneEvent
+description: Emitted when the full audio transcript is completed.
+type: object
+properties:
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.audio.transcript.done`.
+
+      '
+    enum:
+    - response.audio.transcript.done
+    type: string
+required:
+- type
+- response_id
+- sequence_number

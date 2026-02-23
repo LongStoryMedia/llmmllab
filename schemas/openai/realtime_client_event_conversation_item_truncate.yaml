@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventConversationItemTruncate
+description: "Send this event to truncate a previous assistant message’s audio. The\
+  \ server \nwill produce audio faster than realtime, so this event is useful when\
+  \ the user \ninterrupts to truncate audio that has already been sent to the client\
+  \ but not \nyet played. This will synchronize the server's understanding of the\
+  \ audio with \nthe client's playback.\n\nTruncating audio will delete the server-side\
+  \ text transcript to ensure there \nis not text in the context that hasn't been\
+  \ heard by the user.\n\nIf successful, the server will respond with a `conversation.item.truncated`\
+  \ \nevent. \n"
+type: object
+properties:
+  audio_end_ms:
+    description: "Inclusive duration up to which audio is truncated, in milliseconds.\
+      \ If \nthe audio_end_ms is greater than the actual audio duration, the server\
+      \ \nwill respond with an error.\n"
+    type: integer
+  content_index:
+    description: The index of the content part to truncate. Set this to `0`.
+    type: integer
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    maxLength: 512
+    type: string
+  item_id:
+    description: "The ID of the assistant message item to truncate. Only assistant\
+      \ message \nitems can be truncated.\n"
+    type: string
+  type:
+    const: conversation.item.truncate
+    description: The event type, must be `conversation.item.truncate`.
+required:
+- type
+- item_id
+- content_index
+- audio_end_ms

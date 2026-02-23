@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventConversationItemRetrieve
+description: "Send this event when you want to retrieve the server's representation\
+  \ of a specific item in the conversation history. This is useful, for example, to\
+  \ inspect user audio after noise cancellation and VAD.\nThe server will respond\
+  \ with a `conversation.item.retrieved` event, \nunless the item does not exist in\
+  \ the conversation history, in which case the \nserver will respond with an error.\n"
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    maxLength: 512
+    type: string
+  item_id:
+    description: The ID of the item to retrieve.
+    type: string
+  type:
+    const: conversation.item.retrieve
+    description: The event type, must be `conversation.item.retrieve`.
+required:
+- type
+- item_id

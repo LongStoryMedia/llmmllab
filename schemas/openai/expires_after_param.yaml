@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ExpiresAfterParam
+description: Controls when the session expires relative to an anchor timestamp.
+type: object
+properties:
+  anchor:
+    default: created_at
+    description: Base timestamp used to calculate expiration. Currently fixed to `created_at`.
+    enum:
+    - created_at
+    type: string
+  seconds:
+    description: Number of seconds after the anchor when the session expires.
+    maximum: 600
+    minimum: 1
+    type: integer
+required:
+- anchor
+- seconds

@@ -1,0 +1,116 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageObject
+description: Represents a message within a [thread](https://platform.openai.com/docs/api-reference/threads).
+type: object
+properties:
+  assistant_id:
+    anyOf:
+    - description: If applicable, the ID of the [assistant](https://platform.openai.com/docs/api-reference/assistants)
+        that authored this message.
+      type: string
+    - type: 'null'
+  attachments:
+    anyOf:
+    - description: A list of files attached to the message, and the tools they were
+        added to.
+      items:
+        properties:
+          file_id:
+            description: The ID of the file to attach to the message.
+            type: string
+          tools:
+            description: The tools to add this file to.
+            items:
+              anyOf:
+              - $ref: assistant_tools_code.yaml
+              - $ref: assistant_tools_file_search_type_only.yaml
+            type: array
+        type: object
+      type: array
+    - type: 'null'
+  completed_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the message was completed.
+      type: integer
+    - type: 'null'
+  content:
+    description: The content of the message in array of text and/or images.
+    items:
+      $ref: message_content.yaml
+    type: array
+  created_at:
+    description: The Unix timestamp (in seconds) for when the message was created.
+    type: integer
+  id:
+    description: The identifier, which can be referenced in API endpoints.
+    type: string
+  incomplete_at:
+    anyOf:
+    - description: The Unix timestamp (in seconds) for when the message was marked
+        as incomplete.
+      type: integer
+    - type: 'null'
+  incomplete_details:
+    anyOf:
+    - description: On an incomplete message, details about why the message is incomplete.
+      properties:
+        reason:
+          description: The reason the message is incomplete.
+          enum:
+          - content_filter
+          - max_tokens
+          - run_cancelled
+          - run_expired
+          - run_failed
+          type: string
+      required:
+      - reason
+      type: object
+    - type: 'null'
+  metadata:
+    $ref: metadata.yaml
+  object:
+    description: The object type, which is always `thread.message`.
+    enum:
+    - thread.message
+    type: string
+  role:
+    description: The entity that produced the message. One of `user` or `assistant`.
+    enum:
+    - user
+    - assistant
+    type: string
+  run_id:
+    anyOf:
+    - description: The ID of the [run](https://platform.openai.com/docs/api-reference/runs)
+        associated with the creation of this message. Value is `null` when messages
+        are created manually using the create message or create thread endpoints.
+      type: string
+    - type: 'null'
+  status:
+    description: The status of the message, which can be either `in_progress`, `incomplete`,
+      or `completed`.
+    enum:
+    - in_progress
+    - incomplete
+    - completed
+    type: string
+  thread_id:
+    description: The [thread](https://platform.openai.com/docs/api-reference/threads)
+      ID that this message belongs to.
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- status
+- incomplete_details
+- completed_at
+- incomplete_at
+- role
+- content
+- assistant_id
+- run_id
+- attachments
+- metadata

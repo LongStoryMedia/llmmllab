@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptTextUsageTokens
+description: Usage statistics for models billed by token usage.
+type: object
+properties:
+  input_token_details:
+    description: Details about the input tokens billed for this request.
+    properties:
+      audio_tokens:
+        description: Number of audio tokens billed for this request.
+        type: integer
+      text_tokens:
+        description: Number of text tokens billed for this request.
+        type: integer
+    type: object
+  input_tokens:
+    description: Number of input tokens billed for this request.
+    type: integer
+  output_tokens:
+    description: Number of output tokens generated.
+    type: integer
+  total_tokens:
+    description: Total number of tokens used (input + output).
+    type: integer
+  type:
+    description: The type of the usage object. Always `tokens` for this variant.
+    enum:
+    - tokens
+    type: string
+required:
+- type
+- input_tokens
+- output_tokens
+- total_tokens

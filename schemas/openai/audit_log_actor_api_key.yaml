@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AuditLogActorApiKey
+description: The API Key used to perform the audit logged action.
+type: object
+properties:
+  id:
+    description: The tracking id of the API key.
+    type: string
+  service_account:
+    $ref: audit_log_actor_service_account.yaml
+  type:
+    description: The type of API key. Can be either `user` or `service_account`.
+    enum:
+    - user
+    - service_account
+    type: string
+  user:
+    $ref: audit_log_actor_user.yaml

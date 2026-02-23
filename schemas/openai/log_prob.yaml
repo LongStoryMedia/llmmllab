@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: LogProb
+description: The log probability of a token.
+type: object
+properties:
+  bytes:
+    items:
+      type: integer
+    type: array
+  logprob:
+    type: number
+  token:
+    type: string
+  top_logprobs:
+    items:
+      $ref: top_log_prob.yaml
+    type: array
+required:
+- token
+- logprob
+- bytes
+- top_logprobs

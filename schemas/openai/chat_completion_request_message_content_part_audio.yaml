@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestMessageContentPartAudio
+description: 'Learn about [audio inputs](https://platform.openai.com/docs/guides/audio).
+
+  '
+type: object
+properties:
+  input_audio:
+    properties:
+      data:
+        description: Base64 encoded audio data.
+        type: string
+      format:
+        description: 'The format of the encoded audio data. Currently supports "wav"
+          and "mp3".
+
+          '
+        enum:
+        - wav
+        - mp3
+        type: string
+    required:
+    - data
+    - format
+    type: object
+  type:
+    description: The type of the content part. Always `input_audio`.
+    enum:
+    - input_audio
+    type: string
+required:
+- type
+- input_audio

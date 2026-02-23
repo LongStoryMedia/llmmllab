@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DeleteFineTuningCheckpointPermissionResponse
+type: object
+properties:
+  deleted:
+    description: Whether the fine-tuned model checkpoint permission was successfully
+      deleted.
+    type: boolean
+  id:
+    description: The ID of the fine-tuned model checkpoint permission that was deleted.
+    type: string
+  object:
+    description: The object type, which is always "checkpoint.permission".
+    enum:
+    - checkpoint.permission
+    type: string
+required:
+- id
+- object
+- deleted

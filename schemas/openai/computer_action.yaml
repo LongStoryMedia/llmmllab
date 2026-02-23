@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComputerAction
+anyOf:
+- $ref: click_param.yaml
+- $ref: double_click_action.yaml
+- $ref: drag.yaml
+- $ref: key_press_action.yaml
+- $ref: move.yaml
+- $ref: screenshot.yaml
+- $ref: scroll.yaml
+- $ref: type.yaml
+- $ref: wait.yaml
+discriminator:
+  propertyName: type

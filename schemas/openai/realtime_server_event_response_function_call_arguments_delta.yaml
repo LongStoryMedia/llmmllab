@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventResponseFunctionCallArgumentsDelta
+description: 'Returned when the model-generated function call arguments are updated.
+
+  '
+type: object
+properties:
+  call_id:
+    description: The ID of the function call.
+    type: string
+  delta:
+    description: The arguments delta as a JSON string.
+    type: string
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the function call item.
+    type: string
+  output_index:
+    description: The index of the output item in the response.
+    type: integer
+  response_id:
+    description: The ID of the response.
+    type: string
+  type:
+    const: response.function_call_arguments.delta
+    description: 'The event type, must be `response.function_call_arguments.delta`.
+
+      '
+required:
+- event_id
+- type
+- response_id
+- item_id
+- output_index
+- call_id
+- delta

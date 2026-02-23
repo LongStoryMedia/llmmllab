@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaClientEventInputAudioBufferCommit
+description: "Send this event to commit the user input audio buffer, which will create\
+  \ a \nnew user message item in the conversation. This event will produce an error\
+  \ \nif the input audio buffer is empty. When in Server VAD mode, the client does\
+  \ \nnot need to send this event, the server will commit the audio buffer \nautomatically.\n\
+  \nCommitting the input audio buffer will trigger input audio transcription \n(if\
+  \ enabled in session configuration), but it will not create a response \nfrom the\
+  \ model. The server will respond with an `input_audio_buffer.committed` \nevent.\n"
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    type: string
+  type:
+    const: input_audio_buffer.commit
+    description: The event type, must be `input_audio_buffer.commit`.
+required:
+- type

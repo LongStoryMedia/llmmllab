@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputMessageContentList
+description: "A list of one or many input items to the model, containing different\
+  \ content \ntypes.\n"
+type: array
+items:
+  $ref: input_content.yaml

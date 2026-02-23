@@ -1,0 +1,33 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CostsResult
+description: The aggregated costs details of the specific time bucket.
+type: object
+properties:
+  amount:
+    description: The monetary value in its associated currency.
+    properties:
+      currency:
+        description: Lowercase ISO-4217 currency e.g. "usd"
+        type: string
+      value:
+        description: The numeric value of the cost.
+        type: number
+    type: object
+  line_item:
+    anyOf:
+    - description: When `group_by=line_item`, this field provides the line item of
+        the grouped costs result.
+      type: string
+    - type: 'null'
+  object:
+    enum:
+    - organization.costs.result
+    type: string
+  project_id:
+    anyOf:
+    - description: When `group_by=project_id`, this field provides the project ID
+        of the grouped costs result.
+      type: string
+    - type: 'null'
+required:
+- object

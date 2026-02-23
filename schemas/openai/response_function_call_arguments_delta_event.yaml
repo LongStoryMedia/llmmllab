@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFunctionCallArgumentsDeltaEvent
+description: Emitted when there is a partial function-call arguments delta.
+type: object
+properties:
+  delta:
+    description: 'The function-call arguments delta that is added.
+
+      '
+    type: string
+  item_id:
+    description: 'The ID of the output item that the function-call arguments delta
+      is added to.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item that the function-call arguments delta
+      is added to.
+
+      '
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.function_call_arguments.delta`.
+
+      '
+    enum:
+    - response.function_call_arguments.delta
+    type: string
+required:
+- type
+- item_id
+- output_index
+- delta
+- sequence_number

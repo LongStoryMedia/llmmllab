@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ConversationParam
+description: 'The conversation that this response belongs to. Items from this conversation
+  are prepended to `input_items` for this response request.
+
+  Input items and output items from this response are automatically added to this
+  conversation after this response completes.
+
+  '
+anyOf:
+- description: 'The unique ID of the conversation.
+
+    '
+  title: Conversation ID
+  type: string
+- $ref: conversation_param-2.yaml

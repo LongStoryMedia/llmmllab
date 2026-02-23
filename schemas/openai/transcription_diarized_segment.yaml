@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptionDiarizedSegment
+description: A segment of diarized transcript text with speaker metadata.
+type: object
+properties:
+  end:
+    description: End timestamp of the segment in seconds.
+    format: float
+    type: number
+  id:
+    description: Unique identifier for the segment.
+    type: string
+  speaker:
+    description: 'Speaker label for this segment. When known speakers are provided,
+      the label matches `known_speaker_names[]`. Otherwise speakers are labeled sequentially
+      using capital letters (`A`, `B`, ...).
+
+      '
+    type: string
+  start:
+    description: Start timestamp of the segment in seconds.
+    format: float
+    type: number
+  text:
+    description: Transcript text for this segment.
+    type: string
+  type:
+    description: 'The type of the segment. Always `transcript.text.segment`.
+
+      '
+    enum:
+    - transcript.text.segment
+    type: string
+required:
+- type
+- id
+- start
+- end
+- text
+- speaker

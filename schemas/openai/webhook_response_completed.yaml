@@ -1,0 +1,49 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebhookResponseCompleted
+description: 'Sent when a background response has been completed.
+
+  '
+type: object
+properties:
+  created_at:
+    description: 'The Unix timestamp (in seconds) of when the model response was completed.
+
+      '
+    type: integer
+  data:
+    description: 'Event data payload.
+
+      '
+    properties:
+      id:
+        description: 'The unique ID of the model response.
+
+          '
+        type: string
+    required:
+    - id
+    type: object
+  id:
+    description: 'The unique ID of the event.
+
+      '
+    type: string
+  object:
+    description: 'The object of the event. Always `event`.
+
+      '
+    enum:
+    - event
+    type: string
+  type:
+    description: 'The type of the event. Always `response.completed`.
+
+      '
+    enum:
+    - response.completed
+    type: string
+required:
+- created_at
+- id
+- data
+- type

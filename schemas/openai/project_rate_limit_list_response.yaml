@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectRateLimitListResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: project_rate_limit.yaml
+    type: array
+  first_id:
+    type: string
+  has_more:
+    type: boolean
+  last_id:
+    type: string
+  object:
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

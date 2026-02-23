@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateTranslationResponseVerboseJson
+type: object
+properties:
+  duration:
+    description: The duration of the input audio.
+    type: number
+  language:
+    description: The language of the output translation (always `english`).
+    type: string
+  segments:
+    description: Segments of the translated text and their corresponding details.
+    items:
+      $ref: transcription_segment.yaml
+    type: array
+  text:
+    description: The translated text.
+    type: string
+required:
+- language
+- duration
+- text

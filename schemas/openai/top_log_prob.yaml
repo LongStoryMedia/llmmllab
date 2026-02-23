@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TopLogProb
+description: The top log probability of a token.
+type: object
+properties:
+  bytes:
+    items:
+      type: integer
+    type: array
+  logprob:
+    type: number
+  token:
+    type: string
+required:
+- token
+- logprob
+- bytes

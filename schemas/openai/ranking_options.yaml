@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RankingOptions
+type: object
+properties:
+  hybrid_search:
+    $ref: hybrid_search_options.yaml
+    description: Weights that control how reciprocal rank fusion balances semantic
+      embedding matches versus sparse keyword matches when hybrid search is enabled.
+  ranker:
+    $ref: ranker_version_type.yaml
+    description: The ranker to use for the file search.
+  score_threshold:
+    description: The score threshold for the file search, a number between 0 and 1.
+      Numbers closer to 1 will attempt to return only the most relevant results, but
+      may return fewer results.
+    type: number
+required: []

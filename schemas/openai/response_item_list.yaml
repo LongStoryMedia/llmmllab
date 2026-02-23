@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseItemList
+description: A list of Response items.
+type: object
+properties:
+  data:
+    description: A list of items used to generate this response.
+    items:
+      $ref: item_resource.yaml
+    type: array
+  first_id:
+    description: The ID of the first item in the list.
+    type: string
+  has_more:
+    description: Whether there are more items available.
+    type: boolean
+  last_id:
+    description: The ID of the last item in the list.
+    type: string
+  object:
+    const: list
+    description: The type of object returned, must be `list`.
+required:
+- object
+- data
+- has_more
+- first_id
+- last_id

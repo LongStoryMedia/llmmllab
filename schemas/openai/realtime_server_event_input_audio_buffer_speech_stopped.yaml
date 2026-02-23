@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventInputAudioBufferSpeechStopped
+description: "Returned in `server_vad` mode when the server detects the end of speech\
+  \ in \nthe audio buffer. The server will also send an `conversation.item.created`\
+  \ \nevent with the user message item that is created from the audio buffer.\n"
+type: object
+properties:
+  audio_end_ms:
+    description: "Milliseconds since the session started when speech stopped. This\
+      \ will \ncorrespond to the end of audio sent to the model, and thus includes\
+      \ the \n`min_silence_duration_ms` configured in the Session.\n"
+    type: integer
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the user message item that will be created.
+    type: string
+  type:
+    const: input_audio_buffer.speech_stopped
+    description: The event type, must be `input_audio_buffer.speech_stopped`.
+required:
+- event_id
+- type
+- audio_end_ms
+- item_id

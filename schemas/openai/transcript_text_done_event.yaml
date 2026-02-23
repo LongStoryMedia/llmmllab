@@ -1,0 +1,51 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TranscriptTextDoneEvent
+description: Emitted when the transcription is complete. Contains the complete transcription
+  text. Only emitted when you [create a transcription](https://platform.openai.com/docs/api-reference/audio/create-transcription)
+  with the `Stream` parameter set to `true`.
+type: object
+properties:
+  logprobs:
+    description: 'The log probabilities of the individual tokens in the transcription.
+      Only included if you [create a transcription](https://platform.openai.com/docs/api-reference/audio/create-transcription)
+      with the `include[]` parameter set to `logprobs`.
+
+      '
+    items:
+      properties:
+        bytes:
+          description: 'The bytes that were used to generate the log probability.
+
+            '
+          items:
+            type: integer
+          type: array
+        logprob:
+          description: 'The log probability of the token.
+
+            '
+          type: number
+        token:
+          description: 'The token that was used to generate the log probability.
+
+            '
+          type: string
+      type: object
+    type: array
+  text:
+    description: 'The text that was transcribed.
+
+      '
+    type: string
+  type:
+    description: 'The type of the event. Always `transcript.text.done`.
+
+      '
+    enum:
+    - transcript.text.done
+    type: string
+  usage:
+    $ref: transcript_text_usage_tokens.yaml
+required:
+- type
+- text

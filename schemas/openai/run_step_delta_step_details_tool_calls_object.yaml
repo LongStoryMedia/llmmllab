@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaStepDetailsToolCallsObject
+description: Details of the tool call.
+type: object
+properties:
+  tool_calls:
+    description: 'An array of tool calls the run step was involved in. These can be
+      associated with one of three types of tools: `code_interpreter`, `file_search`,
+      or `function`.
+
+      '
+    items:
+      $ref: run_step_delta_step_details_tool_call.yaml
+    type: array
+  type:
+    description: Always `tool_calls`.
+    enum:
+    - tool_calls
+    type: string
+required:
+- type

@@ -1,0 +1,54 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEvent
+description: 'A realtime server event.
+
+  '
+anyOf:
+- $ref: realtime_server_event_conversation_created.yaml
+- $ref: realtime_server_event_conversation_item_created.yaml
+- $ref: realtime_server_event_conversation_item_deleted.yaml
+- $ref: realtime_server_event_conversation_item_input_audio_transcription_completed.yaml
+- $ref: realtime_server_event_conversation_item_input_audio_transcription_delta.yaml
+- $ref: realtime_server_event_conversation_item_input_audio_transcription_failed.yaml
+- $ref: realtime_server_event_conversation_item_retrieved.yaml
+- $ref: realtime_server_event_conversation_item_truncated.yaml
+- $ref: realtime_server_event_error.yaml
+- $ref: realtime_server_event_input_audio_buffer_cleared.yaml
+- $ref: realtime_server_event_input_audio_buffer_committed.yaml
+- $ref: realtime_server_event_input_audio_buffer_dtmf_event_received.yaml
+- $ref: realtime_server_event_input_audio_buffer_speech_started.yaml
+- $ref: realtime_server_event_input_audio_buffer_speech_stopped.yaml
+- $ref: realtime_server_event_rate_limits_updated.yaml
+- $ref: realtime_server_event_response_audio_delta.yaml
+- $ref: realtime_server_event_response_audio_done.yaml
+- $ref: realtime_server_event_response_audio_transcript_delta.yaml
+- $ref: realtime_server_event_response_audio_transcript_done.yaml
+- $ref: realtime_server_event_response_content_part_added.yaml
+- $ref: realtime_server_event_response_content_part_done.yaml
+- $ref: realtime_server_event_response_created.yaml
+- $ref: realtime_server_event_response_done.yaml
+- $ref: realtime_server_event_response_function_call_arguments_delta.yaml
+- $ref: realtime_server_event_response_function_call_arguments_done.yaml
+- $ref: realtime_server_event_response_output_item_added.yaml
+- $ref: realtime_server_event_response_output_item_done.yaml
+- $ref: realtime_server_event_response_text_delta.yaml
+- $ref: realtime_server_event_response_text_done.yaml
+- $ref: realtime_server_event_session_created.yaml
+- $ref: realtime_server_event_session_updated.yaml
+- $ref: realtime_server_event_output_audio_buffer_started.yaml
+- $ref: realtime_server_event_output_audio_buffer_stopped.yaml
+- $ref: realtime_server_event_output_audio_buffer_cleared.yaml
+- $ref: realtime_server_event_conversation_item_added.yaml
+- $ref: realtime_server_event_conversation_item_done.yaml
+- $ref: realtime_server_event_input_audio_buffer_timeout_triggered.yaml
+- $ref: realtime_server_event_conversation_item_input_audio_transcription_segment.yaml
+- $ref: realtime_server_event_mcp_list_tools_in_progress.yaml
+- $ref: realtime_server_event_mcp_list_tools_completed.yaml
+- $ref: realtime_server_event_mcp_list_tools_failed.yaml
+- $ref: realtime_server_event_response_mcp_call_arguments_delta.yaml
+- $ref: realtime_server_event_response_mcp_call_arguments_done.yaml
+- $ref: realtime_server_event_response_mcp_call_in_progress.yaml
+- $ref: realtime_server_event_response_mcp_call_completed.yaml
+- $ref: realtime_server_event_response_mcp_call_failed.yaml
+discriminator:
+  propertyName: type

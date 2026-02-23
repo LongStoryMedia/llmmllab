@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateVectorStoreFileBatchRequest
+type: object
+properties:
+  attributes:
+    $ref: vector_store_file_attributes.yaml
+  chunking_strategy:
+    $ref: chunking_strategy_request_param.yaml
+  file_ids:
+    description: A list of [File](https://platform.openai.com/docs/api-reference/files)
+      IDs that the vector store should use. Useful for tools like `file_search` that
+      can access files.  If `attributes` or `chunking_strategy` are provided, they
+      will be  applied to all files in the batch. Mutually exclusive with `files`.
+    items:
+      type: string
+    maxItems: 500
+    minItems: 1
+    type: array
+  files:
+    description: A list of objects that each include a `file_id` plus optional `attributes`
+      or `chunking_strategy`. Use this when you need to override metadata for specific
+      files. The global `attributes` or `chunking_strategy` will be ignored and must
+      be specified for each file. Mutually exclusive with `file_ids`.
+    items:
+      $ref: create_vector_store_file_request.yaml
+    maxItems: 500
+    minItems: 1
+    type: array
+additionalProperties: false

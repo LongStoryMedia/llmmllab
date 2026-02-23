@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseInProgressEvent
+description: Emitted when the response is in progress.
+type: object
+properties:
+  response:
+    $ref: response.yaml
+    description: 'The response that is in progress.
+
+      '
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.in_progress`.
+
+      '
+    enum:
+    - response.in_progress
+    type: string
+required:
+- type
+- response
+- sequence_number

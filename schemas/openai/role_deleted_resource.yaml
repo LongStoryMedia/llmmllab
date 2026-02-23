@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RoleDeletedResource
+description: Confirmation payload returned after deleting a role.
+type: object
+properties:
+  deleted:
+    description: Whether the role was deleted.
+    type: boolean
+  id:
+    description: Identifier of the deleted role.
+    type: string
+  object:
+    description: Always `role.deleted`.
+    enum:
+    - role.deleted
+    type: string
+required:
+- object
+- id
+- deleted

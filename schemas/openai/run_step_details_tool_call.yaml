@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsToolCall
+anyOf:
+- $ref: run_step_details_tool_calls_code_object.yaml
+- $ref: run_step_details_tool_calls_file_search_object.yaml
+- $ref: run_step_details_tool_calls_function_object.yaml
+discriminator:
+  propertyName: type

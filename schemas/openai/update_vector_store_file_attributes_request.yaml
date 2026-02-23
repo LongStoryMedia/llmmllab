@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UpdateVectorStoreFileAttributesRequest
+type: object
+properties:
+  attributes:
+    $ref: vector_store_file_attributes.yaml
+required:
+- attributes
+additionalProperties: false

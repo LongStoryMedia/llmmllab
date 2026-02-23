@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsMessageCreationObject
+description: Details of the message creation by the run step.
+type: object
+properties:
+  message_creation:
+    properties:
+      message_id:
+        description: The ID of the message that was created by this run step.
+        type: string
+    required:
+    - message_id
+    type: object
+  type:
+    description: Always `message_creation`.
+    enum:
+    - message_creation
+    type: string
+required:
+- type
+- message_creation

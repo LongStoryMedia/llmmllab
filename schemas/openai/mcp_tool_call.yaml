@@ -1,0 +1,70 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MCPToolCall
+description: 'An invocation of a tool on an MCP server.
+
+  '
+type: object
+properties:
+  approval_request_id:
+    anyOf:
+    - description: 'Unique identifier for the MCP tool call approval request.
+
+        Include this value in a subsequent `mcp_approval_response` input to approve
+        or reject the corresponding tool call.
+
+        '
+      type: string
+    - type: 'null'
+  arguments:
+    description: 'A JSON string of the arguments passed to the tool.
+
+      '
+    type: string
+  error:
+    anyOf:
+    - description: 'The error from the tool call, if any.
+
+        '
+      type: string
+    - type: 'null'
+  id:
+    description: 'The unique ID of the tool call.
+
+      '
+    type: string
+  name:
+    description: 'The name of the tool that was run.
+
+      '
+    type: string
+  output:
+    anyOf:
+    - description: 'The output from the tool call.
+
+        '
+      type: string
+    - type: 'null'
+  server_label:
+    description: 'The label of the MCP server running the tool.
+
+      '
+    type: string
+  status:
+    $ref: mcp_tool_call_status.yaml
+    description: 'The status of the tool call. One of `in_progress`, `completed`,
+      `incomplete`, `calling`, or `failed`.
+
+      '
+  type:
+    description: 'The type of the item. Always `mcp_call`.
+
+      '
+    enum:
+    - mcp_call
+    type: string
+required:
+- type
+- id
+- server_label
+- name
+- arguments

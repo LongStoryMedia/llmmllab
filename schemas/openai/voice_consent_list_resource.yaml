@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VoiceConsentListResource
+type: object
+properties:
+  data:
+    items:
+      $ref: voice_consent_resource.yaml
+    type: array
+  first_id:
+    anyOf:
+    - type: string
+    - type: 'null'
+  has_more:
+    type: boolean
+  last_id:
+    anyOf:
+    - type: string
+    - type: 'null'
+  object:
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- has_more
+additionalProperties: false

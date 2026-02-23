@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: OutputAudio
+description: 'An audio output from the model.
+
+  '
+type: object
+properties:
+  data:
+    description: 'Base64-encoded audio data from the model.
+
+      '
+    type: string
+  transcript:
+    description: 'The transcript of the audio data from the model.
+
+      '
+    type: string
+  type:
+    description: 'The type of the output audio. Always `output_audio`.
+
+      '
+    enum:
+    - output_audio
+    type: string
+required:
+- type
+- data
+- transcript

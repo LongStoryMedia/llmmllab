@@ -1,0 +1,51 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ComputerToolCall
+description: 'A tool call to a computer use tool. See the
+
+  [computer use guide](https://platform.openai.com/docs/guides/tools-computer-use)
+  for more information.
+
+  '
+type: object
+properties:
+  action:
+    $ref: computer_action.yaml
+  call_id:
+    description: 'An identifier used when responding to the tool call with output.
+
+      '
+    type: string
+  id:
+    description: The unique ID of the computer call.
+    type: string
+  pending_safety_checks:
+    description: 'The pending safety checks for the computer call.
+
+      '
+    items:
+      $ref: computer_call_safety_check_param.yaml
+    type: array
+  status:
+    description: 'The status of the item. One of `in_progress`, `completed`, or
+
+      `incomplete`. Populated when items are returned via API.
+
+      '
+    enum:
+    - in_progress
+    - completed
+    - incomplete
+    type: string
+  type:
+    default: computer_call
+    description: The type of the computer call. Always `computer_call`.
+    enum:
+    - computer_call
+    type: string
+required:
+- type
+- id
+- action
+- call_id
+- pending_safety_checks
+- status

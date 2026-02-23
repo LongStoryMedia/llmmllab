@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DeletedVideoResource
+description: Confirmation payload returned after deleting a video.
+type: object
+properties:
+  deleted:
+    description: Indicates that the video resource was deleted.
+    type: boolean
+  id:
+    description: Identifier of the deleted video.
+    type: string
+  object:
+    default: video.deleted
+    description: The object type that signals the deletion response.
+    enum:
+    - video.deleted
+    type: string
+required:
+- object
+- deleted
+- id

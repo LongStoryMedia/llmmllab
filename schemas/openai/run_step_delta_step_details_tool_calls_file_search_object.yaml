@@ -1,0 +1,23 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDeltaStepDetailsToolCallsFileSearchObject
+type: object
+properties:
+  file_search:
+    description: For now, this is always going to be an empty object.
+    type: object
+  id:
+    description: The ID of the tool call object.
+    type: string
+  index:
+    description: The index of the tool call in the tool calls array.
+    type: integer
+  type:
+    description: The type of tool call. This is always going to be `file_search` for
+      this type of tool call.
+    enum:
+    - file_search
+    type: string
+required:
+- index
+- type
+- file_search

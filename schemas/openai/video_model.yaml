@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VideoModel
+anyOf:
+- type: string
+- enum:
+  - sora-2
+  - sora-2-pro
+  - sora-2-2025-10-06
+  - sora-2-pro-2025-10-06
+  - sora-2-2025-12-08
+  type: string

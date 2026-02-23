@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchActionFind
+description: 'Action type "find": Searches for a pattern within a loaded page.
+
+  '
+type: object
+properties:
+  pattern:
+    description: 'The pattern or text to search for within the page.
+
+      '
+    type: string
+  type:
+    description: 'The action type.
+
+      '
+    enum:
+    - find
+    type: string
+  url:
+    description: 'The URL of the page searched for the pattern.
+
+      '
+    format: uri
+    type: string
+required:
+- type
+- url
+- pattern

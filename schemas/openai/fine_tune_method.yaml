@@ -1,0 +1,20 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuneMethod
+description: The method used for fine-tuning.
+type: object
+properties:
+  dpo:
+    $ref: fine_tune_dpo_method.yaml
+  reinforcement:
+    $ref: fine_tune_reinforcement_method.yaml
+  supervised:
+    $ref: fine_tune_supervised_method.yaml
+  type:
+    description: The type of method. Is either `supervised`, `dpo`, or `reinforcement`.
+    enum:
+    - supervised
+    - dpo
+    - reinforcement
+    type: string
+required:
+- type

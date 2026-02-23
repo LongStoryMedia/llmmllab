@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatSessionHistory
+description: History retention preferences returned for the session.
+type: object
+properties:
+  enabled:
+    description: Indicates if chat history is persisted for the session.
+    type: boolean
+  recent_threads:
+    anyOf:
+    - description: Number of prior threads surfaced in history views. Defaults to
+        null when all history is retained.
+      type: integer
+    - type: 'null'
+required:
+- enabled
+- recent_threads

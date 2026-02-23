@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseIncompleteEvent
+description: 'An event that is emitted when a response finishes as incomplete.
+
+  '
+type: object
+properties:
+  response:
+    $ref: response.yaml
+    description: 'The response that was incomplete.
+
+      '
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.incomplete`.
+
+      '
+    enum:
+    - response.incomplete
+    type: string
+required:
+- type
+- response
+- sequence_number

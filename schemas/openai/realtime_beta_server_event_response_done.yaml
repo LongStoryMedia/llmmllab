@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventResponseDone
+description: "Returned when a Response is done streaming. Always emitted, no matter\
+  \ the \nfinal state. The Response object included in the `response.done` event will\
+  \ \ninclude all output Items in the Response but will omit the raw audio data.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  response:
+    $ref: realtime_beta_response.yaml
+  type:
+    const: response.done
+    description: The event type, must be `response.done`.
+required:
+- event_id
+- type
+- response

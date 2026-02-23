@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CodeInterpreterFileOutput
+description: 'The output of a code interpreter tool call that is a file.
+
+  '
+type: object
+properties:
+  files:
+    items:
+      properties:
+        file_id:
+          description: 'The ID of the file.
+
+            '
+          type: string
+        mime_type:
+          description: 'The MIME type of the file.
+
+            '
+          type: string
+      required:
+      - mime_type
+      - file_id
+      type: object
+    type: array
+  type:
+    description: 'The type of the code interpreter file output. Always `files`.
+
+      '
+    enum:
+    - files
+    type: string
+required:
+- type
+- files

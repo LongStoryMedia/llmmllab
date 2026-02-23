@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: usage_time_bucket.yaml
+    type: array
+  has_more:
+    type: boolean
+  next_page:
+    type: string
+  object:
+    enum:
+    - page
+    type: string
+required:
+- object
+- data
+- has_more
+- next_page

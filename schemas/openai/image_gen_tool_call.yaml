@@ -1,0 +1,41 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageGenToolCall
+description: 'An image generation request made by the model.
+
+  '
+type: object
+properties:
+  id:
+    description: 'The unique ID of the image generation call.
+
+      '
+    type: string
+  result:
+    anyOf:
+    - description: 'The generated image encoded in base64.
+
+        '
+      type: string
+    - type: 'null'
+  status:
+    description: 'The status of the image generation call.
+
+      '
+    enum:
+    - in_progress
+    - completed
+    - generating
+    - failed
+    type: string
+  type:
+    description: 'The type of the image generation call. Always `image_generation_call`.
+
+      '
+    enum:
+    - image_generation_call
+    type: string
+required:
+- type
+- id
+- status
+- result

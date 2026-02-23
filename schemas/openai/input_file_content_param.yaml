@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputFileContentParam
+description: A file input to the model.
+type: object
+properties:
+  file_data:
+    anyOf:
+    - description: The base64-encoded data of the file to be sent to the model.
+      maxLength: 33554432
+      type: string
+    - type: 'null'
+  file_id:
+    anyOf:
+    - description: The ID of the file to be sent to the model.
+      example: file-123
+      type: string
+    - type: 'null'
+  file_url:
+    anyOf:
+    - description: The URL of the file to be sent to the model.
+      type: string
+    - type: 'null'
+  filename:
+    anyOf:
+    - description: The name of the file to be sent to the model.
+      type: string
+    - type: 'null'
+  type:
+    default: input_file
+    description: The type of the input item. Always `input_file`.
+    enum:
+    - input_file
+    type: string
+required:
+- type

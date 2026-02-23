@@ -1,0 +1,56 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchTool
+description: 'Search the Internet for sources related to the prompt. Learn more about
+  the
+
+  [web search tool](https://platform.openai.com/docs/guides/tools-web-search).
+
+  '
+type: object
+properties:
+  filters:
+    anyOf:
+    - description: 'Filters for the search.
+
+        '
+      properties:
+        allowed_domains:
+          anyOf:
+          - default: []
+            description: 'Allowed domains for the search. If not provided, all domains
+              are allowed.
+
+              Subdomains of the provided domains are allowed as well.
+
+
+              Example: `["pubmed.ncbi.nlm.nih.gov"]`
+
+              '
+            items:
+              description: Allowed domain for the search.
+              type: string
+            title: Allowed domains for the search.
+            type: array
+          - type: 'null'
+      type: object
+    - type: 'null'
+  search_context_size:
+    default: medium
+    description: High level guidance for the amount of context window space to use
+      for the search. One of `low`, `medium`, or `high`. `medium` is the default.
+    enum:
+    - low
+    - medium
+    - high
+    type: string
+  type:
+    default: web_search
+    description: The type of the web search tool. One of `web_search` or `web_search_2025_08_26`.
+    enum:
+    - web_search
+    - web_search_2025_08_26
+    type: string
+  user_location:
+    $ref: web_search_approximate_location.yaml
+required:
+- type

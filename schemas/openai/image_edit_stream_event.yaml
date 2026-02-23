@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageEditStreamEvent
+anyOf:
+- $ref: image_edit_partial_image_event.yaml
+- $ref: image_edit_completed_event.yaml
+discriminator:
+  propertyName: type

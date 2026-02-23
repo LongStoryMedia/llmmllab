@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventConversationItemRetrieved
+description: 'Returned when a conversation item is retrieved with `conversation.item.retrieve`.
+  This is provided as a way to fetch the server''s representation of an item, for
+  example to get access to the post-processed audio data after noise cancellation
+  and VAD. It includes the full content of the Item, including audio data.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item:
+    $ref: realtime_conversation_item.yaml
+  type:
+    const: conversation.item.retrieved
+    description: The event type, must be `conversation.item.retrieved`.
+required:
+- event_id
+- type
+- item

@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DeletedThreadResource
+description: Confirmation payload returned after deleting a thread.
+type: object
+properties:
+  deleted:
+    description: Indicates that the thread has been deleted.
+    type: boolean
+  id:
+    description: Identifier of the deleted thread.
+    type: string
+  object:
+    default: chatkit.thread.deleted
+    description: Type discriminator that is always `chatkit.thread.deleted`.
+    enum:
+    - chatkit.thread.deleted
+    type: string
+required:
+- id
+- object
+- deleted

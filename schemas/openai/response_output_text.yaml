@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseOutputText
+description: Assistant response text accompanied by optional annotations.
+type: object
+properties:
+  annotations:
+    description: Ordered list of annotations attached to the response text.
+    items:
+      anyOf:
+      - $ref: file_annotation.yaml
+      - $ref: url_annotation.yaml
+      description: Annotation object describing a cited source.
+      discriminator:
+        propertyName: type
+    type: array
+  text:
+    description: Assistant generated text.
+    type: string
+  type:
+    default: output_text
+    description: Type discriminator that is always `output_text`.
+    enum:
+    - output_text
+    type: string
+required:
+- type
+- text
+- annotations

@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEventResponseCreate
+description: "This event instructs the server to create a Response, which means triggering\
+  \ \nmodel inference. When in Server VAD mode, the server will create Responses \n\
+  automatically.\n\nA Response will include at least one Item, and may have two, in\
+  \ which case \nthe second will be a function call. These Items will be appended\
+  \ to the \nconversation history by default.\n\nThe server will respond with a `response.created`\
+  \ event, events for Items \nand content created, and finally a `response.done` event\
+  \ to indicate the \nResponse is complete.\n\nThe `response.create` event includes\
+  \ inference configuration like \n`instructions` and `tools`. If these are set, they\
+  \ will override the Session's \nconfiguration for this Response only.\n\nResponses\
+  \ can be created out-of-band of the default Conversation, meaning that they can\n\
+  have arbitrary input, and it's possible to disable writing the output to the Conversation.\n\
+  Only one Response can write to the default Conversation at a time, but otherwise\
+  \ multiple\nResponses can be created in parallel. The `metadata` field is a good\
+  \ way to disambiguate\nmultiple simultaneous Responses.\n\nClients can set `conversation`\
+  \ to `none` to create a Response that does not write to the default\nConversation.\
+  \ Arbitrary input can be provided with the `input` field, which is an array accepting\n\
+  raw Items and references to existing Items.\n"
+type: object
+properties:
+  event_id:
+    description: Optional client-generated ID used to identify this event.
+    maxLength: 512
+    type: string
+  response:
+    $ref: realtime_response_create_params.yaml
+  type:
+    const: response.create
+    description: The event type, must be `response.create`.
+required:
+- type

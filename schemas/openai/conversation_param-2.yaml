@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ConversationParam-2
+description: The conversation that this response belongs to.
+type: object
+properties:
+  id:
+    description: The unique ID of the conversation.
+    example: conv_123
+    type: string
+required:
+- id

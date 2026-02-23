@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellCallItemStatus
+description: Status values reported for shell tool calls.
+type: string
+enum:
+- in_progress
+- completed
+- incomplete

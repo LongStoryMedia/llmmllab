@@ -1,0 +1,131 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateEvalResponsesRunDataSource
+description: 'A ResponsesRunDataSource object describing a model sampling configuration.
+
+  '
+type: object
+properties:
+  input_messages:
+    anyOf:
+    - properties:
+        template:
+          description: A list of chat messages forming the prompt or context. May
+            include variable references to the `item` namespace, ie {{item.name}}.
+          items:
+            anyOf:
+            - properties:
+                content:
+                  description: The content of the message.
+                  type: string
+                role:
+                  description: The role of the message (e.g. "system", "assistant",
+                    "user").
+                  type: string
+              required:
+              - role
+              - content
+              title: ChatMessage
+              type: object
+            - $ref: eval_item.yaml
+          type: array
+        type:
+          description: The type of input messages. Always `template`.
+          enum:
+          - template
+          type: string
+      required:
+      - type
+      - template
+      title: InputMessagesTemplate
+      type: object
+    - properties:
+        item_reference:
+          description: A reference to a variable in the `item` namespace. Ie, "item.name"
+          type: string
+        type:
+          description: The type of input messages. Always `item_reference`.
+          enum:
+          - item_reference
+          type: string
+      required:
+      - type
+      - item_reference
+      title: InputMessagesItemReference
+      type: object
+    description: Used when sampling from a model. Dictates the structure of the messages
+      passed into the model. Can either be a reference to a prebuilt trajectory (ie,
+      `item.input_trajectory`), or a template with variable references to the `item`
+      namespace.
+    discriminator:
+      propertyName: type
+  model:
+    description: The name of the model to use for generating completions (e.g. "o3-mini").
+    type: string
+  sampling_params:
+    properties:
+      max_completion_tokens:
+        description: The maximum number of tokens in the generated output.
+        type: integer
+      reasoning_effort:
+        $ref: reasoning_effort.yaml
+      seed:
+        default: 42
+        description: A seed value to initialize the randomness, during sampling.
+        type: integer
+      temperature:
+        default: 1
+        description: A higher temperature increases randomness in the outputs.
+        type: number
+      text:
+        description: 'Configuration options for a text response from the model. Can
+          be plain
+
+          text or structured JSON data. Learn more:
+
+          - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+
+          - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+
+          '
+        properties:
+          format:
+            $ref: text_response_format_configuration.yaml
+        type: object
+      tools:
+        description: "An array of tools the model may call while generating a response.\
+          \ You\ncan specify which tool to use by setting the `tool_choice` parameter.\n\
+          \nThe two categories of tools you can provide the model are:\n\n- **Built-in\
+          \ tools**: Tools that are provided by OpenAI that extend the\n  model's\
+          \ capabilities, like [web search](https://platform.openai.com/docs/guides/tools-web-search)\n\
+          \  or [file search](https://platform.openai.com/docs/guides/tools-file-search).\
+          \ Learn more about\n  [built-in tools](https://platform.openai.com/docs/guides/tools).\n\
+          - **Function calls (custom tools)**: Functions that are defined by you,\n\
+          \  enabling the model to call your own code. Learn more about\n  [function\
+          \ calling](https://platform.openai.com/docs/guides/function-calling).\n"
+        items:
+          $ref: tool.yaml
+        type: array
+      top_p:
+        default: 1
+        description: An alternative to temperature for nucleus sampling; 1.0 includes
+          all tokens.
+        type: number
+    type: object
+  source:
+    anyOf:
+    - $ref: eval_jsonl_file_content_source.yaml
+    - $ref: eval_jsonl_file_id_source.yaml
+    - $ref: eval_responses_source.yaml
+    description: Determines what populates the `item` namespace in this run's data
+      source.
+    discriminator:
+      propertyName: type
+  type:
+    default: responses
+    description: The type of run data source. Always `responses`.
+    enum:
+    - responses
+    type: string
+required:
+- type
+- source

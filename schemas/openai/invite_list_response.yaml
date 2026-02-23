@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InviteListResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: invite.yaml
+    type: array
+  first_id:
+    description: The first `invite_id` in the retrieved `list`
+    type: string
+  has_more:
+    description: The `has_more` property is used for pagination to indicate there
+      are additional results.
+    type: boolean
+  last_id:
+    description: The last `invite_id` in the retrieved `list`
+    type: string
+  object:
+    description: The object type, which is always `list`
+    enum:
+    - list
+    type: string
+required:
+- object
+- data

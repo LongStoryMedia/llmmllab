@@ -1,0 +1,41 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventRateLimitsUpdated
+description: "Emitted at the beginning of a Response to indicate the updated rate\
+  \ limits. \nWhen a Response is created some tokens will be \"reserved\" for the\
+  \ output \ntokens, the rate limits shown here reflect that reservation, which is\
+  \ then \nadjusted accordingly once the Response is completed.\n"
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  rate_limits:
+    description: List of rate limit information.
+    items:
+      properties:
+        limit:
+          description: The maximum allowed value for the rate limit.
+          type: integer
+        name:
+          description: 'The name of the rate limit (`requests`, `tokens`).
+
+            '
+          enum:
+          - requests
+          - tokens
+          type: string
+        remaining:
+          description: The remaining value before the limit is reached.
+          type: integer
+        reset_seconds:
+          description: Seconds until the rate limit resets.
+          type: number
+      type: object
+    type: array
+  type:
+    const: rate_limits.updated
+    description: The event type, must be `rate_limits.updated`.
+required:
+- event_id
+- type
+- rate_limits

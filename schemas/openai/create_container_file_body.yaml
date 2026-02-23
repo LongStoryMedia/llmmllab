@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateContainerFileBody
+type: object
+properties:
+  file:
+    description: 'The File object (not file name) to be uploaded.
+
+      '
+    format: binary
+    type: string
+  file_id:
+    description: Name of the file to create.
+    type: string
+required: []

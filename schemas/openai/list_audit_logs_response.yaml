@@ -1,0 +1,26 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ListAuditLogsResponse
+type: object
+properties:
+  data:
+    items:
+      $ref: audit_log.yaml
+    type: array
+  first_id:
+    example: audit_log-defb456h8dks
+    type: string
+  has_more:
+    type: boolean
+  last_id:
+    example: audit_log-hnbkd8s93s
+    type: string
+  object:
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

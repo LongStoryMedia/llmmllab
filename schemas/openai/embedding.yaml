@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Embedding
+description: 'Represents an embedding vector returned by embedding endpoint.
+
+  '
+type: object
+properties:
+  embedding:
+    description: 'The embedding vector, which is a list of floats. The length of vector
+      depends on the model as listed in the [embedding guide](https://platform.openai.com/docs/guides/embeddings).
+
+      '
+    items:
+      format: float
+      type: number
+    type: array
+  index:
+    description: The index of the embedding in the list of embeddings.
+    type: integer
+  object:
+    description: The object type, which is always "embedding".
+    enum:
+    - embedding
+    type: string
+required:
+- index
+- object
+- embedding

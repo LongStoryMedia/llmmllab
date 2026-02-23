@@ -1,0 +1,121 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateChatCompletionStreamResponse
+description: "Represents a streamed chunk of a chat completion response returned\n\
+  by the model, based on the provided input. \n[Learn more](https://platform.openai.com/docs/guides/streaming-responses).\n"
+type: object
+properties:
+  choices:
+    description: 'A list of chat completion choices. Can contain more than one elements
+      if `n` is greater than 1. Can also be empty for the
+
+      last chunk if you set `stream_options: {"include_usage": true}`.
+
+      '
+    items:
+      properties:
+        delta:
+          $ref: chat_completion_stream_response_delta.yaml
+        finish_reason:
+          description: 'The reason the model stopped generating tokens. This will
+            be `stop` if the model hit a natural stop point or a provided stop sequence,
+
+            `length` if the maximum number of tokens specified in the request was
+            reached,
+
+            `content_filter` if content was omitted due to a flag from our content
+            filters,
+
+            `tool_calls` if the model called a tool, or `function_call` (deprecated)
+            if the model called a function.
+
+            '
+          enum:
+          - stop
+          - length
+          - tool_calls
+          - content_filter
+          - function_call
+          nullable: true
+          type: string
+        index:
+          description: The index of the choice in the list of choices.
+          type: integer
+        logprobs:
+          description: Log probability information for the choice.
+          nullable: true
+          properties:
+            content:
+              description: A list of message content tokens with log probability information.
+              items:
+                $ref: chat_completion_token_logprob.yaml
+              nullable: true
+              type: array
+            refusal:
+              description: A list of message refusal tokens with log probability information.
+              items:
+                $ref: chat_completion_token_logprob.yaml
+              nullable: true
+              type: array
+          required:
+          - content
+          - refusal
+          type: object
+      required:
+      - delta
+      - finish_reason
+      - index
+      type: object
+    type: array
+  created:
+    description: The Unix timestamp (in seconds) of when the chat completion was created.
+      Each chunk has the same timestamp.
+    type: integer
+  id:
+    description: A unique identifier for the chat completion. Each chunk has the same
+      ID.
+    type: string
+  model:
+    description: The model to generate the completion.
+    type: string
+  object:
+    description: The object type, which is always `chat.completion.chunk`.
+    enum:
+    - chat.completion.chunk
+    type: string
+  service_tier:
+    $ref: service_tier.yaml
+  system_fingerprint:
+    deprecated: true
+    description: 'This fingerprint represents the backend configuration that the model
+      runs with.
+
+      Can be used in conjunction with the `seed` request parameter to understand when
+      backend changes have been made that might impact determinism.
+
+      '
+    type: string
+  usage:
+    $ref: completion_usage.yaml
+    description: 'An optional field that will only be present when you set
+
+      `stream_options: {"include_usage": true}` in your request. When present, it
+
+      contains a null value **except for the last chunk** which contains the
+
+      token usage statistics for the entire request.
+
+
+      **NOTE:** If the stream is interrupted or cancelled, you may not
+
+      receive the final usage chunk which contains the total token usage for
+
+      the request.
+
+      '
+    nullable: true
+required:
+- choices
+- created
+- id
+- model
+- object

@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalJsonlFileContentSource
+type: object
+properties:
+  content:
+    description: The content of the jsonl file.
+    items:
+      properties:
+        item:
+          additionalProperties: true
+          type: object
+        sample:
+          additionalProperties: true
+          type: object
+      required:
+      - item
+      type: object
+    type: array
+  type:
+    default: file_content
+    description: The type of jsonl source. Always `file_content`.
+    enum:
+    - file_content
+    type: string
+required:
+- type
+- content

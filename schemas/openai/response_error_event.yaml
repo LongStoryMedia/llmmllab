@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseErrorEvent
+description: Emitted when an error occurs.
+type: object
+properties:
+  code:
+    anyOf:
+    - description: 'The error code.
+
+        '
+      type: string
+    - type: 'null'
+  message:
+    description: 'The error message.
+
+      '
+    type: string
+  param:
+    anyOf:
+    - description: 'The error parameter.
+
+        '
+      type: string
+    - type: 'null'
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: 'The type of the event. Always `error`.
+
+      '
+    enum:
+    - error
+    type: string
+required:
+- type
+- code
+- message
+- param
+- sequence_number

@@ -1,0 +1,74 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebhookRealtimeCallIncoming
+description: 'Sent when Realtime API Receives a incoming SIP call.
+
+  '
+type: object
+properties:
+  created_at:
+    description: 'The Unix timestamp (in seconds) of when the model response was completed.
+
+      '
+    type: integer
+  data:
+    description: 'Event data payload.
+
+      '
+    properties:
+      call_id:
+        description: 'The unique ID of this call.
+
+          '
+        type: string
+      sip_headers:
+        description: 'Headers from the SIP Invite.
+
+          '
+        items:
+          description: 'A header from the SIP Invite.
+
+            '
+          properties:
+            name:
+              description: 'Name of the SIP Header.
+
+                '
+              type: string
+            value:
+              description: 'Value of the SIP Header.
+
+                '
+              type: string
+          required:
+          - name
+          - value
+          type: object
+        type: array
+    required:
+    - call_id
+    - sip_headers
+    type: object
+  id:
+    description: 'The unique ID of the event.
+
+      '
+    type: string
+  object:
+    description: 'The object of the event. Always `event`.
+
+      '
+    enum:
+    - event
+    type: string
+  type:
+    description: 'The type of the event. Always `realtime.call.incoming`.
+
+      '
+    enum:
+    - realtime.call.incoming
+    type: string
+required:
+- created_at
+- id
+- data
+- type

@@ -1,0 +1,10 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateGroupUserBody
+description: Request payload for adding a user to a group.
+type: object
+properties:
+  user_id:
+    description: Identifier of the user to add to the group.
+    type: string
+required:
+- user_id

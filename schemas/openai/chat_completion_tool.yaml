@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionTool
+description: 'A function tool that can be used to generate a response.
+
+  '
+type: object
+properties:
+  function:
+    $ref: function_object.yaml
+  type:
+    description: The type of the tool. Currently, only `function` is supported.
+    enum:
+    - function
+    type: string
+required:
+- type
+- function

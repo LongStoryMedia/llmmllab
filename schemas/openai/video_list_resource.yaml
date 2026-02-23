@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: VideoListResource
+type: object
+properties:
+  data:
+    description: A list of items
+    items:
+      $ref: video_resource.yaml
+    type: array
+  first_id:
+    anyOf:
+    - description: The ID of the first item in the list.
+      type: string
+    - type: 'null'
+  has_more:
+    description: Whether there are more items available.
+    type: boolean
+  last_id:
+    anyOf:
+    - description: The ID of the last item in the list.
+      type: string
+    - type: 'null'
+  object:
+    const: list
+    default: list
+    description: The type of object returned, must be `list`.
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

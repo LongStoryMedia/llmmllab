@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: NoiseReductionType
+description: 'Type of noise reduction. `near_field` is for close-talking microphones
+  such as headphones, `far_field` is for far-field microphones such as laptop or conference
+  room microphones.
+
+  '
+type: string
+enum:
+- near_field
+- far_field

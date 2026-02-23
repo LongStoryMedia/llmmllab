@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UploadCertificateRequest
+type: object
+properties:
+  content:
+    description: The certificate content in PEM format
+    type: string
+  name:
+    description: An optional name for the certificate
+    type: string
+required:
+- content

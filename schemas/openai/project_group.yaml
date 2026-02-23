@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectGroup
+description: Details about a group's membership in a project.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) when the group was granted project access.
+    format: int64
+    type: integer
+  group_id:
+    description: Identifier of the group that has access to the project.
+    type: string
+  group_name:
+    description: Display name of the group.
+    type: string
+  object:
+    description: Always `project.group`.
+    enum:
+    - project.group
+    type: string
+  project_id:
+    description: Identifier of the project.
+    type: string
+required:
+- object
+- project_id
+- group_id
+- group_name
+- created_at

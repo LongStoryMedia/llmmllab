@@ -1,0 +1,44 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseRefusalDoneEvent
+description: Emitted when refusal text is finalized.
+type: object
+properties:
+  content_index:
+    description: 'The index of the content part that the refusal text is finalized.
+
+      '
+    type: integer
+  item_id:
+    description: 'The ID of the output item that the refusal text is finalized.
+
+      '
+    type: string
+  output_index:
+    description: 'The index of the output item that the refusal text is finalized.
+
+      '
+    type: integer
+  refusal:
+    description: 'The refusal text that is finalized.
+
+      '
+    type: string
+  sequence_number:
+    description: 'The sequence number of this event.
+
+      '
+    type: integer
+  type:
+    description: 'The type of the event. Always `response.refusal.done`.
+
+      '
+    enum:
+    - response.refusal.done
+    type: string
+required:
+- type
+- item_id
+- output_index
+- content_index
+- refusal
+- sequence_number

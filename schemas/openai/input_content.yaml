@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputContent
+anyOf:
+- $ref: input_text_content.yaml
+- $ref: input_image_content.yaml
+- $ref: input_file_content.yaml
+discriminator:
+  propertyName: type

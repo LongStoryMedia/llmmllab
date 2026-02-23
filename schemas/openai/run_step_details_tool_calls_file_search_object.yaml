@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunStepDetailsToolCallsFileSearchObject
+type: object
+properties:
+  file_search:
+    description: For now, this is always going to be an empty object.
+    properties:
+      ranking_options:
+        $ref: run_step_details_tool_calls_file_search_ranking_options_object.yaml
+      results:
+        description: The results of the file search.
+        items:
+          $ref: run_step_details_tool_calls_file_search_result_object.yaml
+        type: array
+    type: object
+  id:
+    description: The ID of the tool call object.
+    type: string
+  type:
+    description: The type of tool call. This is always going to be `file_search` for
+      this type of tool call.
+    enum:
+    - file_search
+    type: string
+required:
+- id
+- type
+- file_search

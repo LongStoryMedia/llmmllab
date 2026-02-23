@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTuningCheckpointPermission
+description: 'The `checkpoint.permission` object represents a permission for a fine-tuned
+  model checkpoint.
+
+  '
+type: object
+properties:
+  created_at:
+    description: The Unix timestamp (in seconds) for when the permission was created.
+    type: integer
+  id:
+    description: The permission identifier, which can be referenced in the API endpoints.
+    type: string
+  object:
+    description: The object type, which is always "checkpoint.permission".
+    enum:
+    - checkpoint.permission
+    type: string
+  project_id:
+    description: The project identifier that the permission is for.
+    type: string
+required:
+- created_at
+- id
+- object
+- project_id

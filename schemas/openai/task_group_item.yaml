@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TaskGroupItem
+description: Collection of workflow tasks grouped together in the thread.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  id:
+    description: Identifier of the thread item.
+    type: string
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  tasks:
+    description: Tasks included in the group.
+    items:
+      $ref: task_group_task.yaml
+    type: array
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.task_group
+    description: Type discriminator that is always `chatkit.task_group`.
+    enum:
+    - chatkit.task_group
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- tasks

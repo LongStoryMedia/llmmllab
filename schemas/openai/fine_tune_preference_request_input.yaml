@@ -1,0 +1,46 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FineTunePreferenceRequestInput
+description: 'The per-line training example of a fine-tuning input file for chat models
+  using the dpo method.
+
+  Input messages may contain text or image content only. Audio and file input messages
+
+  are not currently supported for fine-tuning.
+
+  '
+type: object
+properties:
+  input:
+    properties:
+      messages:
+        items:
+          anyOf:
+          - $ref: chat_completion_request_system_message.yaml
+          - $ref: chat_completion_request_user_message.yaml
+          - $ref: fine_tune_chat_completion_request_assistant_message.yaml
+          - $ref: chat_completion_request_tool_message.yaml
+          - $ref: chat_completion_request_function_message.yaml
+        minItems: 1
+        type: array
+      parallel_tool_calls:
+        $ref: parallel_tool_calls.yaml
+      tools:
+        description: A list of tools the model may generate JSON inputs for.
+        items:
+          $ref: chat_completion_tool.yaml
+        type: array
+    type: object
+  non_preferred_output:
+    description: The non-preferred completion message for the output.
+    items:
+      anyOf:
+      - $ref: chat_completion_request_assistant_message.yaml
+    maxItems: 1
+    type: array
+  preferred_output:
+    description: The preferred completion message for the output.
+    items:
+      anyOf:
+      - $ref: chat_completion_request_assistant_message.yaml
+    maxItems: 1
+    type: array

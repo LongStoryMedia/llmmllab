@@ -1,0 +1,4 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ChatCompletionRequestToolMessageContentPart
+anyOf:
+- $ref: chat_completion_request_message_content_part_text.yaml

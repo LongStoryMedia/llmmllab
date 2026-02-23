@@ -1,0 +1,70 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageStreamEvent
+anyOf:
+- description: Occurs when a [message](https://platform.openai.com/docs/api-reference/messages/object)
+    is created.
+  properties:
+    data:
+      $ref: message_object.yaml
+    event:
+      enum:
+      - thread.message.created
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [message](https://platform.openai.com/docs/api-reference/messages/object)
+    moves to an `in_progress` state.
+  properties:
+    data:
+      $ref: message_object.yaml
+    event:
+      enum:
+      - thread.message.in_progress
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when parts of a [Message](https://platform.openai.com/docs/api-reference/messages/object)
+    are being streamed.
+  properties:
+    data:
+      $ref: message_delta_object.yaml
+    event:
+      enum:
+      - thread.message.delta
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [message](https://platform.openai.com/docs/api-reference/messages/object)
+    is completed.
+  properties:
+    data:
+      $ref: message_object.yaml
+    event:
+      enum:
+      - thread.message.completed
+      type: string
+  required:
+  - event
+  - data
+  type: object
+- description: Occurs when a [message](https://platform.openai.com/docs/api-reference/messages/object)
+    ends before it is completed.
+  properties:
+    data:
+      $ref: message_object.yaml
+    event:
+      enum:
+      - thread.message.incomplete
+      type: string
+  required:
+  - event
+  - data
+  type: object
+discriminator:
+  propertyName: event

@@ -1,0 +1,18 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Verbosity
+anyOf:
+- default: medium
+  description: 'Constrains the verbosity of the model''s response. Lower values will
+    result in
+
+    more concise responses, while higher values will result in more verbose responses.
+
+    Currently supported values are `low`, `medium`, and `high`.
+
+    '
+  enum:
+  - low
+  - medium
+  - high
+  type: string
+- type: 'null'

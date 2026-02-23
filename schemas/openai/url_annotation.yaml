@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UrlAnnotation
+description: Annotation that references a URL.
+type: object
+properties:
+  source:
+    $ref: url_annotation_source.yaml
+    description: URL referenced by the annotation.
+  type:
+    default: url
+    description: Type discriminator that is always `url` for this annotation.
+    enum:
+    - url
+    type: string
+required:
+- type
+- source

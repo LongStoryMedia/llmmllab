@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaContentTextAnnotationsFilePathObject
+description: A URL for the file that's generated when the assistant used the `code_interpreter`
+  tool to generate a file.
+type: object
+properties:
+  end_index:
+    minimum: 0
+    type: integer
+  file_path:
+    properties:
+      file_id:
+        description: The ID of the file that was generated.
+        type: string
+    type: object
+  index:
+    description: The index of the annotation in the text content part.
+    type: integer
+  start_index:
+    minimum: 0
+    type: integer
+  text:
+    description: The text in the message content that needs to be replaced.
+    type: string
+  type:
+    description: Always `file_path`.
+    enum:
+    - file_path
+    type: string
+required:
+- index
+- type

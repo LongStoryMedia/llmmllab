@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: AssistantTool
+anyOf:
+- $ref: assistant_tools_code.yaml
+- $ref: assistant_tools_file_search.yaml
+- $ref: assistant_tools_function.yaml
+discriminator:
+  propertyName: type

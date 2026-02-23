@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeMCPApprovalRequest
+description: 'A Realtime item requesting human approval of a tool invocation.
+
+  '
+type: object
+properties:
+  arguments:
+    description: A JSON string of arguments for the tool.
+    type: string
+  id:
+    description: The unique ID of the approval request.
+    type: string
+  name:
+    description: The name of the tool to run.
+    type: string
+  server_label:
+    description: The label of the MCP server making the request.
+    type: string
+  type:
+    description: The type of the item. Always `mcp_approval_request`.
+    enum:
+    - mcp_approval_request
+    type: string
+required:
+- type
+- id
+- server_label
+- name
+- arguments

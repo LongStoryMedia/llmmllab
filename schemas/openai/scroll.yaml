@@ -1,0 +1,40 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Scroll
+description: 'A scroll action.
+
+  '
+type: object
+properties:
+  scroll_x:
+    description: 'The horizontal scroll distance.
+
+      '
+    type: integer
+  scroll_y:
+    description: 'The vertical scroll distance.
+
+      '
+    type: integer
+  type:
+    default: scroll
+    description: "Specifies the event type. For a scroll action, this property is\
+      \ \nalways set to `scroll`.\n"
+    enum:
+    - scroll
+    type: string
+  x:
+    description: 'The x-coordinate where the scroll occurred.
+
+      '
+    type: integer
+  y:
+    description: 'The y-coordinate where the scroll occurred.
+
+      '
+    type: integer
+required:
+- type
+- x
+- y
+- scroll_x
+- scroll_y

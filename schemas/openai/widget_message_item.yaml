@@ -1,0 +1,36 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WidgetMessageItem
+description: Thread item that renders a widget payload.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) for when the item was created.
+    type: integer
+  id:
+    description: Identifier of the thread item.
+    type: string
+  object:
+    default: chatkit.thread_item
+    description: Type discriminator that is always `chatkit.thread_item`.
+    enum:
+    - chatkit.thread_item
+    type: string
+  thread_id:
+    description: Identifier of the parent thread.
+    type: string
+  type:
+    default: chatkit.widget
+    description: Type discriminator that is always `chatkit.widget`.
+    enum:
+    - chatkit.widget
+    type: string
+  widget:
+    description: Serialized widget payload rendered in the UI.
+    type: string
+required:
+- id
+- object
+- created_at
+- thread_id
+- type
+- widget

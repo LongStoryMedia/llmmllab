@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageDeltaContentImageFileObject
+description: References an image [File](https://platform.openai.com/docs/api-reference/files)
+  in the content of a message.
+type: object
+properties:
+  image_file:
+    properties:
+      detail:
+        default: auto
+        description: Specifies the detail level of the image if specified by the user.
+          `low` uses fewer tokens, you can opt in to high resolution using `high`.
+        enum:
+        - auto
+        - low
+        - high
+        type: string
+      file_id:
+        description: The [File](https://platform.openai.com/docs/api-reference/files)
+          ID of the image in the message content. Set `purpose="vision"` when uploading
+          the File if you need to later display the file content.
+        type: string
+    type: object
+  index:
+    description: The index of the content part in the message.
+    type: integer
+  type:
+    description: Always `image_file`.
+    enum:
+    - image_file
+    type: string
+required:
+- index
+- type

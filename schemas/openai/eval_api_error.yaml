@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalApiError
+description: 'An object representing an error response from the Eval API.
+
+  '
+type: object
+properties:
+  code:
+    description: The error code.
+    type: string
+  message:
+    description: The error message.
+    type: string
+required:
+- code
+- message

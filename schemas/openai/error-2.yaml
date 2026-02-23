@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Error-2
+description: An error that occurred while generating the response.
+type: object
+properties:
+  code:
+    description: A machine-readable error code that was returned.
+    type: string
+  message:
+    description: A human-readable description of the error that was returned.
+    type: string
+required:
+- code
+- message

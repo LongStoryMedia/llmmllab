@@ -1,0 +1,32 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: UsageTimeBucket
+type: object
+properties:
+  end_time:
+    type: integer
+  object:
+    enum:
+    - bucket
+    type: string
+  result:
+    items:
+      anyOf:
+      - $ref: usage_completions_result.yaml
+      - $ref: usage_embeddings_result.yaml
+      - $ref: usage_moderations_result.yaml
+      - $ref: usage_images_result.yaml
+      - $ref: usage_audio_speeches_result.yaml
+      - $ref: usage_audio_transcriptions_result.yaml
+      - $ref: usage_vector_stores_result.yaml
+      - $ref: usage_code_interpreter_sessions_result.yaml
+      - $ref: costs_result.yaml
+      discriminator:
+        propertyName: object
+    type: array
+  start_time:
+    type: integer
+required:
+- object
+- start_time
+- end_time
+- result

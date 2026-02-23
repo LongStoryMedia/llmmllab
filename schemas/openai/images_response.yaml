@@ -1,0 +1,47 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImagesResponse
+description: The response from the image generation endpoint.
+type: object
+properties:
+  background:
+    description: The background parameter used for the image generation. Either `transparent`
+      or `opaque`.
+    enum:
+    - transparent
+    - opaque
+    type: string
+  created:
+    description: The Unix timestamp (in seconds) of when the image was created.
+    type: integer
+  data:
+    description: The list of generated images.
+    items:
+      $ref: image.yaml
+    type: array
+  output_format:
+    description: The output format of the image generation. Either `png`, `webp`,
+      or `jpeg`.
+    enum:
+    - png
+    - webp
+    - jpeg
+    type: string
+  quality:
+    description: The quality of the image generated. Either `low`, `medium`, or `high`.
+    enum:
+    - low
+    - medium
+    - high
+    type: string
+  size:
+    description: The size of the image generated. Either `1024x1024`, `1024x1536`,
+      or `1536x1024`.
+    enum:
+    - 1024x1024
+    - 1024x1536
+    - 1536x1024
+    type: string
+  usage:
+    $ref: image_gen_usage.yaml
+required:
+- created

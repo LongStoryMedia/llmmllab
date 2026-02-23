@@ -1,0 +1,53 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Eval
+description: "An Eval object with a data source config and testing criteria.\nAn Eval\
+  \ represents a task to be done for your LLM integration.\nLike:\n - Improve the\
+  \ quality of my chatbot\n - See how well my chatbot handles customer support\n -\
+  \ Check if o4-mini is better at my usecase than gpt-4o\n"
+type: object
+properties:
+  created_at:
+    description: The Unix timestamp (in seconds) for when the eval was created.
+    type: integer
+  data_source_config:
+    anyOf:
+    - $ref: eval_custom_data_source_config.yaml
+    - $ref: eval_logs_data_source_config.yaml
+    - $ref: eval_stored_completions_data_source_config.yaml
+    description: Configuration of data sources used in runs of the evaluation.
+    discriminator:
+      propertyName: type
+    type: object
+  id:
+    description: Unique identifier for the evaluation.
+    type: string
+  metadata:
+    $ref: metadata.yaml
+  name:
+    description: The name of the evaluation.
+    example: Chatbot effectiveness Evaluation
+    type: string
+  object:
+    default: eval
+    description: The object type.
+    enum:
+    - eval
+    type: string
+  testing_criteria:
+    description: A list of testing criteria.
+    items:
+      anyOf:
+      - $ref: eval_grader_label_model.yaml
+      - $ref: eval_grader_string_check.yaml
+      - $ref: eval_grader_text_similarity.yaml
+      - $ref: eval_grader_python.yaml
+      - $ref: eval_grader_score_model.yaml
+    type: array
+required:
+- id
+- data_source_config
+- object
+- testing_criteria
+- name
+- created_at
+- metadata

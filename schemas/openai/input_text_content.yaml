@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputTextContent
+description: A text input to the model.
+type: object
+properties:
+  text:
+    description: The text input to the model.
+    type: string
+  type:
+    default: input_text
+    description: The type of the input item. Always `input_text`.
+    enum:
+    - input_text
+    type: string
+required:
+- type
+- text

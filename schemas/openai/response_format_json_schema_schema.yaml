@@ -1,0 +1,9 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseFormatJsonSchemaSchema
+description: 'The schema for the response format, described as a JSON Schema object.
+
+  Learn how to build JSON schemas [here](https://json-schema.org/).
+
+  '
+type: object
+additionalProperties: true

@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponsePromptVariables
+anyOf:
+- additionalProperties:
+    anyOf:
+    - type: string
+    - $ref: input_text_content.yaml
+    - $ref: input_image_content.yaml
+    - $ref: input_file_content.yaml
+  description: 'Optional map of values to substitute in for variables in your
+
+    prompt. The substitution values can either be strings, or other
+
+    Response input types like images or files.
+
+    '
+  title: Prompt Variables
+  type: object
+- type: 'null'

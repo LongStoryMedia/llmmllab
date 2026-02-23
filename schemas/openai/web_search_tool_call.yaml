@@ -1,0 +1,51 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: WebSearchToolCall
+description: 'The results of a web search tool call. See the
+
+  [web search guide](https://platform.openai.com/docs/guides/tools-web-search) for
+  more information.
+
+  '
+type: object
+properties:
+  action:
+    anyOf:
+    - $ref: web_search_action_search.yaml
+    - $ref: web_search_action_open_page.yaml
+    - $ref: web_search_action_find.yaml
+    description: 'An object describing the specific action taken in this web search
+      call.
+
+      Includes details on how the model used the web (search, open_page, find).
+
+      '
+    discriminator:
+      propertyName: type
+    type: object
+  id:
+    description: 'The unique ID of the web search tool call.
+
+      '
+    type: string
+  status:
+    description: 'The status of the web search tool call.
+
+      '
+    enum:
+    - in_progress
+    - searching
+    - completed
+    - failed
+    type: string
+  type:
+    description: 'The type of the web search tool call. Always `web_search_call`.
+
+      '
+    enum:
+    - web_search_call
+    type: string
+required:
+- id
+- type
+- status
+- action

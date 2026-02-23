@@ -1,0 +1,34 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MCPListToolsTool
+description: 'A tool available on an MCP server.
+
+  '
+type: object
+properties:
+  annotations:
+    anyOf:
+    - description: 'Additional annotations about the tool.
+
+        '
+      type: object
+    - type: 'null'
+  description:
+    anyOf:
+    - description: 'The description of the tool.
+
+        '
+      type: string
+    - type: 'null'
+  input_schema:
+    description: 'The JSON schema describing the tool''s input.
+
+      '
+    type: object
+  name:
+    description: 'The name of the tool.
+
+      '
+    type: string
+required:
+- name
+- input_schema

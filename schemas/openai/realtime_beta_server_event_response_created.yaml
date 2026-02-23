@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventResponseCreated
+description: 'Returned when a new Response is created. The first event of response
+  creation,
+
+  where the response is in an initial state of `in_progress`.
+
+  '
+type: object
+properties:
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  response:
+    $ref: realtime_beta_response.yaml
+  type:
+    const: response.created
+    description: The event type, must be `response.created`.
+required:
+- event_id
+- type
+- response

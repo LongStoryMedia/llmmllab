@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FileAnnotation
+description: Annotation that references an uploaded file.
+type: object
+properties:
+  source:
+    $ref: file_annotation_source.yaml
+    description: File attachment referenced by the annotation.
+  type:
+    default: file
+    description: Type discriminator that is always `file` for this annotation.
+    enum:
+    - file
+    type: string
+required:
+- type
+- source

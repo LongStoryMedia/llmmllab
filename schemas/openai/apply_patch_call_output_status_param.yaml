@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ApplyPatchCallOutputStatusParam
+description: Outcome values reported for apply_patch tool call outputs.
+type: string
+enum:
+- completed
+- failed

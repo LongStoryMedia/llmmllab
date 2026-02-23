@@ -1,0 +1,30 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ResponseCustomToolCallInputDoneEvent
+description: 'Event indicating that input for a custom tool call is complete.
+
+  '
+type: object
+properties:
+  input:
+    description: The complete input data for the custom tool call.
+    type: string
+  item_id:
+    description: Unique identifier for the API item associated with this event.
+    type: string
+  output_index:
+    description: The index of the output this event applies to.
+    type: integer
+  sequence_number:
+    description: The sequence number of this event.
+    type: integer
+  type:
+    description: The event type identifier.
+    enum:
+    - response.custom_tool_call_input.done
+    type: string
+required:
+- type
+- output_index
+- item_id
+- input
+- sequence_number

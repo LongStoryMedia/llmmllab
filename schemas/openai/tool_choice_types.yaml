@@ -1,0 +1,38 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolChoiceTypes
+description: 'Indicates that the model should use a built-in tool to generate a response.
+
+  [Learn more about built-in tools](https://platform.openai.com/docs/guides/tools).
+
+  '
+type: object
+properties:
+  type:
+    description: 'The type of hosted tool the model should to use. Learn more about
+
+      [built-in tools](https://platform.openai.com/docs/guides/tools).
+
+
+      Allowed values are:
+
+      - `file_search`
+
+      - `web_search_preview`
+
+      - `computer_use_preview`
+
+      - `code_interpreter`
+
+      - `image_generation`
+
+      '
+    enum:
+    - file_search
+    - web_search_preview
+    - computer_use_preview
+    - web_search_preview_2025_03_11
+    - image_generation
+    - code_interpreter
+    type: string
+required:
+- type

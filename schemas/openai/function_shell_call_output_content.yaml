@@ -1,0 +1,27 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellCallOutputContent
+description: The content of a shell tool call output that was emitted.
+type: object
+properties:
+  created_by:
+    description: The identifier of the actor that created the item.
+    type: string
+  outcome:
+    anyOf:
+    - $ref: function_shell_call_output_timeout_outcome.yaml
+    - $ref: function_shell_call_output_exit_outcome.yaml
+    description: Represents either an exit outcome (with an exit code) or a timeout
+      outcome for a shell call output chunk.
+    discriminator:
+      propertyName: type
+    title: Shell call outcome
+  stderr:
+    description: The standard error output that was captured.
+    type: string
+  stdout:
+    description: The standard output that was captured.
+    type: string
+required:
+- stdout
+- stderr
+- outcome

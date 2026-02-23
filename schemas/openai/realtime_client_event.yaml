@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeClientEvent
+description: 'A realtime client event.
+
+  '
+anyOf:
+- $ref: realtime_client_event_conversation_item_create.yaml
+- $ref: realtime_client_event_conversation_item_delete.yaml
+- $ref: realtime_client_event_conversation_item_retrieve.yaml
+- $ref: realtime_client_event_conversation_item_truncate.yaml
+- $ref: realtime_client_event_input_audio_buffer_append.yaml
+- $ref: realtime_client_event_input_audio_buffer_clear.yaml
+- $ref: realtime_client_event_output_audio_buffer_clear.yaml
+- $ref: realtime_client_event_input_audio_buffer_commit.yaml
+- $ref: realtime_client_event_response_cancel.yaml
+- $ref: realtime_client_event_response_create.yaml
+- $ref: realtime_client_event_session_update.yaml
+discriminator:
+  propertyName: type

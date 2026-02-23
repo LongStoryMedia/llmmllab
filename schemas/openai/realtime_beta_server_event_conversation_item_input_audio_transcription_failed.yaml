@@ -1,0 +1,47 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeBetaServerEventConversationItemInputAudioTranscriptionFailed
+description: "Returned when input audio transcription is configured, and a transcription\
+  \ \nrequest for a user message failed. These events are separate from other \n`error`\
+  \ events so that the client can identify the related Item.\n"
+type: object
+properties:
+  content_index:
+    description: The index of the content part containing the audio.
+    type: integer
+  error:
+    description: Details of the transcription error.
+    properties:
+      code:
+        description: Error code, if any.
+        type: string
+      message:
+        description: A human-readable error message.
+        type: string
+      param:
+        description: Parameter related to the error, if any.
+        type: string
+      type:
+        description: The type of error.
+        type: string
+    type: object
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the user message item.
+    type: string
+  type:
+    description: 'The event type, must be
+
+      `conversation.item.input_audio_transcription.failed`.
+
+      '
+    enum:
+    - conversation.item.input_audio_transcription.failed
+    type: string
+required:
+- event_id
+- type
+- item_id
+- content_index
+- error

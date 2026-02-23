@@ -1,0 +1,46 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ProjectApiKey
+description: Represents an individual API key in a project.
+type: object
+properties:
+  created_at:
+    description: The Unix timestamp (in seconds) of when the API key was created
+    type: integer
+  id:
+    description: The identifier, which can be referenced in API endpoints
+    type: string
+  last_used_at:
+    description: The Unix timestamp (in seconds) of when the API key was last used.
+    type: integer
+  name:
+    description: The name of the API key
+    type: string
+  object:
+    description: The object type, which is always `organization.project.api_key`
+    enum:
+    - organization.project.api_key
+    type: string
+  owner:
+    properties:
+      service_account:
+        $ref: project_service_account.yaml
+      type:
+        description: '`user` or `service_account`'
+        enum:
+        - user
+        - service_account
+        type: string
+      user:
+        $ref: project_user.yaml
+    type: object
+  redacted_value:
+    description: The redacted value of the API key
+    type: string
+required:
+- object
+- redacted_value
+- name
+- created_at
+- last_used_at
+- id
+- owner

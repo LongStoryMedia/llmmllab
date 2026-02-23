@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputFileContent
+description: A file input to the model.
+type: object
+properties:
+  file_data:
+    description: 'The content of the file to be sent to the model.
+
+      '
+    type: string
+  file_id:
+    anyOf:
+    - description: The ID of the file to be sent to the model.
+      type: string
+    - type: 'null'
+  file_url:
+    description: The URL of the file to be sent to the model.
+    type: string
+  filename:
+    description: The name of the file to be sent to the model.
+    type: string
+  type:
+    default: input_file
+    description: The type of the input item. Always `input_file`.
+    enum:
+    - input_file
+    type: string
+required:
+- type

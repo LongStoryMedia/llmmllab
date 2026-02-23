@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: FunctionShellCallOutputTimeoutOutcome
+description: Indicates that the shell call exceeded its configured time limit.
+type: object
+properties:
+  type:
+    default: timeout
+    description: The outcome type. Always `timeout`.
+    enum:
+    - timeout
+    type: string
+required:
+- type

@@ -1,0 +1,69 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RealtimeServerEventConversationItemInputAudioTranscriptionCompleted
+description: 'This event is the output of audio transcription for user audio written
+  to the
+
+  user audio buffer. Transcription begins when the input audio buffer is
+
+  committed by the client or server (when VAD is enabled). Transcription runs
+
+  asynchronously with Response creation, so this event may come before or after
+
+  the Response events.
+
+
+  Realtime API models accept audio natively, and thus input transcription is a
+
+  separate process run on a separate ASR (Automatic Speech Recognition) model.
+
+  The transcript may diverge somewhat from the model''s interpretation, and
+
+  should be treated as a rough guide.
+
+  '
+type: object
+properties:
+  content_index:
+    description: The index of the content part containing the audio.
+    type: integer
+  event_id:
+    description: The unique ID of the server event.
+    type: string
+  item_id:
+    description: The ID of the item containing the audio that is being transcribed.
+    type: string
+  logprobs:
+    anyOf:
+    - description: The log probabilities of the transcription.
+      items:
+        $ref: log_prob_properties.yaml
+      type: array
+    - type: 'null'
+  transcript:
+    description: The transcribed text.
+    type: string
+  type:
+    description: 'The event type, must be
+
+      `conversation.item.input_audio_transcription.completed`.
+
+      '
+    enum:
+    - conversation.item.input_audio_transcription.completed
+    type: string
+  usage:
+    anyOf:
+    - $ref: transcript_text_usage_tokens.yaml
+      title: TranscriptTextUsageTokens
+    - $ref: transcript_text_usage_duration.yaml
+      title: TranscriptTextUsageDuration
+    description: Usage statistics for the transcription, this is billed according
+      to the ASR model's pricing rather than the realtime model's pricing.
+    type: object
+required:
+- event_id
+- type
+- item_id
+- content_index
+- transcript
+- usage

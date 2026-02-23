@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MCPListTools
+description: 'A list of tools available on an MCP server.
+
+  '
+type: object
+properties:
+  error:
+    anyOf:
+    - description: 'Error message if the server could not list tools.
+
+        '
+      type: string
+    - type: 'null'
+  id:
+    description: 'The unique ID of the list.
+
+      '
+    type: string
+  server_label:
+    description: 'The label of the MCP server.
+
+      '
+    type: string
+  tools:
+    description: 'The tools available on the server.
+
+      '
+    items:
+      $ref: mcp_list_tools_tool.yaml
+    type: array
+  type:
+    description: 'The type of the item. Always `mcp_list_tools`.
+
+      '
+    enum:
+    - mcp_list_tools
+    type: string
+required:
+- type
+- id
+- server_label
+- tools

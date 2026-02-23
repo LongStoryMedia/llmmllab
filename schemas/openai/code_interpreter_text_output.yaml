@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CodeInterpreterTextOutput
+description: 'The output of a code interpreter tool call that is text.
+
+  '
+type: object
+properties:
+  logs:
+    description: 'The logs of the code interpreter tool call.
+
+      '
+    type: string
+  type:
+    description: 'The type of the code interpreter text output. Always `logs`.
+
+      '
+    enum:
+    - logs
+    type: string
+required:
+- type
+- logs

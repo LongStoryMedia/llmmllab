@@ -1,0 +1,37 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: EvalRunOutputItemList
+description: 'An object representing a list of output items for an evaluation run.
+
+  '
+type: object
+properties:
+  data:
+    description: 'An array of eval run output item objects.
+
+      '
+    items:
+      $ref: eval_run_output_item.yaml
+    type: array
+  first_id:
+    description: The identifier of the first eval run output item in the data array.
+    type: string
+  has_more:
+    description: Indicates whether there are more eval run output items available.
+    type: boolean
+  last_id:
+    description: The identifier of the last eval run output item in the data array.
+    type: string
+  object:
+    default: list
+    description: 'The type of this object. It is always set to "list".
+
+      '
+    enum:
+    - list
+    type: string
+required:
+- object
+- data
+- first_id
+- last_id
+- has_more

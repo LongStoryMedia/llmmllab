@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: RunGraderRequest
+type: object
+properties:
+  grader:
+    anyOf:
+    - $ref: grader_string_check.yaml
+    - $ref: grader_text_similarity.yaml
+    - $ref: grader_python.yaml
+    - $ref: grader_score_model.yaml
+    - $ref: grader_multi.yaml
+    description: The grader used for the fine-tuning job.
+    discriminator:
+      propertyName: type
+    type: object
+  item:
+    description: "The dataset item provided to the grader. This will be used to populate\
+      \ \nthe `item` namespace. See [the guide](https://platform.openai.com/docs/guides/graders)\
+      \ for more details. \n"
+    type: object
+  model_sample:
+    description: "The model sample to be evaluated. This value will be used to populate\
+      \ \nthe `sample` namespace. See [the guide](https://platform.openai.com/docs/guides/graders)\
+      \ for more details.\nThe `output_json` variable will be populated if the model\
+      \ sample is a \nvalid JSON string.\n \n"
+    type: string
+required:
+- grader
+- model_sample

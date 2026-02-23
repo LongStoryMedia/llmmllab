@@ -1,0 +1,50 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ThreadResource
+description: Represents a ChatKit thread and its current status.
+type: object
+properties:
+  created_at:
+    description: Unix timestamp (in seconds) for when the thread was created.
+    type: integer
+  id:
+    description: Identifier of the thread.
+    type: string
+  object:
+    default: chatkit.thread
+    description: Type discriminator that is always `chatkit.thread`.
+    enum:
+    - chatkit.thread
+    type: string
+  status:
+    anyOf:
+    - $ref: active_status.yaml
+    - $ref: locked_status.yaml
+    - $ref: closed_status.yaml
+    description: Current status for the thread. Defaults to `active` for newly created
+      threads.
+    discriminator:
+      propertyName: type
+  title:
+    anyOf:
+    - description: Optional human-readable title for the thread. Defaults to null
+        when no title has been generated.
+      type: string
+    - type: 'null'
+  user:
+    description: Free-form string that identifies your end user who owns the thread.
+    type: string
+required:
+- id
+- object
+- created_at
+- title
+- status
+- user
+example:
+  created_at: 1712345600
+  id: cthr_def456
+  object: chatkit.thread
+  status:
+    type: active
+  title: Demo feedback
+  user: user_456

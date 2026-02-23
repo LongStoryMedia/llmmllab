@@ -1,0 +1,84 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TokenCountsBody
+type: object
+properties:
+  conversation:
+    anyOf:
+    - $ref: conversation_param.yaml
+    - type: 'null'
+  input:
+    anyOf:
+    - anyOf:
+      - description: A text input to the model, equivalent to a text input with the
+          `user` role.
+        maxLength: 10485760
+        type: string
+      - description: A list of one or many input items to the model, containing different
+          content types.
+        items:
+          $ref: input_item.yaml
+        type: array
+      description: Text, image, or file inputs to the model, used to generate a response
+    - type: 'null'
+  instructions:
+    anyOf:
+    - description: 'A system (or developer) message inserted into the model''s context.
+
+        When used along with `previous_response_id`, the instructions from a previous
+        response will not be carried over to the next response. This makes it simple
+        to swap out system (or developer) messages in new responses.'
+      type: string
+    - type: 'null'
+  model:
+    anyOf:
+    - description: Model ID used to generate the response, like `gpt-4o` or `o3`.
+        OpenAI offers a wide range of models with different capabilities, performance
+        characteristics, and price points. Refer to the [model guide](https://platform.openai.com/docs/models)
+        to browse and compare available models.
+      type: string
+    - type: 'null'
+  parallel_tool_calls:
+    anyOf:
+    - description: Whether to allow the model to run tool calls in parallel.
+      type: boolean
+    - type: 'null'
+  previous_response_id:
+    anyOf:
+    - description: The unique ID of the previous response to the model. Use this to
+        create multi-turn conversations. Learn more about [conversation state](https://platform.openai.com/docs/guides/conversation-state).
+        Cannot be used in conjunction with `conversation`.
+      example: resp_123
+      type: string
+    - type: 'null'
+  reasoning:
+    anyOf:
+    - $ref: reasoning.yaml
+      description: '**gpt-5 and o-series models only** Configuration options for [reasoning
+        models](https://platform.openai.com/docs/guides/reasoning).'
+    - type: 'null'
+  text:
+    anyOf:
+    - $ref: response_text_param.yaml
+    - type: 'null'
+  tool_choice:
+    anyOf:
+    - $ref: tool_choice_param.yaml
+      description: Controls which tool the model should use, if any.
+    - type: 'null'
+  tools:
+    anyOf:
+    - description: An array of tools the model may call while generating a response.
+        You can specify which tool to use by setting the `tool_choice` parameter.
+      items:
+        $ref: tool.yaml
+      type: array
+    - type: 'null'
+  truncation:
+    $ref: truncation_enum.yaml
+    description: 'The truncation strategy to use for the model response. - `auto`:
+      If the input to this Response exceeds the model''s context window size, the
+      model will truncate the response to fit the context window by dropping items
+      from the beginning of the conversation. - `disabled` (default): If the input
+      size will exceed the context window size for a model, the request will fail
+      with a 400 error.'
+required: []
