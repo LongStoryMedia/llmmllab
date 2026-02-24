@@ -4,14 +4,20 @@ from datetime import datetime
 from typing import Literal, TypeAlias
 
 from fastapi import APIRouter, HTTPException, Request
-from openai import chat
+
 from server.middleware.auth import get_user_id
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
 from models.openai.chat_completion_list import ChatCompletionList
 from models.openai.chat_completion_message_list import ChatCompletionMessageList
+from models.openai.chat_completion_message_custom_tool_call import (
+    ChatCompletionMessageCustomToolCall,
+)
 from models.openai.chat_completion_message_tool_call import (
     ChatCompletionMessageToolCall,
     Function,
+)
+from models.openai.chat_completion_message_tool_calls import (
+    ChatCompletionMessageToolCalls,
 )
 from models.openai.chat_completion_response_message import (
     ChatCompletionResponseMessage,
@@ -156,7 +162,9 @@ def openai_response_from_chat_response(
     )
 
     # Convert internal ToolCalls to OpenAI ChatCompletionMessageToolCall list
-    oai_tool_calls: list[ChatCompletionMessageToolCall] | None = None
+    oai_tool_calls: list[
+        ChatCompletionMessageToolCall | ChatCompletionMessageCustomToolCall
+    ] = []
     if chat_response.message and chat_response.message.tool_calls:
         oai_tool_calls = [
             ChatCompletionMessageToolCall(
@@ -174,7 +182,9 @@ def openai_response_from_chat_response(
         role="assistant",
         content=content,
         refusal=None,
-        tool_calls=oai_tool_calls,  # type: ignore[arg-type]
+        tool_calls=(
+            ChatCompletionMessageToolCalls(oai_tool_calls) if oai_tool_calls else None
+        ),
     )
 
     choice = ChoicesItem(
