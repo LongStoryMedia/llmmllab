@@ -8,5 +8,4 @@ from .chat_model import ChatModel
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
-
-ModelIdsShared = Union[ChatModel]
+ModelIdsShared = Union[ChatModel, str]
