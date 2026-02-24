@@ -1,12 +1,27 @@
 import json
+import uuid
+from datetime import datetime
+from typing import Literal, TypeAlias
 
 from fastapi import APIRouter, HTTPException, Request
+from openai import chat
 from server.middleware.auth import get_user_id
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
 from models.openai.chat_completion_list import ChatCompletionList
 from models.openai.chat_completion_message_list import ChatCompletionMessageList
+from models.openai.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCall,
+    Function,
+)
+from models.openai.chat_completion_response_message import (
+    ChatCompletionResponseMessage,
+)
+from models.openai.completion_usage import CompletionUsage
 from models.openai.create_chat_completion_request import CreateChatCompletionRequest
-from models.openai.create_chat_completion_response import CreateChatCompletionResponse
+from models.openai.create_chat_completion_response import (
+    ChoicesItem,
+    CreateChatCompletionResponse,
+)
 from models.openai.chat_completion_request_message import (
     ChatCompletionRequestMessage,
     ChatCompletionRequestMessageContentPartAudio,
@@ -28,6 +43,9 @@ from utils import extract_text_from_message  # Import logging utility
 
 import composer
 
+OAIFinishReason: TypeAlias = Literal[
+    "stop", "length", "tool_calls", "content_filter", "function_call"
+]
 
 logger = llmmllogger.bind(component="openai_chat_router")
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -109,12 +127,86 @@ def messages_from_openai(
 
 def openai_response_from_chat_response(
     chat_response: ChatResponse,
+    model: str = "unknown",
 ) -> CreateChatCompletionResponse:
     """Convert internal ChatResponse to OpenAI CreateChatCompletionResponse format."""
-    # This function would need to be implemented to map the internal ChatResponse
-    # structure to the expected OpenAI response format. This is a placeholder.
-    raise NotImplementedError(
-        "Conversion from ChatResponse to OpenAI response not implemented yet."
+
+    # Extract text content from the message
+    content: str | None = None
+    if chat_response.message and chat_response.message.content:
+        text_parts = [
+            part.text
+            for part in chat_response.message.content
+            if part.type == MessageContentType.TEXT and part.text
+        ]
+        content = "".join(text_parts) if text_parts else None
+
+    # Map internal finish_reason to OpenAI finish_reason
+    finish_reason_map: dict[str | None, OAIFinishReason] = {
+        "stop": "stop",
+        "complete": "stop",
+        "length": "length",
+        "tool_call": "tool_calls",
+        "error": "stop",
+        "timeout": "stop",
+        "cancel": "stop",
+    }
+    finish_reason: OAIFinishReason = finish_reason_map.get(
+        chat_response.finish_reason, "stop"
+    )
+
+    # Convert internal ToolCalls to OpenAI ChatCompletionMessageToolCall list
+    oai_tool_calls: list[ChatCompletionMessageToolCall] | None = None
+    if chat_response.message and chat_response.message.tool_calls:
+        oai_tool_calls = [
+            ChatCompletionMessageToolCall(
+                id=tc.execution_id or uuid.uuid4().hex,
+                type="function",
+                function=Function(
+                    name=tc.name,
+                    arguments=json.dumps(tc.args),
+                ),
+            )
+            for tc in chat_response.message.tool_calls
+        ]
+
+    message = ChatCompletionResponseMessage(
+        role="assistant",
+        content=content,
+        refusal=None,
+        tool_calls=oai_tool_calls,  # type: ignore[arg-type]
+    )
+
+    choice = ChoicesItem(
+        index=0,
+        message=message,
+        finish_reason=finish_reason,
+        logprobs=None,
+    )
+
+    # Build usage from token counts
+    prompt_tokens = int(chat_response.prompt_eval_count or 0)
+    completion_tokens = int(chat_response.eval_count or 0)
+    usage = CompletionUsage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
+    )
+
+    # Build timestamp
+    created = (
+        int(chat_response.created_at.timestamp())
+        if chat_response.created_at
+        else int(datetime.now().timestamp())
+    )
+
+    return CreateChatCompletionResponse(
+        id=f"chatcmpl-{uuid.uuid4().hex}",
+        object="chat.completion",
+        created=created,
+        model=model,
+        choices=[choice],
+        usage=usage,
     )
 
 
@@ -143,13 +235,17 @@ async def createChatCompletion(
         0,
         messages_from_openai(body.messages),
     )
+    chat_response: ChatResponse | None = None
     async for event in composer.execute_workflow(initial_state, workflow):
         print(
             extract_text_from_message(event.message) if event.message else "",
             flush=True,
             end="",
         )
-    raise NotImplementedError("Endpoint not yet implemented")
+        if event.finish_reason == "complete" and event.message:
+            chat_response = event
+    assert chat_response is not None, "Workflow did not produce a chat response"
+    return openai_response_from_chat_response(chat_response)
 
 
 @router.delete("/completions/{completion_id}")
