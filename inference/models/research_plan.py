@@ -4,7 +4,7 @@
 from typing import List, Dict, Optional, Any, Union
 from datetime import datetime, date, time, timedelta
 from .research_question import ResearchQuestion
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -17,5 +17,4 @@ class ResearchPlan(BaseModel):
     raw_plan: Optional[str] = Field(default=None, description="Original plan text from LLM")
     """Original plan text from LLM"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

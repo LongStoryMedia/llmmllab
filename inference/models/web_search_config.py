@@ -3,7 +3,7 @@
 
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -42,5 +42,4 @@ class WebSearchConfig(BaseModel):
     max_content_length: Annotated[Optional[int], Field(default=5000, description="Maximum content length to fetch from URLs (in characters)", ge=1000, le=100000)] = 5000
     """Maximum content length to fetch from URLs (in characters)"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

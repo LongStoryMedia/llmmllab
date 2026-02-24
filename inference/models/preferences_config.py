@@ -3,7 +3,7 @@
 
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -20,5 +20,4 @@ class PreferencesConfig(BaseModel):
     language: Annotated[Optional[str], Field(default=None, description="Language")] = None
     """Language"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

@@ -4,7 +4,7 @@
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from .parameter_tuning_strategy import ParameterTuningStrategy
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -21,5 +21,4 @@ class PerformanceParameters(BaseModel):
     floor: Annotated[Optional[int], Field(default=None, description="Minimum value for the parameter during optimization", ge=1)] = None
     """Minimum value for the parameter during optimization"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

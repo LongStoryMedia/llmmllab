@@ -3,7 +3,7 @@
 
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -14,5 +14,4 @@ class RefinementConfig(BaseModel):
     enable_response_critique: Annotated[bool, Field(..., description="Enable response critique")]
     """Enable response critique"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

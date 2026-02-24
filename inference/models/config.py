@@ -21,7 +21,7 @@ from .refinement_config import RefinementConfig
 from .server_config import ServerConfig
 from .summarization_config import SummarizationConfig
 from .web_search_config import WebSearchConfig
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -47,5 +47,4 @@ class Config(BaseModel):
     internal: Annotated[Optional[InternalConfig], Field(default=None)] = None
     event_stream: Annotated[Optional[EventStreamConfig], Field(default=None)] = None
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")

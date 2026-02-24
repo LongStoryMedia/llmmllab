@@ -16,7 +16,7 @@ gen_ts() {
         base_name=$(basename "$schema_file" .yaml)
         # pascal_case_string=$(echo "$base_name" | sed -E 's/(\w+)_?(\w+)/\U$1\U$2/g')
         pascal_case_string=$(echo "$base_name" | sed -E 's/(^|_)([a-z])/\U\2/g' | sed 's/_//g')
-        schema2code "$schema_file" -l typescript -o "$UI_MODELS_DIR/${pascal_case_string}.ts" --package types
+        schema2code "$schema_file" -l typescript -o "$UI_MODELS_DIR/${pascal_case_string}.ts" --package types &
     done
 }
 
@@ -25,11 +25,11 @@ gen_py() {
         base_name=$(basename "$schema_file" .yaml)
         # Convert hyphens and any non-alphanumeric chars (except underscores) to underscores
         module_name=$(echo "$base_name" | sed 's/-/_/g')
-        schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${module_name}.py"
+        schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${module_name}.py" &
     done
 }
 
-gen_ts
+# gen_ts
 gen_py
 
 wait

@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+# Suppress Pydantic warnings about fields shadowing BaseModel attributes
+# (e.g. 'schema' field in OpenAI models shadows deprecated BaseModel.schema())
+import warnings
+warnings.filterwarnings("ignore", message=".*shadows an attribute in parent.*")
+
 # Import all model modules
 try:
     from . import active_status
@@ -1938,6 +1943,8 @@ __all__ = [
     'FunctionCall',
     'ChatCompletionRequestDeveloperMessage',
     'ChatCompletionRequestFunctionMessage',
+    'Audio',
+    'FunctionCall',
     'ChatCompletionRequestMessageContentPartAudio',
     'InputAudio',
     'ChatCompletionRequestMessageContentPartFile',
@@ -2016,6 +2023,7 @@ __all__ = [
     'ExpiresAfter',
     'Conversation',
     'Conversation2',
+    'ResultsOption0Item',
     'ConversationItemList',
     'ConversationParam2',
     'ConversationResource',
@@ -2066,6 +2074,7 @@ __all__ = [
     'CreateEvalLabelModelGrader',
     'CreateEvalLogsDataSourceConfig',
     'CreateEvalRequest',
+    'ChatMessage',
     'CreateEvalResponsesRunDataSource',
     'InputMessagesItemReference',
     'InputMessagesTemplate',
@@ -2219,12 +2228,12 @@ __all__ = [
     'FileSearchToolCall',
     'ResultsOption0Item',
     'FileUploadParam',
+    'Audio',
     'FineTuneChatCompletionRequestAssistantMessage',
+    'FunctionCall',
     'FineTuneChatRequestInput',
     'FineTuneDPOHyperparameters',
     'FineTuneDPOMethod',
-    'FineTuneDpoHyperparameters',
-    'FineTuneDpoMethod',
     'FineTuneMethod',
     'FineTunePreferenceRequestInput',
     'Input',
@@ -2323,7 +2332,10 @@ __all__ = [
     'InviteProjectGroupBody',
     'InviteRequest',
     'ProjectsItem',
+    'ResultsOption0Item',
+    'ResultsOption0Item',
     'ItemReferenceParam',
+    'ResultsOption0Item',
     'KeyPressAction',
     'ListAssistantsResponse',
     'ListAuditLogsResponse',
@@ -2354,6 +2366,7 @@ __all__ = [
     'MCPListTools',
     'MCPListToolsTool',
     'MCPTool',
+    'MCPToolApprovalFilter',
     'MCPToolCall',
     'MCPToolCallStatus',
     'MCPToolFilter',
@@ -2415,6 +2428,7 @@ __all__ = [
     'OrderEnum',
     'OtherChunkingStrategyResponseParam',
     'OutputAudio',
+    'ResultsOption0Item',
     'OutputMessage',
     'OutputTextContent',
     'ParallelToolCalls',
@@ -2538,8 +2552,10 @@ __all__ = [
     'RealtimeBetaServerEventResponseTextDone',
     'InputAudioNoiseReduction',
     'RealtimeBetaServerEventSessionCreated',
+    'TracingConfiguration',
     'InputAudioNoiseReduction',
     'RealtimeBetaServerEventSessionUpdated',
+    'TracingConfiguration',
     'ClientSecret',
     'RealtimeBetaServerEventTranscriptionSessionCreated',
     'TurnDetection',
@@ -2681,6 +2697,7 @@ __all__ = [
     'TurnDetection',
     'InputAudioNoiseReduction',
     'RealtimeSession',
+    'TracingConfiguration',
     'ClientSecret',
     'InputAudioTranscription',
     'RealtimeSessionCreateRequest',
@@ -2706,6 +2723,7 @@ __all__ = [
     'NoiseReduction',
     'Output',
     'RealtimeSessionCreateResponseGA',
+    'TracingConfiguration',
     'InputAudioNoiseReduction',
     'RealtimeTranscriptionSessionCreateRequest',
     'TurnDetection',
@@ -2727,6 +2745,7 @@ __all__ = [
     'ReasoningItem',
     'ReasoningTextContent',
     'RefusalContent',
+    'IncompleteDetails',
     'InputTokensDetails',
     'OutputTokensDetails',
     'Response',
@@ -2898,6 +2917,7 @@ __all__ = [
     'ToggleCertificatesRequest',
     'TokenCountsBody',
     'TokenCountsResource',
+    'MCPToolApprovalFilter',
     'ToolChoice',
     'ToolChoiceAllowed',
     'ToolChoiceCustom',
@@ -3301,6 +3321,10 @@ from .chat_completion_request_developer_message import (
 from .chat_completion_request_function_message import (
     ChatCompletionRequestFunctionMessage,
 )
+from .chat_completion_request_message import (
+    Audio,
+    FunctionCall,
+)
 from .chat_completion_request_message_content_part_audio import (
     ChatCompletionRequestMessageContentPartAudio,
     InputAudio,
@@ -3505,6 +3529,9 @@ from .conversation import (
 from .conversation_2 import (
     Conversation2,
 )
+from .conversation_item import (
+    ResultsOption0Item,
+)
 from .conversation_item_list import (
     ConversationItemList,
 )
@@ -3600,6 +3627,7 @@ from .create_eval_request import (
     CreateEvalRequest,
 )
 from .create_eval_responses_run_data_source import (
+    ChatMessage,
     CreateEvalResponsesRunDataSource,
     InputMessagesItemReference,
     InputMessagesTemplate,
@@ -3965,7 +3993,9 @@ from .file_upload_param import (
     FileUploadParam,
 )
 from .fine_tune_chat_completion_request_assistant_message import (
+    Audio,
     FineTuneChatCompletionRequestAssistantMessage,
+    FunctionCall,
 )
 from .fine_tune_chat_request_input import (
     FineTuneChatRequestInput,
@@ -3975,10 +4005,8 @@ from .fine_tune_dpo_hyperparameters import (
 )
 from .fine_tune_dpo_method import (
     FineTuneDPOMethod,
-    FineTuneDpoHyperparameters,
 )
 from .fine_tune_method import (
-    FineTuneDpoMethod,
     FineTuneMethod,
 )
 from .fine_tune_preference_request_input import (
@@ -4248,8 +4276,17 @@ from .invite_request import (
     InviteRequest,
     ProjectsItem,
 )
+from .item import (
+    ResultsOption0Item,
+)
+from .item_field import (
+    ResultsOption0Item,
+)
 from .item_reference_param import (
     ItemReferenceParam,
+)
+from .item_resource import (
+    ResultsOption0Item,
 )
 from .key_press_action import (
     KeyPressAction,
@@ -4340,6 +4377,7 @@ from .mcp_list_tools_tool import (
 )
 from .mcp_tool import (
     MCPTool,
+    MCPToolApprovalFilter,
 )
 from .mcp_tool_call import (
     MCPToolCall,
@@ -4477,6 +4515,9 @@ from .other_chunking_strategy_response_param import (
 )
 from .output_audio import (
     OutputAudio,
+)
+from .output_item import (
+    ResultsOption0Item,
 )
 from .output_message import (
     OutputMessage,
@@ -4778,10 +4819,12 @@ from .realtime_beta_server_event_response_text_done import (
 from .realtime_beta_server_event_session_created import (
     InputAudioNoiseReduction,
     RealtimeBetaServerEventSessionCreated,
+    TracingConfiguration,
 )
 from .realtime_beta_server_event_session_updated import (
     InputAudioNoiseReduction,
     RealtimeBetaServerEventSessionUpdated,
+    TracingConfiguration,
 )
 from .realtime_beta_server_event_transcription_session_created import (
     ClientSecret,
@@ -5095,6 +5138,7 @@ from .realtime_server_event_transcription_session_updated import (
 from .realtime_session import (
     InputAudioNoiseReduction,
     RealtimeSession,
+    TracingConfiguration,
 )
 from .realtime_session_create_request import (
     ClientSecret,
@@ -5128,6 +5172,7 @@ from .realtime_session_create_response_ga import (
     NoiseReduction,
     Output,
     RealtimeSessionCreateResponseGA,
+    TracingConfiguration,
 )
 from .realtime_transcription_session_create_request import (
     InputAudioNoiseReduction,
@@ -5171,6 +5216,7 @@ from .refusal_content import (
     RefusalContent,
 )
 from .response import (
+    IncompleteDetails,
     InputTokensDetails,
     OutputTokensDetails,
     Response,
@@ -5602,6 +5648,9 @@ from .token_counts_body import (
 )
 from .token_counts_resource import (
     TokenCountsResource,
+)
+from .tool import (
+    MCPToolApprovalFilter,
 )
 from .tool_choice import (
     ToolChoice,

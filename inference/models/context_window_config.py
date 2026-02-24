@@ -3,7 +3,7 @@
 
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from pydantic import BaseModel, Field, AnyUrl, EmailStr, conint, confloat
+from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
 
@@ -16,8 +16,7 @@ class WindowConfig(BaseModel):
     overflow_strategy: Annotated[Literal["truncate_oldest", "truncate_middle", "compress", "error"], Field(default='truncate_oldest', description="Strategy when context exceeds max_tokens")]
     """Strategy when context exceeds max_tokens"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 class Prioritization(BaseModel):
     """Content prioritization for context assembly"""
@@ -30,8 +29,7 @@ class Prioritization(BaseModel):
     summary_allocation: Annotated[float, Field(default=0.2, description="Fraction of context window allocated to summaries", ge=0.1, le=0.5)]
     """Fraction of context window allocated to summaries"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 class Optimization(BaseModel):
     """Context optimization and efficiency settings"""
@@ -46,8 +44,7 @@ class Optimization(BaseModel):
     token_counting_method: Annotated[Literal["approximate", "precise", "model_specific"], Field(default='approximate', description="Method for counting tokens")]
     """Method for counting tokens"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
 
 class ContextWindowConfig(BaseModel):
     """Configuration for context window management and optimization"""
@@ -60,5 +57,4 @@ class ContextWindowConfig(BaseModel):
     optimization: Annotated[Optimization, Field(..., description="Context optimization and efficiency settings")]
     """Context optimization and efficiency settings"""
 
-    class Config:
-        extra = "ignore"
+    model_config = ConfigDict(extra="ignore")
