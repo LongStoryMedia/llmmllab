@@ -65,6 +65,67 @@ logger = llmmllogger.bind(component="openai_chat_router")
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
+Process SpawnProcess-8:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/_subprocess.py", line 80, in subprocess_started
+    target(sockets=sockets)
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/server.py", line 67, in run
+    return asyncio.run(self.serve(sockets=sockets))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/server.py", line 71, in serve
+    await self._serve(sockets)
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/server.py", line 78, in _serve
+    config.load()
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/config.py", line 436, in load
+    self.loaded_app = import_from_string(self.app)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/shared/lib/python3.12/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/server/app.py", line 61, in <module>
+    from server.routers.openai import ROUTERS as OPENAI_ROUTERS
+  File "/app/server/routers/openai/__init__.py", line 13, in <module>
+    from .import_routers import ROUTERS
+  File "/app/server/routers/openai/import_routers.py", line 5, in <module>
+    from .chat import router as chat_router
+  File "/app/server/routers/openai/chat.py", line 310, in <module>
+    @router.post("/completions")
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/shared/lib/python3.12/site-packages/fastapi/routing.py", line 995, in decorator
+    self.add_api_route(
+  File "/opt/venv/shared/lib/python3.12/site-packages/fastapi/routing.py", line 934, in add_api_route
+    route = route_class(
+            ^^^^^^^^^^^^
+  File "/opt/venv/shared/lib/python3.12/site-packages/fastapi/routing.py", line 512, in __init__
+    self.response_field = create_model_field(
+                          ^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/shared/lib/python3.12/site-packages/fastapi/utils.py", line 98, in create_model_field
+    raise fastapi.exceptions.FastAPIError(
+fastapi.exceptions.FastAPIError: Invalid args for response field! Hint: check that typing.Union[models.openai.create_chat_completion_response.CreateChatCompletionResponse, starlette.responses.StreamingResponse] is a valid Pydantic field type. If you are using a return type annotation that is not a valid Pydantic field (e.g. Union[Response, dict, None]) you can disable generating the response model from the type annotation with the path operation decorator parameter response_model=None. Read more: https://fastapi.tiangolo.com/tutorial/response-model/
+
+
 def messages_from_openai(
     openai_messages: list[ChatCompletionRequestMessage],
 ) -> list[Message]:
