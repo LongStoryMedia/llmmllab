@@ -122,6 +122,7 @@ class WorkflowExecutor:
         analyses_buffer = ""
         contents_buffer = ""
         thoughts_buffer = ""
+        raw_think_complete = False
         # Track the run_id associated with the last appended buffers so
         # flushing uses the correct execution id rather than the current
         # event's run_id which can change between events (e.g. tool calls).
@@ -220,6 +221,41 @@ class WorkflowExecutor:
                         )
                         res.message.analyses.append(analysis)
                         analyses_buffer = ""
+                    # Extract tool calls from model output (proxy/client tool mode)
+                    # In proxy mode, tool_calls are in the AIMessage from bind_tools()
+                    # but no _tool_start/_tool_end events fire since tools aren't
+                    # executed server-side.
+                    if isinstance(output, AIMessage):
+                        if hasattr(output, "tool_calls") and output.tool_calls:
+                            for tc_data in output.tool_calls:
+                                tc_id = tc_data.get("id") or run_id
+                                tool_call = ToolCall(
+                                    name=tc_data.get("name", ""),
+                                    args=tc_data.get("args", {}),
+                                    execution_id=tc_id,
+                                    created_at=datetime.now(timezone.utc),
+                                )
+                                tool_calls[tc_id] = tool_call
+                                res.message.tool_calls.append(tool_call)
+                            self.logger.info(
+                                "Extracted proxy tool calls from model output",
+                                extra={
+                                    "tool_count": len(output.tool_calls),
+                                    "tool_names": [
+                                        tc.get("name") for tc in output.tool_calls
+                                    ],
+                                },
+                            )
+
+                        md = output.response_metadata or {}
+                        reason = md.get("finish_reason") or "unknown"
+                        if reason == "tool_call" or output.tool_calls:
+                            new_state = GenerationState.EXECUTING
+                        if reason == "length":
+                            self.logger.warn(
+                                "Model generation ended due to length",
+                                extra={"run_id": run_id},
+                            )
                 elif (
                     event_type == "on_chat_model_stream"
                     or event_type == "on_llm_stream"
@@ -229,12 +265,13 @@ class WorkflowExecutor:
                             analyses_buffer += content
                             last_analyses_run_id = run_id
                     if hasattr(chunk, "reasoning_content"):
-                        new_state = GenerationState.THINKING
                         reasoning_chunk = cast(ReasoningAwareAIMessageChunk, chunk)
-                        res.message.thoughts.append(
-                            Thought(text=reasoning_chunk.reasoning_content)
-                        )
-                        thoughts_buffer += reasoning_chunk.reasoning_content
+                        rc = reasoning_chunk.reasoning_content
+                        thoughts_buffer += rc
+                        # Only yield as visible thought if non-whitespace
+                        if rc.strip():
+                            new_state = GenerationState.THINKING
+                            res.message.thoughts.append(Thought(text=rc))
                     elif chunk.content:
                         # Parse content and separate reasoning from regular text
                         text_content, reasoning_content = (
@@ -243,28 +280,67 @@ class WorkflowExecutor:
 
                         # Handle reasoning content
                         if reasoning_content:
-                            new_state = GenerationState.THINKING
                             for reasoning_text in reasoning_content:
-                                res.message.thoughts.append(
-                                    Thought(text=reasoning_text)
-                                )
                                 thoughts_buffer += reasoning_text
-                                # Track the run_id for thoughts as well
                                 last_thoughts_run_id = run_id
-
-                        # Handle regular text content
-                        if text_content:
-                            new_state = GenerationState.RESPONDING
-                            for content_text in text_content:
-                                res.message.content.append(
-                                    MessageContent(
-                                        type=MessageContentType.TEXT, text=content_text
+                                # Only yield as visible thought if non-whitespace
+                                if reasoning_text.strip():
+                                    new_state = GenerationState.THINKING
+                                    res.message.thoughts.append(
+                                        Thought(text=reasoning_text)
                                     )
-                                )
-                                contents_buffer += content_text
-                                # remember which run this content belongs to so we
-                                # can flush against the correct execution id later
-                                last_content_run_id = run_id
+
+                        # Handle regular text content - detect raw <think> markers
+                        if text_content:
+                            processed_text: list[str] = []
+                            for content_text in text_content:
+                                if "</think>" in content_text:
+                                    # End of raw think block
+                                    raw_think_complete = True
+                                    before, after = content_text.split("</think>", 1)
+                                    # Everything before </think> is thinking
+                                    if before:
+                                        thoughts_buffer += before
+                                        last_thoughts_run_id = run_id
+                                    # Reclassify any accumulated content as thinking
+                                    if contents_buffer:
+                                        thoughts_buffer = (
+                                            contents_buffer + thoughts_buffer
+                                        )
+                                        contents_buffer = ""
+                                        message_contents.clear()
+                                    after = after.lstrip("\n")
+                                    if after:
+                                        processed_text.append(after)
+                                elif not raw_think_complete:
+                                    # Still in think section - buffer as thoughts,
+                                    # do NOT yield as regular content but DO
+                                    # yield per-chunk as thoughts so streaming
+                                    # consumers can display them.
+                                    thoughts_buffer += content_text
+                                    last_thoughts_run_id = run_id
+                                    # Only yield as visible thought if non-whitespace
+                                    if content_text.strip():
+                                        new_state = GenerationState.THINKING
+                                        res.message.thoughts.append(
+                                            Thought(text=content_text)
+                                        )
+                                else:
+                                    processed_text.append(content_text)
+
+                            if processed_text:
+                                new_state = GenerationState.RESPONDING
+                                for content_text in processed_text:
+                                    res.message.content.append(
+                                        MessageContent(
+                                            type=MessageContentType.TEXT,
+                                            text=content_text,
+                                        )
+                                    )
+                                    contents_buffer += content_text
+                                    # remember which run this content belongs to so we
+                                    # can flush against the correct execution id later
+                                    last_content_run_id = run_id
                 elif (
                     event_type == "on_chain_end"
                     and event_name == STRUCTURED_AGENT_RUNNABLE_NAME
@@ -274,23 +350,6 @@ class WorkflowExecutor:
                         output = output.model_dump()
                     structured_content = output
                     res.message.structured_output = output
-
-                elif (
-                    event_type.endswith("_model_end") or event_type.endswith("_llm_end")
-                ) and isinstance(output, AIMessage):
-                    self.logger.debug(
-                        "Model output received",
-                        extra={"output_content": str(output.content)},
-                    )
-                    md = output.response_metadata or {}
-                    reason = md.get("finish_reason") or "unknown"
-                    if reason == "tool_call":
-                        new_state = GenerationState.EXECUTING
-                    if reason == "length":
-                        self.logger.warn(
-                            "Model generation ended due to length",
-                            extra={"run_id": run_id},
-                        )
 
                 elif event_type.endswith("_tool_start"):
                     self.logger.info(
@@ -454,14 +513,28 @@ class WorkflowExecutor:
             analyses_buffer = ""
 
         if thoughts_buffer:
-            self.logger.debug(
-                "Flushing remaining thoughts_buffer after workflow completion",
-                extra={"thoughts_buffer": thoughts_buffer},
-            )
-            thoughts[last_thoughts_run_id or run_id] = Thought(
-                text=thoughts_buffer,
-                created_at=datetime.now(timezone.utc),
-            )
+            if not raw_think_complete:
+                # Model never produced </think> - the buffered content is
+                # regular content, not thinking (model doesn't use think tags).
+                self.logger.debug(
+                    "No </think> found - treating buffered thoughts as regular content",
+                    extra={"buffer_len": len(thoughts_buffer)},
+                )
+                keyed_run_id = last_thoughts_run_id or run_id
+                message_contents[keyed_run_id] = MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=thoughts_buffer,
+                    created_at=datetime.now(timezone.utc),
+                )
+            else:
+                self.logger.debug(
+                    "Flushing remaining thoughts_buffer after workflow completion",
+                    extra={"thoughts_buffer_len": len(thoughts_buffer)},
+                )
+                thoughts[last_thoughts_run_id or run_id] = Thought(
+                    text=thoughts_buffer,
+                    created_at=datetime.now(timezone.utc),
+                )
             thoughts_buffer = ""
 
         self.logger.info("Workflow execution completed. Producing final output.")
@@ -623,7 +696,6 @@ class WorkflowExecutor:
             return [content]
         else:
             return [str(c) for c in content]
-
 
 
 # Convenience factory functions

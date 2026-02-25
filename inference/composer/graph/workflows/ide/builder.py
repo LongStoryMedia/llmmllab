@@ -102,15 +102,15 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         num_ctx=131072,
         repeat_last_n=-1,
         repeat_penalty=1.1,
-        temperature=0.65,
+        temperature=0.85,
         seed=-1,
         num_predict=-1,
         top_k=20,
-        top_p=0.95,
-        min_p=0.01,
+        top_p=0.85,
+        min_p=0.0,
         max_tokens=-1,
         n_parts=-1,
-        batch_size=16384,
+        batch_size=8192,
         micro_batch_size=1024,
         n_gpu_layers=-1,
         stop=["<|im_end|>"],
@@ -184,7 +184,9 @@ class IdeGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            primary_pipeline = pipeline_factory.get_pipeline(profile=IDE_PRIMARY_PROFILE)
+            primary_pipeline = pipeline_factory.get_pipeline(
+                profile=IDE_PRIMARY_PROFILE
+            )
             # Keep a strong reference to the original pipeline throughout build_workflow
             # so GC cannot collect it when bind_tools returns a RunnableBinding wrapper
             primary_model = primary_pipeline

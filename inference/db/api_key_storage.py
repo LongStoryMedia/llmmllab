@@ -76,10 +76,14 @@ class ApiKeyStorage:
                     query, user_id, key_hash, name, scopes, expires_at
                 )
             else:
-                async with self.typed_pool.acquire() as conn:
-                    result = await conn.fetchrow(
-                        query, user_id, key_hash, name, scopes, expires_at
-                    )
+
+                async def _create():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.fetchrow(
+                            query, user_id, key_hash, name, scopes, expires_at
+                        )
+
+                result = await self.recovery_manager.execute_with_recovery(_create)
 
             if result:
                 api_key = ApiKey(
@@ -120,8 +124,12 @@ class ApiKeyStorage:
             if conn:
                 result = await conn.fetchrow(query, key_hash)
             else:
-                async with self.typed_pool.acquire() as conn:
-                    result = await conn.fetchrow(query, key_hash)
+
+                async def _get_key():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.fetchrow(query, key_hash)
+
+                result = await self.recovery_manager.execute_with_recovery(_get_key)
 
             if result:
                 return ApiKey(
@@ -166,8 +174,12 @@ class ApiKeyStorage:
             if conn:
                 results = await conn.fetch(query, user_id)
             else:
-                async with self.typed_pool.acquire() as conn:
-                    results = await conn.fetch(query, user_id)
+
+                async def _list_keys():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.fetch(query, user_id)
+
+                results = await self.recovery_manager.execute_with_recovery(_list_keys)
 
             return [
                 ApiKey(
@@ -200,8 +212,12 @@ class ApiKeyStorage:
             if conn:
                 await conn.execute(query, UUID(key_id))
             else:
-                async with self.typed_pool.acquire() as conn:
-                    await conn.execute(query, UUID(key_id))
+
+                async def _update():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.execute(query, UUID(key_id))
+
+                await self.recovery_manager.execute_with_recovery(_update)
 
             return True
 
@@ -223,8 +239,12 @@ class ApiKeyStorage:
             if conn:
                 result = await conn.fetchrow(query, UUID(key_id), user_id)
             else:
-                async with self.typed_pool.acquire() as conn:
-                    result = await conn.fetchrow(query, UUID(key_id), user_id)
+
+                async def _revoke():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.fetchrow(query, UUID(key_id), user_id)
+
+                result = await self.recovery_manager.execute_with_recovery(_revoke)
 
             if result:
                 self.logger.info(f"Revoked API key {key_id} for user {user_id}")
@@ -249,8 +269,12 @@ class ApiKeyStorage:
             if conn:
                 result = await conn.fetchrow(query, UUID(key_id), user_id)
             else:
-                async with self.typed_pool.acquire() as conn:
-                    result = await conn.fetchrow(query, UUID(key_id), user_id)
+
+                async def _delete():
+                    async with self.typed_pool.acquire() as c:
+                        return await c.fetchrow(query, UUID(key_id), user_id)
+
+                result = await self.recovery_manager.execute_with_recovery(_delete)
 
             if result:
                 self.logger.info(f"Deleted API key {key_id} for user {user_id}")

@@ -105,7 +105,9 @@ class ComposerService:
                 # Only use cache when no dynamic kwargs (tools change per request)
                 workflow = await user_cache.get_or_create(
                     cache_key,
-                    lambda: self.graph_builder.build_workflow(user_id, response_format, **build_kwargs),
+                    lambda: self.graph_builder.build_workflow(
+                        user_id, response_format, **build_kwargs
+                    ),
                 )
             else:
                 workflow = await self.graph_builder.build_workflow(

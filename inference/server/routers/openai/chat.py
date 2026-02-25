@@ -87,9 +87,15 @@ def _json_schema_to_pydantic(name: str, schema: Any) -> type:
         field_type = _json_type_to_python(field_schema)
         description = field_schema.get("description", "")
         if field_name in required:
-            field_definitions[field_name] = (field_type, Field(..., description=description))
+            field_definitions[field_name] = (
+                field_type,
+                Field(..., description=description),
+            )
         else:
-            field_definitions[field_name] = (field_type, Field(default=None, description=description))
+            field_definitions[field_name] = (
+                field_type,
+                Field(default=None, description=description),
+            )
 
     return create_model(name, **field_definitions)
 
@@ -129,7 +135,11 @@ def langchain_tools_from_openai(openai_tools: list) -> list[StructuredTool]:
             func=lambda **kwargs: "",
             name=fn.name,
             description=fn.description or "",
-            args_schema=_json_schema_to_pydantic(fn.name, fn.parameters) if fn.parameters else None,
+            args_schema=(
+                _json_schema_to_pydantic(fn.name, fn.parameters)
+                if fn.parameters
+                else None
+            ),
         )
         tools.append(tool)
     return tools
@@ -353,8 +363,49 @@ async def stream_chat_completion(
     yield f"data: {initial_chunk.model_dump_json()}\n\n"
 
     has_tool_calls = False
+    final_tool_calls: list[ToolCall] = []
+    in_thinking = False
+
     async for event in composer.execute_workflow(initial_state, workflow):
-        # Stream text content deltas
+        # Final accumulated event - capture tool calls but don't re-emit
+        # content that was already streamed (prevents double output).
+        if event.done:
+            if event.message and event.message.tool_calls:
+                final_tool_calls = event.message.tool_calls
+                has_tool_calls = True
+            continue
+
+        # Stream thinking content as markdown blockquote.
+        # The executor only yields non-whitespace thoughts.
+        if event.message and event.message.thoughts:
+            thought_parts = [t.text for t in event.message.thoughts if t.text]
+            thought_text = "".join(thought_parts)
+            if thought_text.strip():
+                # Format as blockquote: prefix each line with "> "
+                bq_text = thought_text.replace("\n", "\n> ")
+                if not in_thinking:
+                    in_thinking = True
+                    bq_text = "> **💭 Thinking...**\n> " + bq_text
+                else:
+                    bq_text = bq_text
+                chunk = CreateChatCompletionStreamResponse(
+                    id=chunk_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=model_name,
+                    choices=[
+                        StreamChoicesItem.model_construct(
+                            index=0,
+                            delta=ChatCompletionStreamResponseDelta(content=bq_text),
+                            finish_reason=None,
+                        )
+                    ],
+                )
+                yield f"data: {chunk.model_dump_json()}\n\n"
+
+        # Stream text content deltas directly.
+        # The executor filters raw <think> blocks internally,
+        # so we only receive post-think content here.
         if event.message and event.message.content:
             text_parts = [
                 c.text
@@ -363,6 +414,10 @@ async def stream_chat_completion(
             ]
             response_text = "".join(text_parts)
             if response_text:
+                # Close the thinking blockquote before streaming content
+                if in_thinking:
+                    in_thinking = False
+                    response_text = "\n\n" + response_text
                 chunk = CreateChatCompletionStreamResponse(
                     id=chunk_id,
                     object="chat.completion.chunk",
@@ -380,38 +435,54 @@ async def stream_chat_completion(
                 )
                 yield f"data: {chunk.model_dump_json()}\n\n"
 
-        # Stream tool_call deltas
-        if event.message and event.message.tool_calls:
-            has_tool_calls = True
-            tool_call_chunks = []
-            for i, tc in enumerate(event.message.tool_calls):
-                tool_call_chunks.append(
-                    ChatCompletionMessageToolCallChunk(
-                        index=i,
-                        id=tc.execution_id or uuid.uuid4().hex,
-                        type="function",
-                        function=ChunkFunction(
-                            name=tc.name,
-                            arguments=json.dumps(tc.args),
-                        ),
-                    )
+    # Close thinking blockquote if it was never closed (e.g. tool call with no content)
+    if in_thinking:
+        close_chunk = CreateChatCompletionStreamResponse(
+            id=chunk_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model_name,
+            choices=[
+                StreamChoicesItem.model_construct(
+                    index=0,
+                    delta=ChatCompletionStreamResponseDelta(content="\n\n"),
+                    finish_reason=None,
                 )
-            chunk = CreateChatCompletionStreamResponse(
-                id=chunk_id,
-                object="chat.completion.chunk",
-                created=created,
-                model=model_name,
-                choices=[
-                    StreamChoicesItem.model_construct(
-                        index=0,
-                        delta=ChatCompletionStreamResponseDelta(
-                            tool_calls=tool_call_chunks,
-                        ),
-                        finish_reason=None,
-                    )
-                ],
+            ],
+        )
+        yield f"data: {close_chunk.model_dump_json()}\n\n"
+
+    # Stream tool calls from the final accumulated event
+    if final_tool_calls:
+        tool_call_chunks = []
+        for i, tc in enumerate(final_tool_calls):
+            tool_call_chunks.append(
+                ChatCompletionMessageToolCallChunk(
+                    index=i,
+                    id=tc.execution_id or uuid.uuid4().hex,
+                    type="function",
+                    function=ChunkFunction(
+                        name=tc.name,
+                        arguments=json.dumps(tc.args),
+                    ),
+                )
             )
-            yield f"data: {chunk.model_dump_json()}\n\n"
+        chunk = CreateChatCompletionStreamResponse(
+            id=chunk_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model_name,
+            choices=[
+                StreamChoicesItem.model_construct(
+                    index=0,
+                    delta=ChatCompletionStreamResponseDelta(
+                        tool_calls=tool_call_chunks,
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        )
+        yield f"data: {chunk.model_dump_json()}\n\n"
 
     # Final chunk with finish_reason
     finish_reason: OAIFinishReason = "tool_calls" if has_tool_calls else "stop"
@@ -421,7 +492,7 @@ async def stream_chat_completion(
         created=created,
         model=model_name,
         choices=[
-            StreamChoicesItem(
+            StreamChoicesItem.model_construct(
                 index=0,
                 delta=ChatCompletionStreamResponseDelta(),
                 finish_reason=finish_reason,
@@ -444,7 +515,6 @@ async def createChatCompletion(
     request: Request,
 ) -> Union[CreateChatCompletionResponse, StreamingResponse]:
     """Operation ID: createChatCompletion"""
-    logger.info(json.dumps(body.model_dump(), indent=2))
     user_id = get_user_id(request)
 
     if not user_id:
@@ -471,7 +541,9 @@ async def createChatCompletion(
 
         return StreamingResponse(
             stream_chat_completion(
-                user_id, internal_messages, body.model,
+                user_id,
+                internal_messages,
+                body.model,
                 **stream_kwargs,
             ),
             media_type="text/event-stream",
@@ -485,7 +557,9 @@ async def createChatCompletion(
     # Non-streaming response
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
     workflow = await composer.compose_workflow(
-        user_id, builder, None,
+        user_id,
+        builder,
+        None,
         client_tools=client_tools,
         tool_choice=tool_choice,
     )
