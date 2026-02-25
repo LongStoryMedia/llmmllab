@@ -255,7 +255,9 @@ async def createChatCompletion(
         if event.finish_reason == "complete" and event.message:
             chat_response = event
     assert chat_response is not None, "Workflow did not produce a chat response"
-    return openai_response_from_chat_response(chat_response)
+    return openai_response_from_chat_response(chat_response, model=body.model)
+    logger.info(f"Returning response: {res.model_dump_json(indent=2)}")
+    return res
 
 
 @router.delete("/completions/{completion_id}")

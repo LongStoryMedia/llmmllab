@@ -10,13 +10,11 @@ from typing import TYPE_CHECKING, List, Optional, Type, cast
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
-from langgraph.prebuilt import ToolNode
 from langchain.chat_models import BaseChatModel
 from pydantic import BaseModel
 
 from composer.constants import (
     AGENT_NODE_NAME,
-    TOOL_NODE_NAME,
 )
 from models.default_configs import (
     create_default_user_config,
@@ -45,8 +43,7 @@ from utils.logging import llmmllogger
 # from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.chat import ChatAgent
 from composer.graph.workflows.base import GraphBuilder
-from composer.graph.nodes.agent import AgentNode
-from composer.tools.registry import registry_manager
+from composer.graph.nodes.passthrough import PassthroughNode
 from composer.graph.state import WorkflowState
 
 if TYPE_CHECKING:
@@ -221,18 +218,17 @@ class IdeGraphBuilder(GraphBuilder):
                 component_name="PrimaryCodingAgent",
             )
             # create tool registry
-            tool_registry = await registry_manager.get_user_registry(user_id, None)
-            tools = tool_registry.get_all_executable_tools()
+            # tool_registry = await registry_manager.get_user_registry(user_id, None)
+            # tools = tool_registry.get_all_executable_tools()
 
-            tool_node = ToolNode(tools)
+            # tool_node = ToolNode(tools)
 
             # Create master workflow graph
             workflow = StateGraph(WorkflowState)
 
             # create nodes with injected dependencies
-            chat_node = AgentNode(
+            chat_node = PassthroughNode(
                 agent=primary_agent,
-                tool_registry=tool_registry,
                 node_metadata=NodeMetadata(
                     node_name=AGENT_NODE_NAME,
                     node_id=uuid.uuid4().hex,
@@ -243,18 +239,19 @@ class IdeGraphBuilder(GraphBuilder):
             )
 
             workflow.add_node(AGENT_NODE_NAME, chat_node)
-            workflow.add_node(TOOL_NODE_NAME, tool_node)
+            # workflow.add_node(TOOL_NODE_NAME, tool_node)
             # Build a simplified workflow graph structure:
             workflow.add_edge(START, AGENT_NODE_NAME)
+            workflow.add_edge(AGENT_NODE_NAME, END)
             # create conditional tool call loop
-            workflow.add_conditional_edges(
-                AGENT_NODE_NAME,
-                should_continue_tool_calls,
-                {
-                    "tools": TOOL_NODE_NAME,
-                    "end": END,
-                },
-            )
+            # workflow.add_conditional_edges(
+            #     AGENT_NODE_NAME,
+            #     should_continue_tool_calls,
+            #     {
+            #         "tools": TOOL_NODE_NAME,
+            #         "end": END,
+            #     },
+            # )
             return workflow.compile()
         except Exception as e:
             self.logger.error(
