@@ -7,6 +7,7 @@ from ComposerService into a generic, reusable component.
 """
 
 import json
+import re
 from typing import (
     Any,
     AsyncIterator,
@@ -266,7 +267,40 @@ class WorkflowExecutor:
                                         )
                             if text_content:
                                 full_text = "".join(text_content)
-                                if full_text.strip():
+                                # Handle <think>...</think> markers that
+                                # arrive whole in non-streaming mode.
+                                # Split into thoughts (before </think>)
+                                # and regular content (after </think>).
+                                if "</think>" in full_text:
+                                    before, after = full_text.split(
+                                        "</think>", 1
+                                    )
+                                    raw_think_complete = True
+                                    # Strip <think> prefix if present
+                                    think_text = before.lstrip()
+                                    if think_text.startswith("<think>"):
+                                        think_text = think_text[
+                                            len("<think>") :
+                                        ]
+                                    if think_text.strip():
+                                        thoughts_buffer += think_text
+                                        last_thoughts_run_id = run_id
+                                        new_state = GenerationState.THINKING
+                                        res.message.thoughts.append(
+                                            Thought(text=think_text)
+                                        )
+                                    after = after.strip()
+                                    if after:
+                                        new_state = GenerationState.RESPONDING
+                                        res.message.content.append(
+                                            MessageContent(
+                                                type=MessageContentType.TEXT,
+                                                text=after,
+                                            )
+                                        )
+                                        contents_buffer += after
+                                        last_content_run_id = run_id
+                                elif full_text.strip():
                                     new_state = GenerationState.RESPONDING
                                     res.message.content.append(
                                         MessageContent(
@@ -276,6 +310,56 @@ class WorkflowExecutor:
                                     )
                                     contents_buffer += full_text
                                     last_content_run_id = run_id
+
+                        # Fallback: extract <tool_call> XML from text
+                        # content when the model emits them as raw text
+                        # (e.g. inside code fences) instead of structured
+                        # tool calls that llama.cpp's parser recognises.
+                        if (
+                            not tool_calls
+                            and not (hasattr(output, "tool_calls") and output.tool_calls)
+                            and contents_buffer
+                            and "<tool_call>" in contents_buffer
+                        ):
+                            fallback_tcs, cleaned = (
+                                self._extract_tool_calls_from_text(
+                                    contents_buffer
+                                )
+                            )
+                            if fallback_tcs:
+                                self.logger.info(
+                                    "Extracted fallback tool calls from text content",
+                                    extra={
+                                        "tool_count": len(fallback_tcs),
+                                        "tool_names": [
+                                            tc.name for tc in fallback_tcs
+                                        ],
+                                    },
+                                )
+                                for tc in fallback_tcs:
+                                    tool_calls[tc.execution_id or run_id] = tc
+                                    res.message.tool_calls.append(tc)
+                                # The text before the tool calls is
+                                # thinking/planning — route it to
+                                # thoughts, not content.
+                                if cleaned.strip():
+                                    thoughts_buffer += cleaned
+                                    last_thoughts_run_id = run_id
+                                    res.message.thoughts.append(
+                                        Thought(text=cleaned.strip())
+                                    )
+                                # Clear content buffers since the
+                                # "content" was really thinking + tool
+                                # call XML, not user-visible text.
+                                contents_buffer = ""
+                                res.message.content.clear()
+                                message_contents.clear()
+                                last_content_run_id = run_id  # prevent re-processing
+                                new_state = GenerationState.EXECUTING
+                                # Mark thinking as complete so the final
+                                # flush keeps thoughts as thoughts instead
+                                # of reclassifying them as content.
+                                raw_think_complete = True
 
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
@@ -711,6 +795,51 @@ class WorkflowExecutor:
 
         # Fallback - look for any text field
         return reasoning_obj.get("text", "")
+
+    def _extract_tool_calls_from_text(
+        self, text: str
+    ) -> tuple[List[ToolCall], str]:
+        """
+        Fallback: extract <tool_call> JSON blocks from raw text.
+
+        Some models (especially with Hermes 2 Pro format) sometimes
+        embed <tool_call> XML in markdown code fences or regular text
+        instead of producing structured tool calls.  This method
+        finds them, parses the JSON, and returns ToolCall objects
+        plus the remaining text (with tool call blocks removed).
+
+        Returns:
+            tuple[List[ToolCall], str]: (extracted tool calls, cleaned text)
+        """
+        # Match <tool_call>...</tool_call> even inside code fences
+        pattern = re.compile(
+            r"(?:```\s*)?<tool_call>\s*(\{.*?\})\s*</tool_call>(?:\s*```)?" ,
+            re.DOTALL,
+        )
+        extracted: List[ToolCall] = []
+        cleaned = text
+        for match in pattern.finditer(text):
+            try:
+                tc_json = json.loads(match.group(1))
+                name = tc_json.get("name", "")
+                args = tc_json.get("arguments", tc_json.get("args", {}))
+                if isinstance(args, str):
+                    args = json.loads(args)
+                tc = ToolCall(
+                    name=name,
+                    args=args,
+                    execution_id=f"fallback-{len(extracted)}",
+                    created_at=datetime.now(timezone.utc),
+                )
+                extracted.append(tc)
+            except (json.JSONDecodeError, TypeError) as exc:
+                self.logger.debug(
+                    "Failed to parse fallback tool call",
+                    extra={"error": str(exc), "raw": match.group(0)},
+                )
+        if extracted:
+            cleaned = pattern.sub("", text).strip()
+        return extracted, cleaned
 
     def _parse_content(self, content: str | List[str | Dict[str, Any]]) -> List[str]:
         """
