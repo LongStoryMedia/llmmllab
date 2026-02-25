@@ -461,11 +461,18 @@ async def createChatCompletion(
             tool_choice = body.tool_choice
 
     if body.stream:
+        # Only pass tool kwargs when they have actual values to avoid
+        # bypassing workflow caching with empty build_kwargs
+        stream_kwargs: dict = {}
+        if client_tools:
+            stream_kwargs["client_tools"] = client_tools
+        if tool_choice:
+            stream_kwargs["tool_choice"] = tool_choice
+
         return StreamingResponse(
             stream_chat_completion(
                 user_id, internal_messages, body.model,
-                client_tools=client_tools,
-                tool_choice=tool_choice,
+                **stream_kwargs,
             ),
             media_type="text/event-stream",
             headers={

@@ -98,7 +98,10 @@ class ComposerService:
             # 3. Build master workflow
             assert self.graph_builder is not None, "GraphBuilder should be initialized"
 
-            if user_cache and not build_kwargs:
+            # Filter out None-valued kwargs so empty tool params don't bypass cache
+            effective_kwargs = {k: v for k, v in build_kwargs.items() if v is not None}
+
+            if user_cache and not effective_kwargs:
                 # Only use cache when no dynamic kwargs (tools change per request)
                 workflow = await user_cache.get_or_create(
                     cache_key,

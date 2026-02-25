@@ -42,6 +42,8 @@ class _PipelineCacheEntry:
         estimated_memory: float = 0,
     ):
         self._ref = weakref.ref(pipeline)
+        # Strong reference held when pipeline is locked to prevent GC
+        self._strong_ref: Optional[BasePipeline | Embeddings] = None
         self.priority = priority
         self.estimated_memory = (
             estimated_memory  # Store memory estimate for eviction decisions
@@ -54,6 +56,9 @@ class _PipelineCacheEntry:
 
     @property
     def pipeline(self) -> Optional[BasePipeline | Embeddings]:
+        # Prefer strong ref when locked, fall back to weakref
+        if self._strong_ref is not None:
+            return self._strong_ref
         return self._ref()
 
     @property
@@ -62,6 +67,8 @@ class _PipelineCacheEntry:
         return self._use_count
 
     def is_alive(self) -> bool:
+        if self._strong_ref is not None:
+            return True
         return self._ref() is not None
 
     def touch(self) -> None:
@@ -69,15 +76,21 @@ class _PipelineCacheEntry:
         self.access_count += 1
 
     def lock(self) -> None:
-        """Mark pipeline as in-use to prevent eviction."""
+        """Mark pipeline as in-use to prevent eviction and GC."""
         self._use_count += 1
         self.in_use = True
+        # Hold a strong reference so GC cannot collect a locked pipeline
+        if self._strong_ref is None:
+            self._strong_ref = self._ref()
         self.touch()
 
     def unlock(self) -> None:
         """Release pipeline from in-use state."""
         self._use_count = max(0, self._use_count - 1)
         self.in_use = self._use_count > 0
+        # Release strong reference when fully unlocked
+        if not self.in_use:
+            self._strong_ref = None
 
     def eviction_score(self, now: float, estimated_memory: float = 0) -> float:
         """Calculate eviction score - higher score = keep longer, lower score = evict first."""
@@ -324,6 +337,13 @@ class LocalPipelineCacheManager:
                 dynamic_timeout = base_timeout * timeout_multiplier
 
                 if (now - entry.last_accessed) > dynamic_timeout:
+                    # Never expire a locked (in-use) pipeline
+                    if entry.in_use:
+                        self.logger.debug(
+                            f"Skipping expiry of {mid} - pipeline is in use "
+                            f"(use_count: {entry.use_count})"
+                        )
+                        continue
                     self.logger.debug(
                         f"Expiring {mid} after {dynamic_timeout:.0f}s timeout "
                         f"(base: {base_timeout}s, multiplier: {timeout_multiplier:.1f}x, "

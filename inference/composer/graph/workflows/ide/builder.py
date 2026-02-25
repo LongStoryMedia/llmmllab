@@ -184,7 +184,10 @@ class IdeGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            primary_model = pipeline_factory.get_pipeline(profile=IDE_PRIMARY_PROFILE)
+            primary_pipeline = pipeline_factory.get_pipeline(profile=IDE_PRIMARY_PROFILE)
+            # Keep a strong reference to the original pipeline throughout build_workflow
+            # so GC cannot collect it when bind_tools returns a RunnableBinding wrapper
+            primary_model = primary_pipeline
 
             # Bind client tools to the pipeline so the LLM can generate tool_calls
             if client_tools:
