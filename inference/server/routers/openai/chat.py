@@ -1,9 +1,11 @@
 import json
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, Union
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from server.middleware.auth import get_user_id
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
@@ -22,11 +24,18 @@ from models.openai.chat_completion_message_tool_calls import (
 from models.openai.chat_completion_response_message import (
     ChatCompletionResponseMessage,
 )
+from models.openai.chat_completion_stream_response_delta import (
+    ChatCompletionStreamResponseDelta,
+)
 from models.openai.completion_usage import CompletionUsage
 from models.openai.create_chat_completion_request import CreateChatCompletionRequest
 from models.openai.create_chat_completion_response import (
     ChoicesItem,
     CreateChatCompletionResponse,
+)
+from models.openai.create_chat_completion_stream_response import (
+    ChoicesItem as StreamChoicesItem,
+    CreateChatCompletionStreamResponse,
 )
 from models.openai.chat_completion_request_message import (
     ChatCompletionRequestMessage,
@@ -45,7 +54,6 @@ from models.openai.chat_completion_request_message import (
 from models.message import Message, MessageRole, MessageContent, MessageContentType
 from models.chat_response import ChatResponse
 from utils.logging import llmmllogger
-from utils import extract_text_from_message  # Import logging utility
 
 import composer
 
@@ -220,6 +228,79 @@ def openai_response_from_chat_response(
     )
 
 
+async def stream_chat_completion(
+    user_id: str,
+    messages: list[Message],
+    model_name: str,
+) -> AsyncIterator[str]:
+    """Stream composer events as OpenAI SSE chat completion chunks."""
+    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
+    workflow = await composer.compose_workflow(user_id, builder, None)
+    initial_state = await builder.create_initial_state(user_id, 0, messages)
+
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
+    created = int(datetime.now().timestamp())
+
+    # Send initial chunk with role
+    initial_chunk = CreateChatCompletionStreamResponse(
+        id=chunk_id,
+        object="chat.completion.chunk",
+        created=created,
+        model=model_name,
+        choices=[
+            StreamChoicesItem.model_construct(
+                index=0,
+                delta=ChatCompletionStreamResponseDelta(role="assistant", content=""),
+                finish_reason=None,
+            )
+        ],
+    )
+    yield f"data: {initial_chunk.model_dump_json()}\n\n"
+
+    async for event in composer.execute_workflow(initial_state, workflow):
+        if event.message and event.message.content:
+            text_parts = [
+                c.text
+                for c in event.message.content
+                if c.type == MessageContentType.TEXT and c.text
+            ]
+            response_text = "".join(text_parts)
+            if response_text:
+                chunk = CreateChatCompletionStreamResponse(
+                    id=chunk_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=model_name,
+                    choices=[
+                        StreamChoicesItem.model_construct(
+                            index=0,
+                            delta=ChatCompletionStreamResponseDelta(
+                                content=response_text
+                            ),
+                            finish_reason=None,
+                        )
+                    ],
+                )
+                yield f"data: {chunk.model_dump_json()}\n\n"
+
+    # Final chunk with finish_reason
+    final_chunk = CreateChatCompletionStreamResponse(
+        id=chunk_id,
+        object="chat.completion.chunk",
+        created=created,
+        model=model_name,
+        choices=[
+            StreamChoicesItem(
+                index=0,
+                delta=ChatCompletionStreamResponseDelta(),
+                finish_reason="stop",
+            )
+        ],
+    )
+    yield f"data: {final_chunk.model_dump_json()}\n\n"
+    yield "data: [DONE]\n\n"
+
+
 @router.get("/completions")
 async def listChatCompletions() -> ChatCompletionList:
     """Operation ID: listChatCompletions"""
@@ -230,7 +311,7 @@ async def listChatCompletions() -> ChatCompletionList:
 async def createChatCompletion(
     body: CreateChatCompletionRequest,
     request: Request,
-) -> CreateChatCompletionResponse:
+) -> Union[CreateChatCompletionResponse, StreamingResponse]:
     """Operation ID: createChatCompletion"""
     logger.info(json.dumps(body.model_dump(), indent=2))
     user_id = get_user_id(request)
@@ -238,26 +319,34 @@ async def createChatCompletion(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
+    internal_messages = messages_from_openai(body.messages)
+
+    if body.stream:
+        return StreamingResponse(
+            stream_chat_completion(user_id, internal_messages, body.model),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Non-streaming response
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
     workflow = await composer.compose_workflow(user_id, builder, None)
     initial_state = await builder.create_initial_state(
         user_id,
         0,
-        messages_from_openai(body.messages),
+        internal_messages,
     )
     chat_response: ChatResponse | None = None
     async for event in composer.execute_workflow(initial_state, workflow):
-        print(
-            extract_text_from_message(event.message) if event.message else "",
-            flush=True,
-            end="",
-        )
         if event.finish_reason == "complete" and event.message:
             chat_response = event
-    assert chat_response is not None, "Workflow did not produce a chat response"
+    if chat_response is None:
+        raise HTTPException(status_code=500, detail="Workflow did not produce a response")
     return openai_response_from_chat_response(chat_response, model=body.model)
-    logger.info(f"Returning response: {res.model_dump_json(indent=2)}")
-    return res
 
 
 @router.delete("/completions/{completion_id}")
