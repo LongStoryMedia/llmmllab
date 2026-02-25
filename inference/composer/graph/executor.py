@@ -247,6 +247,36 @@ class WorkflowExecutor:
                                 },
                             )
 
+                        # Extract text content from non-streaming model output.
+                        # When disable_streaming="tool_calling" is active and
+                        # tools are bound, no on_chat_model_stream events fire,
+                        # so content must be captured here instead.
+                        if output.content and last_content_run_id != run_id:
+                            text_content, reasoning_content = (
+                                self._parse_content_with_reasoning(output.content)
+                            )
+                            if reasoning_content:
+                                for rc_text in reasoning_content:
+                                    thoughts_buffer += rc_text
+                                    last_thoughts_run_id = run_id
+                                    if rc_text.strip():
+                                        new_state = GenerationState.THINKING
+                                        res.message.thoughts.append(
+                                            Thought(text=rc_text)
+                                        )
+                            if text_content:
+                                full_text = "".join(text_content)
+                                if full_text.strip():
+                                    new_state = GenerationState.RESPONDING
+                                    res.message.content.append(
+                                        MessageContent(
+                                            type=MessageContentType.TEXT,
+                                            text=full_text,
+                                        )
+                                    )
+                                    contents_buffer += full_text
+                                    last_content_run_id = run_id
+
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
                         if reason == "tool_call" or output.tool_calls:
