@@ -139,6 +139,10 @@ class ChatLlamaCppPipeline(BasePipeline):
             # params = self._build_chat_model_params()
 
             # Create ChatOpenAI instance with debug logging
+            # disable_streaming="tool_calling" prevents streaming when the model
+            # is generating tool calls — llama.cpp's Hermes 2 Pro chat format
+            # raises "Invalid diff: now finding less tool calls!" when the
+            # incremental tool-call parser temporarily gains then loses a call.
             self.chat_model = ReasoningChatOpenAI(
                 base_url=base_url,
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
@@ -151,6 +155,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 seed=self.profile.parameters.seed or -1,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 reasoning_effort=self.profile.parameters.reasoning_effort or "minimal",
+                disable_streaming="tool_calling",
                 metadata={
                     "model_profile": self.profile.name,
                     "task": ModelProfileType(self.profile.type).name,
