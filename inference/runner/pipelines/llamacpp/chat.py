@@ -141,7 +141,7 @@ class ChatLlamaCppPipeline(BasePipeline):
             # Create ChatOpenAI instance with debug logging
             self.chat_model = ReasoningChatOpenAI(
                 base_url=base_url,
-                api_key=lambda: "dummy",  # Use callable to satisfy type requirements
+                api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,

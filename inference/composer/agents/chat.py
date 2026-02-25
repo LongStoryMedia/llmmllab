@@ -366,44 +366,6 @@ Search results to synthesize:
 </search_results>
 """
 
-    async def _create_primary_conversation_prompt(self, messages: List[str]) -> str:
-        """Create specialized prompt for primary conversation summarization."""
-
-        return f"""<role>
-Context Extraction Assistant
-</role>
-
-<primary_objective>
-Your sole objective in this task is to extract the highest quality/most relevant context from the conversation history below.
-</primary_objective>
-
-<objective_information>
-You're nearing the total number of input tokens you can accept, so you must extract the highest quality/most relevant pieces of information from your conversation history.
-This context will then overwrite the conversation history presented below. Because of this, ensure the context you extract is only the most important information to your overall goal.
-</objective_information>
-
-<instructions>
-The conversation history below will be replaced with the context you extract in this step. Because of this, you must do your very best to extract and record all of the most important context from the conversation history.
-You want to ensure that you don't repeat any actions you've already completed, so the context you extract from the conversation history should be focused on the most important information to your overall goal.
-- Trace the evolution of topics and ideas throughout the conversation
-- Identify key decision points and their rationale
-- Highlight agreements, disagreements, and resolution processes
-- Capture the flow of reasoning and argumentation
-- Focus on logical progression and development of concepts
-</instructions>
-
-The user will message you with the full message history you'll be extracting context from, to then replace. Carefully read over it all, and think deeply about what information is most important to your overall goal that should be saved:
-
-With all of this in mind, please carefully read over the entire conversation history, and extract the most important and relevant context to replace it so that you can free up space in the conversation history.
-Respond ONLY with the extracted context. Do not include any additional information, or text before or after the extracted context.
-
-<messages>
-Messages to summarize:
-{messages}
-</messages>
-"""
-
-    # Import shared helper methods from the base class or create simplified versions
     async def _combine_search_content(self, search_results: List[SearchResult]) -> str:
         """Combine search results content for primary analysis."""
         content_parts = []

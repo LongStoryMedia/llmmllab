@@ -1,20 +1,24 @@
 """
-Simplified GraphBuilder with Dependency Injection - Focused coordinator using composition.
-Uses clean factories and strategies with proper dependency injection pattern.
-All agents, storage services, and model profiles are instantiated upfront and injected.
+IDE GraphBuilder with Dependency Injection.
+Supports two tool modes:
+  - Proxy mode: client_tools are bound to the LLM via bind_tools() so it generates
+    tool_calls that the client executes. No ToolNode in the graph.
+  - Server-side mode: server_tools are added with a ToolNode and feedback loop.
 """
 
-from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional, Type, cast
 
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
+from langgraph.prebuilt import ToolNode
 from langchain.chat_models import BaseChatModel
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
 from composer.constants import (
     AGENT_NODE_NAME,
+    TOOL_NODE_NAME,
 )
 from models.default_configs import (
     create_default_user_config,
@@ -39,11 +43,9 @@ from runner import pipeline_factory
 
 from utils.logging import llmmllogger
 
-# Import all agents
-# from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.chat import ChatAgent
-from composer.graph.workflows.base import GraphBuilder
-from composer.graph.nodes.passthrough import PassthroughNode
+from composer.graph.workflows.base import GraphBuilder, should_continue_tool_calls
+from composer.graph.nodes.agent import AgentNode
 from composer.graph.state import WorkflowState
 
 if TYPE_CHECKING:
@@ -57,20 +59,6 @@ if TYPE_CHECKING:
     from db.search_storage import SearchStorage
     from db.dynamic_tool_storage import DynamicToolStorage
     from db.checkpoint_storage import CheckpointStorage
-
-
-def should_continue_tool_calls(state: WorkflowState) -> str:
-    """Determine if the agent should continue making tool calls based on the last message."""
-    # Get the last message from state
-    if not state.messages:
-        return "end"
-
-    last_message = state.messages[-1]
-
-    # Check if the last message has tool calls
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return "end"
 
 
 IDE_PRIMARY_SYSTEM_PROMPT = """You are a helpful AI assistant designed for unconstrained reasoning and output.
@@ -130,27 +118,20 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
     parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
-    created_at=datetime.now(),
-    updated_at=datetime.now(),
+    created_at=None,
+    updated_at=None,
 )
 
 
 class IdeGraphBuilder(GraphBuilder):
     """
-    Clean, focused GraphBuilder using dependency injection and composition.
+    IDE-focused GraphBuilder supporting proxy and server-side tool modes.
 
-    Responsibilities:
-    - Create all agent and storage service instances upfront
-    - Inject dependencies into nodes for proper separation of concerns
-    - Coordinate workflow creation using factories
-    - Provide simple public interface
-    - Handle errors gracefully
+    Proxy mode (client_tools): bind_tools() on the pipeline so the LLM generates
+    tool_calls that are returned to the client. Graph: START -> Agent -> END.
 
-    Does NOT handle:
-    - Caching (delegated to CachedWorkflowFactory)
-    - Complex routing (handled by dedicated routers)
-    - Circuit breaking (separate concern)
-    - Tool orchestration (separate nodes)
+    Server-side mode (server_tools): adds ToolNode + feedback loop.
+    Graph: START -> Agent -> (tools? -> ToolNode -> Agent) | END.
     """
 
     def __init__(
@@ -158,18 +139,9 @@ class IdeGraphBuilder(GraphBuilder):
         storage: "Storage",
         user_config: UserConfig,
     ):
-        """
-        Initialize GraphBuilder with dependency injection.
-
-        Args:
-            storage: Storage instance for dependency injection
-            pipeline_factory: PipelineFactory
-        """
-        # Core dependencies
         self.user_config = user_config
-        self.logger = llmmllogger.logger.bind(component="GraphBuilder")
+        self.logger = llmmllogger.logger.bind(component="IdeGraphBuilder")
 
-        # Use storage.get_service for type safety and linter warnings avoidance
         self.user_config_storage: "UserConfigStorage" = storage.get_service(
             storage.user_config
         )
@@ -194,17 +166,19 @@ class IdeGraphBuilder(GraphBuilder):
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
+        client_tools: Optional[List[BaseTool]] = None,
+        server_tools: Optional[List[BaseTool]] = None,
+        tool_choice: Optional[str] = None,
     ) -> CompiledStateGraph:
         """
-        Build a workflow of the specified type.
-
-        Simple delegation to workflow factory with error handling.
+        Build IDE workflow with optional tool support.
 
         Args:
-            workflow_type: Type of workflow to build
             user_id: User identifier
-            use_cache: Whether to use caching
-            **kwargs: Additional workflow parameters
+            response_format: Optional response format constraint
+            client_tools: Tools for proxy mode (bind_tools only, client executes)
+            server_tools: Tools for server-side execution (adds ToolNode + loop)
+            tool_choice: Optional tool_choice parameter for bind_tools
 
         Returns:
             Compiled workflow ready for execution
@@ -212,22 +186,22 @@ class IdeGraphBuilder(GraphBuilder):
         try:
             primary_model = pipeline_factory.get_pipeline(profile=IDE_PRIMARY_PROFILE)
 
+            # Bind client tools to the pipeline so the LLM can generate tool_calls
+            if client_tools:
+                bind_kwargs: dict = {}
+                if tool_choice:
+                    bind_kwargs["tool_choice"] = tool_choice
+                primary_model = primary_model.bind_tools(client_tools, **bind_kwargs)  # type: ignore[union-attr]
+
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
                 profile=IDE_PRIMARY_PROFILE,
                 component_name="PrimaryCodingAgent",
             )
-            # create tool registry
-            # tool_registry = await registry_manager.get_user_registry(user_id, None)
-            # tools = tool_registry.get_all_executable_tools()
 
-            # tool_node = ToolNode(tools)
-
-            # Create master workflow graph
             workflow = StateGraph(WorkflowState)
 
-            # create nodes with injected dependencies
-            chat_node = PassthroughNode(
+            chat_node = AgentNode(
                 agent=primary_agent,
                 node_metadata=NodeMetadata(
                     node_name=AGENT_NODE_NAME,
@@ -239,19 +213,25 @@ class IdeGraphBuilder(GraphBuilder):
             )
 
             workflow.add_node(AGENT_NODE_NAME, chat_node)
-            # workflow.add_node(TOOL_NODE_NAME, tool_node)
-            # Build a simplified workflow graph structure:
             workflow.add_edge(START, AGENT_NODE_NAME)
-            workflow.add_edge(AGENT_NODE_NAME, END)
-            # create conditional tool call loop
-            # workflow.add_conditional_edges(
-            #     AGENT_NODE_NAME,
-            #     should_continue_tool_calls,
-            #     {
-            #         "tools": TOOL_NODE_NAME,
-            #         "end": END,
-            #     },
-            # )
+
+            if server_tools:
+                # Server-side tool execution mode: Agent -> ToolNode -> Agent loop
+                tool_node = ToolNode(server_tools)
+                workflow.add_node(TOOL_NODE_NAME, tool_node)
+                workflow.add_conditional_edges(
+                    AGENT_NODE_NAME,
+                    should_continue_tool_calls,
+                    {
+                        "tools": TOOL_NODE_NAME,
+                        "end": END,
+                    },
+                )
+                workflow.add_edge(TOOL_NODE_NAME, AGENT_NODE_NAME)
+            else:
+                # Proxy mode or no tools: Agent -> END
+                workflow.add_edge(AGENT_NODE_NAME, END)
+
             return workflow.compile()
         except Exception as e:
             self.logger.error(
@@ -259,7 +239,6 @@ class IdeGraphBuilder(GraphBuilder):
                 user_id=user_id,
                 error=str(e),
             )
-            # Try to create fallback chat workflow
             raise
 
     async def create_initial_state(
@@ -280,10 +259,9 @@ class IdeGraphBuilder(GraphBuilder):
             ),
         )
 
-        # Create the state with centralized user configuration and todo context
         state = WorkflowState(
-            messages=messages,  # Use Message objects directly
-            current_user_message=current_user_message,  # Use Message object directly
+            messages=messages,
+            current_user_message=current_user_message,
             user_id=user_id,
             user_config=create_default_user_config(user_id),
             conversation_id=conversation_id,

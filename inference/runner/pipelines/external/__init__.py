@@ -1,15 +1,9 @@
 """
 External pipeline implementations for API-based models.
+
+Note: External pipelines (OpenAI, Anthropic) are now created directly via
+langchain_openai.ChatOpenAI and langchain_anthropic.ChatAnthropic in the
+pipeline factory, rather than through custom pipeline wrappers.
 """
 
-from .openai_pipeline import OpenAIPipeline
-
-__all__ = ["OpenAIPipeline"]
-
-# Conditionally import Anthropic if available
-try:
-    from .anthropic_pipeline import AnthropicPipeline
-
-    __all__.append("AnthropicPipeline")
-except ImportError:
-    pass
+__all__: list[str] = []

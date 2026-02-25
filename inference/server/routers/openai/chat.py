@@ -2,10 +2,13 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Literal, TypeAlias, Union
+from typing import Any, Literal, TypeAlias, Union
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
+from langchain_core.tools import StructuredTool
+from pydantic import create_model, Field
 
 from server.middleware.auth import get_user_id
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
@@ -20,6 +23,10 @@ from models.openai.chat_completion_message_tool_call import (
 )
 from models.openai.chat_completion_message_tool_calls import (
     ChatCompletionMessageToolCalls,
+)
+from models.openai.chat_completion_message_tool_call_chunk import (
+    ChatCompletionMessageToolCallChunk,
+    Function as ChunkFunction,
 )
 from models.openai.chat_completion_response_message import (
     ChatCompletionResponseMessage,
@@ -51,7 +58,9 @@ from models.openai.chat_completion_request_message import (
     ChatCompletionRequestDeveloperMessage,
     ChatCompletionRequestSystemMessage,
 )
+from models.openai.chat_completion_tool import ChatCompletionTool
 from models.message import Message, MessageRole, MessageContent, MessageContentType
+from models.tool_call import ToolCall
 from models.chat_response import ChatResponse
 from utils.logging import llmmllogger
 
@@ -65,6 +74,67 @@ logger = llmmllogger.bind(component="openai_chat_router")
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
+def _json_schema_to_pydantic(name: str, schema: Any) -> type:
+    """Convert a JSON Schema 'parameters' object to a Pydantic model for StructuredTool."""
+    if not schema or not isinstance(schema, dict):
+        return create_model(name)
+
+    properties = schema.get("properties", {})
+    required = set(schema.get("required", []))
+
+    field_definitions: dict[str, Any] = {}
+    for field_name, field_schema in properties.items():
+        field_type = _json_type_to_python(field_schema)
+        description = field_schema.get("description", "")
+        if field_name in required:
+            field_definitions[field_name] = (field_type, Field(..., description=description))
+        else:
+            field_definitions[field_name] = (field_type, Field(default=None, description=description))
+
+    return create_model(name, **field_definitions)
+
+
+def _json_type_to_python(schema: dict) -> type:
+    """Map JSON Schema type to Python type."""
+    type_map = {
+        "string": str,
+        "integer": int,
+        "number": float,
+        "boolean": bool,
+        "array": list,
+        "object": dict,
+    }
+    json_type = schema.get("type", "string")
+    if isinstance(json_type, list):
+        json_type = json_type[0] if json_type else "string"
+    return type_map.get(json_type, str)
+
+
+def langchain_tools_from_openai(openai_tools: list) -> list[StructuredTool]:
+    """Convert OpenAI tool definitions to LangChain StructuredTool for bind_tools().
+
+    These are placeholder tools for proxy mode — the client executes them, not us.
+    They exist so the LLM can bind to them and generate tool_calls in its response.
+    """
+    tools = []
+    for tool_def in openai_tools:
+        if not isinstance(tool_def, ChatCompletionTool):
+            continue
+        if tool_def.type != "function":
+            continue
+        fn = tool_def.function
+
+        # Create a no-op tool — client-side execution
+        tool = StructuredTool.from_function(
+            func=lambda **kwargs: "",
+            name=fn.name,
+            description=fn.description or "",
+            args_schema=_json_schema_to_pydantic(fn.name, fn.parameters) if fn.parameters else None,
+        )
+        tools.append(tool)
+    return tools
+
+
 def messages_from_openai(
     openai_messages: list[ChatCompletionRequestMessage],
 ) -> list[Message]:
@@ -72,6 +142,8 @@ def messages_from_openai(
     messages = []
     for oaim in openai_messages:
         contents = []
+        tool_call_id = None
+
         if isinstance(oaim.content, str):
             contents.append(
                 MessageContent(type=MessageContentType.TEXT, text=oaim.content)
@@ -112,6 +184,18 @@ def messages_from_openai(
                         f"Unknown content part type: {type(part)}. Skipping."
                     )
 
+        # Preserve tool_call_id for tool result messages via ToolCall
+        tool_calls = None
+        if isinstance(oaim, ChatCompletionRequestToolMessage):
+            tool_call_id = oaim.tool_call_id
+            tool_calls = [
+                ToolCall(
+                    name="tool_result",
+                    execution_id=tool_call_id,
+                    args={},
+                )
+            ]
+
         msg = Message(
             role=(
                 MessageRole.USER
@@ -127,12 +211,13 @@ def messages_from_openai(
                             MessageRole.TOOL
                             if isinstance(oaim, ChatCompletionRequestFunctionMessage)
                             or isinstance(oaim, ChatCompletionRequestToolMessage)
-                            else MessageRole.USER  # Default to USER role if type is unrecognized
+                            else MessageRole.USER
                         )
                     )
                 )
             ),
             content=contents,
+            tool_calls=tool_calls,
         )
 
         messages.append(msg)
@@ -185,6 +270,8 @@ def openai_response_from_chat_response(
             )
             for tc in chat_response.message.tool_calls
         ]
+        # If we have tool_calls, set finish_reason accordingly
+        finish_reason = "tool_calls"
 
     message = ChatCompletionResponseMessage(
         role="assistant",
@@ -232,10 +319,18 @@ async def stream_chat_completion(
     user_id: str,
     messages: list[Message],
     model_name: str,
+    client_tools: list[StructuredTool] | None = None,
+    tool_choice: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream composer events as OpenAI SSE chat completion chunks."""
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
-    workflow = await composer.compose_workflow(user_id, builder, None)
+    workflow = await composer.compose_workflow(
+        user_id,
+        builder,
+        None,
+        client_tools=client_tools,
+        tool_choice=tool_choice,
+    )
     initial_state = await builder.create_initial_state(user_id, 0, messages)
 
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
@@ -257,7 +352,9 @@ async def stream_chat_completion(
     )
     yield f"data: {initial_chunk.model_dump_json()}\n\n"
 
+    has_tool_calls = False
     async for event in composer.execute_workflow(initial_state, workflow):
+        # Stream text content deltas
         if event.message and event.message.content:
             text_parts = [
                 c.text
@@ -283,7 +380,41 @@ async def stream_chat_completion(
                 )
                 yield f"data: {chunk.model_dump_json()}\n\n"
 
+        # Stream tool_call deltas
+        if event.message and event.message.tool_calls:
+            has_tool_calls = True
+            tool_call_chunks = []
+            for i, tc in enumerate(event.message.tool_calls):
+                tool_call_chunks.append(
+                    ChatCompletionMessageToolCallChunk(
+                        index=i,
+                        id=tc.execution_id or uuid.uuid4().hex,
+                        type="function",
+                        function=ChunkFunction(
+                            name=tc.name,
+                            arguments=json.dumps(tc.args),
+                        ),
+                    )
+                )
+            chunk = CreateChatCompletionStreamResponse(
+                id=chunk_id,
+                object="chat.completion.chunk",
+                created=created,
+                model=model_name,
+                choices=[
+                    StreamChoicesItem.model_construct(
+                        index=0,
+                        delta=ChatCompletionStreamResponseDelta(
+                            tool_calls=tool_call_chunks,
+                        ),
+                        finish_reason=None,
+                    )
+                ],
+            )
+            yield f"data: {chunk.model_dump_json()}\n\n"
+
     # Final chunk with finish_reason
+    finish_reason: OAIFinishReason = "tool_calls" if has_tool_calls else "stop"
     final_chunk = CreateChatCompletionStreamResponse(
         id=chunk_id,
         object="chat.completion.chunk",
@@ -293,7 +424,7 @@ async def stream_chat_completion(
             StreamChoicesItem(
                 index=0,
                 delta=ChatCompletionStreamResponseDelta(),
-                finish_reason="stop",
+                finish_reason=finish_reason,
             )
         ],
     )
@@ -321,9 +452,21 @@ async def createChatCompletion(
 
     internal_messages = messages_from_openai(body.messages)
 
+    # Convert OpenAI tool definitions to LangChain tools for bind_tools()
+    client_tools = None
+    tool_choice = None
+    if body.tools:
+        client_tools = langchain_tools_from_openai(body.tools)
+        if body.tool_choice and isinstance(body.tool_choice, str):
+            tool_choice = body.tool_choice
+
     if body.stream:
         return StreamingResponse(
-            stream_chat_completion(user_id, internal_messages, body.model),
+            stream_chat_completion(
+                user_id, internal_messages, body.model,
+                client_tools=client_tools,
+                tool_choice=tool_choice,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -334,7 +477,11 @@ async def createChatCompletion(
 
     # Non-streaming response
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
-    workflow = await composer.compose_workflow(user_id, builder, None)
+    workflow = await composer.compose_workflow(
+        user_id, builder, None,
+        client_tools=client_tools,
+        tool_choice=tool_choice,
+    )
     initial_state = await builder.create_initial_state(
         user_id,
         0,

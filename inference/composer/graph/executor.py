@@ -624,69 +624,6 @@ class WorkflowExecutor:
         else:
             return [str(c) for c in content]
 
-    def _enrich_event(self, event: StreamEvent, context_name: str) -> StreamEvent:
-        """
-        Enrich workflow events with additional metadata and tool information.
-
-        Args:
-            event: Original event from workflow execution
-            context_name: Context name for metadata
-
-        Returns:
-            Dict[str, Any]: Enriched event
-        """
-        if not isinstance(event, dict):
-            return event
-
-        data: EventData = event.get("data")
-
-        # Events that carry a full state snapshot expose 'values'; prefer that
-        if data and isinstance(data, dict):
-            # If state serialization present
-            state_values = data.get("values") or data.get("state")
-            if state_values and isinstance(state_values, dict):
-                # Create a shallow copy to avoid mutating a typed dict structure
-                new_data = dict(data)
-                updated = False
-
-                # Inject tool_calls if missing
-                tc = state_values.get("tool_calls")
-                if tc and "tool_calls" not in data:
-                    new_data["tool_calls"] = tc
-                    updated = True
-
-                # Inject node metadata if available
-                node_metadata = state_values.get("node_metadata")
-                if node_metadata and "node_metadata" not in data:
-                    new_data["node_metadata"] = node_metadata
-                    updated = True
-
-                # Apply enriched data if we made changes
-                if updated:
-                    event["data"] = new_data  # type: ignore
-
-        # Also check if the event itself has node information we can enrich
-        event_type = event.get("event", "")
-
-        # Add execution metadata to certain event types for better traceability
-        if event_type in [
-            "on_chain_start",
-            "on_chain_end",
-            "on_tool_start",
-            "on_tool_end",
-        ]:
-            if "metadata" not in event:
-                event["metadata"] = {}
-
-            # Add timing and context information
-            event["metadata"].update(
-                {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "workflow_context": context_name,
-                }
-            )
-
-        return event
 
 
 # Convenience factory functions

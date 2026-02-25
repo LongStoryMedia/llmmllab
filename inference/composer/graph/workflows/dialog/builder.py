@@ -35,12 +35,10 @@ from runner import pipeline_factory
 from utils.model_profile import get_model_profile_for_task
 from utils.logging import llmmllogger
 
-# Import all agents
-# from composer.agents.classifier_agent import ClassifierAgent
 from composer.agents.chat import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.embed import EmbeddingAgent
-from composer.graph.workflows.base import GraphBuilder
+from composer.graph.workflows.base import GraphBuilder, should_continue_tool_calls, should_generate_title
 from composer.graph.nodes.agent import AgentNode
 from composer.graph.nodes.memory import (
     MemorySearchNode,
@@ -61,28 +59,6 @@ if TYPE_CHECKING:
     from db.search_storage import SearchStorage
     from db.dynamic_tool_storage import DynamicToolStorage
     from db.checkpoint_storage import CheckpointStorage
-
-
-def should_continue_tool_calls(state: WorkflowState) -> str:
-    """Determine if the agent should continue making tool calls based on the last message."""
-    # Get the last message from state
-    if not state.messages:
-        return "end"
-
-    last_message = state.messages[-1]
-
-    # Check if the last message has tool calls
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return "end"
-
-
-def should_generate_title(state: WorkflowState) -> str:
-    """Determine if we should generate a conversation title."""
-    # Only generate if title is None or starts with "New conversation"
-    if state.title is None or state.title.startswith("New conversation"):
-        return "generate_title"
-    return "skip_title"
 
 
 class DialogGraphBuilder(GraphBuilder):
@@ -144,6 +120,7 @@ class DialogGraphBuilder(GraphBuilder):
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
+        **kwargs,
     ) -> CompiledStateGraph:
         """
         Build a workflow of the specified type.
@@ -178,9 +155,6 @@ class DialogGraphBuilder(GraphBuilder):
 
             primary_model = pipeline_factory.get_pipeline(profile=primary_profile)
             embedding_model = pipeline_factory.get_pipeline(profile=embedding_profile)
-            # engineering_model = pipeline_factory.get_pipeline(
-            #     profile=engineering_profile
-            # )
 
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
@@ -315,8 +289,8 @@ class DialogGraphBuilder(GraphBuilder):
                     "end": MEMORY_CREATE_NODE_NAME,
                 },
             )
-
-            workflow.add_edge(AGENT_NODE_NAME, MEMORY_CREATE_NODE_NAME)
+            # Tool results flow back to agent for further processing
+            workflow.add_edge(TOOL_NODE_NAME, AGENT_NODE_NAME)
             workflow.add_edge(MEMORY_CREATE_NODE_NAME, MEMORY_STORE_NODE_NAME)
 
             # Add conditional title generation after memory storage
@@ -330,42 +304,7 @@ class DialogGraphBuilder(GraphBuilder):
             )
             workflow.add_edge(TITLE_GENERATION_NODE_NAME, END)
 
-            # TEMPORARILY DISABLED: Checkpointer causes connection issues
-            # The PostgreSQL checkpointer creates a connection during compilation
-            # but the connection gets closed before workflow execution, causing failures.
-            # NOTE: Checkpointer lifecycle management currently disabled
-            self.logger.info(
-                "ℹ️  Checkpointer temporarily disabled - compiling without persistence"
-            )
             return workflow.compile()
-
-            # # Configure checkpointer at compilation time for parent graph
-            # # Per LangGraph docs: "you only need to provide the checkpointer when compiling
-            # # the parent graph. LangGraph will automatically propagate the checkpointer to child subgraphs"
-            # try:
-            #     if self.checkpoint_storage.is_initialized():
-            #         # Use LangGraph's standard production pattern
-            #         async with (
-            #             self.checkpoint_storage.create_checkpointer() as checkpointer
-            #         ):
-            #             self.logger.info(
-            #                 "✅ Compiling workflow with checkpointer - will auto-propagate to subgraphs"
-            #             )
-            #             # Compile with checkpointer - automatically propagates to all subgraphs
-            #             compiled_workflow = workflow.compile(checkpointer=checkpointer)
-            #             return compiled_workflow
-            #     else:
-            #         self.logger.info(
-            #             "ℹ️  Checkpoint storage not initialized - compiling without persistence"
-            #         )
-            #         return workflow.compile()
-
-            # except Exception as e:
-            #     self.logger.warning(
-            #         f"⚠️  Checkpointer setup failed, compiling without persistence: {e}"
-            #     )
-            #     # Fallback to compilation without checkpointer
-            #     return workflow.compile()
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

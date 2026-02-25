@@ -60,6 +60,7 @@ class GraphBuilder(ABC):
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
+        **kwargs,
     ) -> CompiledStateGraph:
         """
         Build a workflow of the specified type.

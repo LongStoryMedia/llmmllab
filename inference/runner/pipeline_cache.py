@@ -865,9 +865,10 @@ class LocalPipelineCacheManager:
                 pass
 
     def _cleanup_pipeline(self, pipeline: BasePipeline | Embeddings) -> None:
-        """Properly cleanup pipeline resources by calling both close() and cleanup() methods."""
+        """Properly cleanup pipeline resources."""
         try:
-            del pipeline.server_manager  # type: ignore[attr-defined]
+            if hasattr(pipeline, "server_manager"):
+                del pipeline.server_manager  # type: ignore[attr-defined]
             del pipeline
 
         except Exception as e:

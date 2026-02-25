@@ -95,26 +95,23 @@ async def compose_workflow(
     user_id: str,
     builder: GraphBuilder,
     response_format: Optional[Type[BaseModel]] = None,
+    **build_kwargs,
 ) -> CompiledStateGraph:
     """
     Compose a workflow for the given user and conversation messages.
 
     Args:
         user_id: User ID for configuration retrieval from shared data layer
+        builder: GraphBuilder instance
+        response_format: Optional response format constraint
+        **build_kwargs: Additional keyword arguments passed to build_workflow
+            (e.g., client_tools, tool_choice for IDE workflows)
 
     Returns:
         CompiledStateGraph: Ready to execute LangGraph workflow
-
-    Raises:
-        RuntimeError: If composer service not initialized
-        WorkflowConstructionError: If workflow construction fails
-
-    Note:
-        Configuration is retrieved from shared data layer using user_id.
-        No configuration objects should be passed as arguments (architectural rule).
     """
     svc = await _manager.get_or_init_service(builder)
-    return await svc.compose_workflow(user_id, response_format)
+    return await svc.compose_workflow(user_id, response_format, **build_kwargs)
 
 
 async def clear_workflow_cache(user_id: str) -> None:

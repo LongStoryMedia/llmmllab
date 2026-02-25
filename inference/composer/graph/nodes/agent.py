@@ -1,6 +1,6 @@
 """
-Title generation node for conversation titles.
-Generates concise, descriptive titles based on conversation content.
+Agent node for workflow execution.
+Executes the chat agent with optional tool support and summarization middleware.
 """
 
 from typing import List, Optional, Type
@@ -21,25 +21,19 @@ from utils.logging import llmmllogger
 
 class AgentNode:
     """
-    Generates a conversation title if none exists.
+    Executes the chat agent with optional tool support and summarization middleware.
 
-    Uses grammar-constrained LLM to generate concise, descriptive titles
-    based on conversation content.
+    When tool_registry is provided, tools are passed to the agent for tool-calling.
+    When tool_registry is None, the agent runs without tools (passthrough mode).
     """
 
     def __init__(
         self,
         agent: ChatAgent,
-        tool_registry: ToolRegistry,
         node_metadata: NodeMetadata,
+        tool_registry: Optional[ToolRegistry] = None,
         grammar: Optional[Type[BaseModel]] = None,
     ):
-        """
-        Initialize title generation node with dependency injection.
-
-        Args:
-            agent: Required ClassifierAgent instance
-        """
         self.agent = agent.bind_node_metadata(node_metadata)
         self.logger = llmmllogger.bind(component=AGENT_NODE_NAME)
         self.tool_registry = tool_registry
@@ -47,13 +41,13 @@ class AgentNode:
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
         """
-        Generate conversation title if needed.
+        Execute the agent node.
 
         Args:
             state: Current workflow state
 
         Returns:
-            Updated workflow state with title
+            Updated workflow state with agent response
         """
         assert state.conversation_id is not None
         try:
@@ -66,7 +60,12 @@ class AgentNode:
                     conversation_id=state.conversation_id,
                 )
             ]
-            tools = self.tool_registry.get_all_executable_tools()
+
+            tools = (
+                self.tool_registry.get_all_executable_tools()
+                if self.tool_registry
+                else None
+            )
 
             if self.grammar:
                 self.logger.info("Using structured output grammar for agent response")
@@ -106,7 +105,7 @@ class AgentNode:
                 if response.message:
                     if response.message.tool_calls:
                         self.logger.info(
-                            f"🔧 Generated {len(response.message.tool_calls)} tool calls"
+                            f"Generated {len(response.message.tool_calls)} tool calls"
                         )
                     state.messages.append(response.message)
 
@@ -120,5 +119,4 @@ class AgentNode:
                     "error": str(e),
                 },
             )
-            # Escalate by raising so tests fail visibly
             raise

@@ -332,27 +332,6 @@ class PipelineFactory:
             raise RuntimeError(f"Unsupported task type: {model.task}")
         except Exception as e:
             self.logger.error(f"Error creating pipeline for {model.name}: {e}")
-
-            # DEBUG: Add detailed pipeline creation logging
-            import traceback
-
-            call_stack = traceback.extract_stack()
-            call_info = " → ".join(
-                [f"{frame.filename}:{frame.lineno}\n" for frame in call_stack]
-            )
-
-            self.logger.error(f"Pipeline creation call stack: {call_info}")
-            if "unknown model architecture" in str(e):
-                self.logger.error(
-                    f"Model {model.name} uses unsupported architecture - consider updating llama.cpp or using a different model"
-                )
-            elif "Failed to create llama_context" in str(e):
-                self.logger.error(
-                    f"Model {model.name} failed to load - may be corrupted or incompatible"
-                )
-            elif "validation error" in str(e).lower():
-                self.logger.error(f"Model {model.name} configuration validation failed")
-
             raise
 
     def _create_text_pipeline(
@@ -363,14 +342,34 @@ class PipelineFactory:
         metadata: Optional[dict] = {},
     ) -> BasePipeline:
         self.logger.info(
-            f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}"
+            f"Creating text pipeline for model: {model.name}, pipeline: {model.pipeline}, provider: {model.provider}"
         )
 
-        from .pipelines.llamacpp.chat import (  # pylint: disable=import-outside-toplevel
-            ChatLlamaCppPipeline,
-        )
+        match model.provider:
+            case ModelProvider.LLAMA_CPP:
+                from .pipelines.llamacpp.chat import ChatLlamaCppPipeline  # pylint: disable=import-outside-toplevel
 
-        return ChatLlamaCppPipeline(model, profile, grammar, metadata)
+                return ChatLlamaCppPipeline(model, profile, grammar, metadata)
+            case ModelProvider.OPENAI:
+                import os
+                from langchain_openai import ChatOpenAI  # pylint: disable=import-outside-toplevel
+                from pydantic import SecretStr
+
+                return ChatOpenAI(  # type: ignore[return-value]
+                    model=model.name,
+                    api_key=SecretStr(os.environ.get("OPENAI_API_KEY", "")),
+                )
+            case ModelProvider.ANTHROPIC:
+                import os
+                from langchain_anthropic import ChatAnthropic  # pylint: disable=import-outside-toplevel
+                from pydantic import SecretStr
+
+                return ChatAnthropic(  # type: ignore[return-value]
+                    model_name=model.name,
+                    api_key=SecretStr(os.environ.get("ANTHROPIC_API_KEY", "")),
+                )
+            case _:
+                raise ValueError(f"Unsupported text provider: {model.provider}")
 
     def _create_embedding_pipeline(
         self,

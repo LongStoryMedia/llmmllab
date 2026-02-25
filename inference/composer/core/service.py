@@ -55,6 +55,7 @@ class ComposerService:
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
+        **build_kwargs,
     ) -> CompiledStateGraph:
         """
         Construct or retrieve a master workflow with intelligent routing.
@@ -97,14 +98,15 @@ class ComposerService:
             # 3. Build master workflow
             assert self.graph_builder is not None, "GraphBuilder should be initialized"
 
-            if user_cache:
+            if user_cache and not build_kwargs:
+                # Only use cache when no dynamic kwargs (tools change per request)
                 workflow = await user_cache.get_or_create(
                     cache_key,
-                    lambda: self.graph_builder.build_workflow(user_id, response_format),
+                    lambda: self.graph_builder.build_workflow(user_id, response_format, **build_kwargs),
                 )
             else:
                 workflow = await self.graph_builder.build_workflow(
-                    user_id, response_format
+                    user_id, response_format, **build_kwargs
                 )
 
             self.logger.info(
