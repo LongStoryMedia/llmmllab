@@ -18,20 +18,20 @@ def get_media_type(filename: str) -> str:
     mime_type, _ = mimetypes.guess_type(filename)
     if mime_type:
         return mime_type
-    
+
     # Fallback based on extension
     ext = os.path.splitext(filename)[1].lower()
     fallback_types = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg', 
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.bmp': 'image/bmp',
-        '.svg': 'image/svg+xml'
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".svg": "image/svg+xml",
     }
-    
-    return fallback_types.get(ext, 'application/octet-stream')
+
+    return fallback_types.get(ext, "application/octet-stream")
 
 
 @router.get("/images/view/{filename}")

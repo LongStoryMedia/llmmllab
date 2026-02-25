@@ -48,7 +48,7 @@ export type LllabUser = {
  */
 export function convertToUIMessage(message: Message): UIMessage {
   const parts: UIPart[] = [];
-  
+
   // Convert message content to UI parts
   if (message.content) {
     for (const content of message.content) {
