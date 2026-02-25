@@ -44,7 +44,7 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: llmmll
-          image: 192.168.0.71:31500/inference:more-ide-stuff
+          image: 192.168.0.71:31500/inference:smpl
           imagePullPolicy: Always
           securityContext:
             # Required for GPU hardware-level operations (pynvml device resets)

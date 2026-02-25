@@ -33,7 +33,7 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 
 RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-    git checkout tags/b6992 && \
+    git checkout tags/b8149 && \
     git checkout -b llmmll
 
 WORKDIR /llama.cpp
