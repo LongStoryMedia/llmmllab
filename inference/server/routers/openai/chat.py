@@ -130,14 +130,19 @@ def langchain_tools_from_openai(openai_tools: list) -> list[StructuredTool]:
             continue
         fn = tool_def.function
 
+        # Convert FunctionParameters model back to a plain dict for schema parsing.
+        # FunctionParameters stores JSON Schema fields (type, properties, required)
+        # as extra fields via model_config extra="allow".
+        params_dict = fn.parameters.model_dump() if fn.parameters else None
+
         # Create a no-op tool — client-side execution
         tool = StructuredTool.from_function(
             func=lambda **kwargs: "",
             name=fn.name,
             description=fn.description or "",
             args_schema=(
-                _json_schema_to_pydantic(fn.name, fn.parameters)
-                if fn.parameters
+                _json_schema_to_pydantic(fn.name, params_dict)
+                if params_dict
                 else None
             ),
         )
@@ -360,7 +365,7 @@ async def stream_chat_completion(
             )
         ],
     )
-    yield f"data: {initial_chunk.model_dump_json()}\n\n"
+    yield f"data: {initial_chunk.model_dump_json(exclude_none=True)}\n\n"
 
     has_tool_calls = False
     final_tool_calls: list[ToolCall] = []
@@ -401,7 +406,7 @@ async def stream_chat_completion(
                         )
                     ],
                 )
-                yield f"data: {chunk.model_dump_json()}\n\n"
+                yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
         # Stream text content deltas directly.
         # The executor filters raw <think> blocks internally,
@@ -433,7 +438,7 @@ async def stream_chat_completion(
                         )
                     ],
                 )
-                yield f"data: {chunk.model_dump_json()}\n\n"
+                yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
     # Close thinking blockquote if it was never closed (e.g. tool call with no content)
     if in_thinking:
@@ -450,7 +455,7 @@ async def stream_chat_completion(
                 )
             ],
         )
-        yield f"data: {close_chunk.model_dump_json()}\n\n"
+        yield f"data: {close_chunk.model_dump_json(exclude_none=True)}\n\n"
 
     # Stream tool calls from the final accumulated event
     if final_tool_calls:
@@ -482,7 +487,7 @@ async def stream_chat_completion(
                 )
             ],
         )
-        yield f"data: {chunk.model_dump_json()}\n\n"
+        yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
     # Final chunk with finish_reason
     finish_reason: OAIFinishReason = "tool_calls" if has_tool_calls else "stop"
@@ -499,7 +504,7 @@ async def stream_chat_completion(
             )
         ],
     )
-    yield f"data: {final_chunk.model_dump_json()}\n\n"
+    yield f"data: {final_chunk.model_dump_json(exclude_none=True)}\n\n"
     yield "data: [DONE]\n\n"
 
 
@@ -529,6 +534,21 @@ async def createChatCompletion(
         client_tools = langchain_tools_from_openai(body.tools)
         if body.tool_choice and isinstance(body.tool_choice, str):
             tool_choice = body.tool_choice
+        logger.info(
+            "OAI request with tools",
+            extra={
+                "tool_count": len(body.tools),
+                "tool_names": [
+                    t.function.name
+                    for t in body.tools
+                    if isinstance(t, ChatCompletionTool)
+                ],
+                "client_tools_created": len(client_tools) if client_tools else 0,
+                "tool_choice": tool_choice,
+            },
+        )
+    else:
+        logger.debug("OAI request without tools")
 
     if body.stream:
         # Only pass tool kwargs when they have actual values to avoid
