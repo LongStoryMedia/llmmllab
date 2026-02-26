@@ -74,8 +74,23 @@ def message_to_lc_message(
     parsed_tool_calls = []
     lc_id = str(message.id) if message.id is not None else None
     if message.role == MessageRole.ASSISTANT or message.role == MessageRole.AGENT:
-        # Extract XML-wrapped tool calls from text content
-        if isinstance(content_data, str):
+        # First, use structured tool_calls from the Message object.
+        # These come from Copilot's conversation history where assistant
+        # messages carry tool_calls (preserved by messages_from_openai).
+        # They have proper IDs that must match subsequent ToolMessage entries.
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                if tc.name and tc.name != "tool_result":
+                    lc_tool_call = {
+                        "name": tc.name,
+                        "args": tc.args if tc.args else {},
+                        "id": tc.execution_id or f"call_{tc.name}_{len(parsed_tool_calls)}",
+                    }
+                    parsed_tool_calls.append(lc_tool_call)
+
+        # Fall back to parsing XML-wrapped tool calls from text content
+        # (for model outputs in GLM's native XML tool call format)
+        if not parsed_tool_calls and isinstance(content_data, str):
             # Parse <tool_call>{"name": "func", "arguments": {...}}</tool_call> format
             tool_call_pattern = (
                 r"<((tool|function)[-_])call>\s*({[^}]*(?:{[^}]*}[^}]*)*})\s*</\1call>"

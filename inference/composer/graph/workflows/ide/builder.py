@@ -6,7 +6,7 @@ Supports two tool modes:
   - Server-side mode: server_tools are added with a ToolNode and feedback loop.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Type, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union, cast
 
 import uuid
 
@@ -156,7 +156,7 @@ class IdeGraphBuilder(GraphBuilder):
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
-        client_tools: Optional[List[BaseTool]] = None,
+        client_tools: Optional[List[Union[BaseTool, Dict[str, Any]]]] = None,
         server_tools: Optional[List[BaseTool]] = None,
         tool_choice: Optional[str] = None,
     ) -> CompiledStateGraph:
@@ -166,7 +166,9 @@ class IdeGraphBuilder(GraphBuilder):
         Args:
             user_id: User identifier
             response_format: Optional response format constraint
-            client_tools: Tools for proxy mode (bind_tools only, client executes)
+            client_tools: Tools for proxy mode.  Accepts OpenAI-format dicts
+                (passed straight through to bind_tools, no lossy conversion)
+                or LangChain BaseTool instances.
             server_tools: Tools for server-side execution (adds ToolNode + loop)
             tool_choice: Optional tool_choice parameter for bind_tools
 

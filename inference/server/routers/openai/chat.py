@@ -7,9 +7,6 @@ from typing import Any, Literal, TypeAlias, Union
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from langchain_core.tools import StructuredTool
-from pydantic import create_model, Field
-
 from server.middleware.auth import get_user_id
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
 from models.openai.chat_completion_list import ChatCompletionList
@@ -74,79 +71,21 @@ logger = llmmllogger.bind(component="openai_chat_router")
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-def _json_schema_to_pydantic(name: str, schema: Any) -> type:
-    """Convert a JSON Schema 'parameters' object to a Pydantic model for StructuredTool."""
-    if not schema or not isinstance(schema, dict):
-        return create_model(name)
+def openai_tools_as_dicts(openai_tools: list) -> list[dict]:
+    """Convert ChatCompletionTool models to plain dicts for bind_tools().
 
-    properties = schema.get("properties", {})
-    required = set(schema.get("required", []))
-
-    field_definitions: dict[str, Any] = {}
-    for field_name, field_schema in properties.items():
-        field_type = _json_type_to_python(field_schema)
-        description = field_schema.get("description", "")
-        if field_name in required:
-            field_definitions[field_name] = (
-                field_type,
-                Field(..., description=description),
-            )
-        else:
-            field_definitions[field_name] = (
-                field_type,
-                Field(default=None, description=description),
-            )
-
-    return create_model(name, **field_definitions)
-
-
-def _json_type_to_python(schema: dict) -> type:
-    """Map JSON Schema type to Python type."""
-    type_map = {
-        "string": str,
-        "integer": int,
-        "number": float,
-        "boolean": bool,
-        "array": list,
-        "object": dict,
-    }
-    json_type = schema.get("type", "string")
-    if isinstance(json_type, list):
-        json_type = json_type[0] if json_type else "string"
-    return type_map.get(json_type, str)
-
-
-def langchain_tools_from_openai(openai_tools: list) -> list[StructuredTool]:
-    """Convert OpenAI tool definitions to LangChain StructuredTool for bind_tools().
-
-    These are placeholder tools for proxy mode — the client executes them, not us.
-    They exist so the LLM can bind to them and generate tool_calls in its response.
+    Passes the original OpenAI tool schemas through without lossy conversion.
+    ChatOpenAI.bind_tools() accepts dicts in OpenAI format directly, which
+    avoids the round-trip through Pydantic models that used to drop enum,
+    anyOf, nested objects, and other JSON Schema features.
     """
-    tools = []
+    tools: list[dict] = []
     for tool_def in openai_tools:
         if not isinstance(tool_def, ChatCompletionTool):
             continue
         if tool_def.type != "function":
             continue
-        fn = tool_def.function
-
-        # Convert FunctionParameters model back to a plain dict for schema parsing.
-        # FunctionParameters stores JSON Schema fields (type, properties, required)
-        # as extra fields via model_config extra="allow".
-        params_dict = fn.parameters.model_dump() if fn.parameters else None
-
-        # Create a no-op tool — client-side execution
-        tool = StructuredTool.from_function(
-            func=lambda **kwargs: "",
-            name=fn.name,
-            description=fn.description or "",
-            args_schema=(
-                _json_schema_to_pydantic(fn.name, params_dict)
-                if params_dict
-                else None
-            ),
-        )
-        tools.append(tool)
+        tools.append(tool_def.model_dump(exclude_none=True))
     return tools
 
 
@@ -211,6 +150,25 @@ def messages_from_openai(
                 )
             ]
 
+        # Preserve tool_calls on assistant messages so LangChain can
+        # pair AIMessage.tool_calls with subsequent ToolMessage entries.
+        # Without this, the model never sees its own prior tool call
+        # history and Copilot's multi-turn tool flow breaks.
+        if isinstance(oaim, ChatCompletionRequestAssistantMessage) and oaim.tool_calls:
+            tool_calls = []
+            for tc in oaim.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+                tool_calls.append(
+                    ToolCall(
+                        name=tc.function.name,
+                        execution_id=tc.id,
+                        args=args,
+                    )
+                )
+
         msg = Message(
             role=(
                 MessageRole.USER
@@ -236,6 +194,19 @@ def messages_from_openai(
         )
 
         messages.append(msg)
+
+    # Log message conversion summary for debugging multi-turn tool flows
+    role_summary = {}
+    for m in messages:
+        key = m.role.value
+        if m.tool_calls:
+            key += f"(tc={len(m.tool_calls)})"
+        role_summary[key] = role_summary.get(key, 0) + 1
+    logger.debug(
+        "Converted OpenAI messages",
+        extra={"count": len(messages), "roles": role_summary},
+    )
+
     return messages
 
 
@@ -334,7 +305,7 @@ async def stream_chat_completion(
     user_id: str,
     messages: list[Message],
     model_name: str,
-    client_tools: list[StructuredTool] | None = None,
+    client_tools: list[dict] | None = None,
     tool_choice: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream composer events as OpenAI SSE chat completion chunks."""
@@ -517,7 +488,7 @@ async def createChatCompletion(
     client_tools = None
     tool_choice = None
     if body.tools:
-        client_tools = langchain_tools_from_openai(body.tools)
+        client_tools = openai_tools_as_dicts(body.tools)
         if body.tool_choice and isinstance(body.tool_choice, str):
             tool_choice = body.tool_choice
         logger.info(

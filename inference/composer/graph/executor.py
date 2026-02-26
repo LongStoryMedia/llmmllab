@@ -312,13 +312,14 @@ class WorkflowExecutor:
 
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
+                        has_tc = bool(
+                            hasattr(output, "tool_calls") and output.tool_calls
+                        )
                         self.logger.debug(
                             "Model generation completed",
                             extra={
                                 "finish_reason": reason,
-                                "has_tool_calls": bool(
-                                    hasattr(output, "tool_calls") and output.tool_calls
-                                ),
+                                "has_tool_calls": has_tc,
                                 "content_len": len(contents_buffer),
                             },
                         )

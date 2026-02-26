@@ -41,7 +41,6 @@ class ReasoningChatOpenAI(ChatOpenAI):
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
         """Override to capture reasoning_content from delta responses."""
-        # logger.debug(serialize_event_data(chunk))
         # Get the standard generation chunk first
         generation_chunk = super()._convert_chunk_to_generation_chunk(
             chunk, default_chunk_class, base_generation_info
@@ -56,6 +55,13 @@ class ReasoningChatOpenAI(ChatOpenAI):
             choice = choices[0]
             delta = choice.get("delta", {})
             reasoning_content = delta.get("reasoning_content", "")
+            finish_reason = choice.get("finish_reason")
+
+            if finish_reason:
+                logger.debug(
+                    "Stream finished",
+                    extra={"finish_reason": finish_reason},
+                )
 
             if reasoning_content and isinstance(
                 generation_chunk.message, AIMessageChunk
@@ -148,6 +154,14 @@ class ChatLlamaCppPipeline(BasePipeline):
             # of streaming token-by-token via on_chat_model_stream.
             # If switching back to a Hermes 2 Pro model, re-add:
             #   disable_streaming="tool_calling",
+
+            # Resolve max_tokens: profile uses -1 for "unlimited", but the
+            # OpenAI SDK requires a positive int or omission.  llama.cpp
+            # defaults to ctx_size when max_tokens is not sent, which is what
+            # we want.
+            profile_max = self.profile.parameters.max_tokens
+            max_tokens = profile_max if (profile_max and profile_max > 0) else None
+
             self.chat_model = ReasoningChatOpenAI(
                 base_url=base_url,
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
@@ -155,11 +169,31 @@ class ChatLlamaCppPipeline(BasePipeline):
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,
                 temperature=self.profile.parameters.temperature or 0.7,
-                max_completion_tokens=self.profile.parameters.max_tokens or 10240,
+                max_tokens=max_tokens,
                 top_p=self.profile.parameters.top_p or 0.9,
-                seed=self.profile.parameters.seed or -1,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                reasoning_effort=self.profile.parameters.reasoning_effort or "minimal",
+                # NOTE: reasoning_effort and seed are intentionally omitted.
+                # reasoning_effort is an OpenAI o1/o3-only parameter that
+                # llama.cpp does not support.  seed is omitted because -1
+                # is not a valid value for the OpenAI SDK and llama.cpp
+                # defaults to random when unset.
+                extra_body={
+                    # Disable thinking mode via the Jinja chat template.
+                    # GLM-4.7-Flash's template checks `enable_thinking` and
+                    # emits <|assistant|></think> (no thinking) when false, vs
+                    # <|assistant|><think> (thinking enabled) when true/default.
+                    #
+                    # With thinking enabled, the model wastes tokens planning
+                    # instead of acting — it generates a brief internal plan
+                    # then hits EOS without producing tool_calls or content.
+                    # Disabling it forces the model to generate content/tool
+                    # calls directly, dramatically improving reliability.
+                    #
+                    # The key must be `chat_template_kwargs` (NOT a top-level
+                    # `thinking` or `enable_thinking`) — only this form is
+                    # forwarded by llama.cpp to the Jinja template renderer.
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
                 metadata={
                     "model_profile": self.profile.name,
                     "task": ModelProfileType(self.profile.type).name,
@@ -268,8 +302,11 @@ class ChatLlamaCppPipeline(BasePipeline):
             **kwargs,
         )
 
-    def bind_tools(self, tools: list[BaseTool], **kwargs):
-        """Bind tools to the chat model with support for additional parameters like tool_choice."""
+    def bind_tools(self, tools: list, **kwargs):
+        """Bind tools to the chat model with support for additional parameters like tool_choice.
+
+        Accepts LangChain BaseTool instances or OpenAI-format tool dicts.
+        """
         if not self.chat_model:
             raise RuntimeError("ChatOpenAI not initialized")
         return self.chat_model.bind_tools(tools, **kwargs)
