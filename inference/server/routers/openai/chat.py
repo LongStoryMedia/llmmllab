@@ -155,8 +155,12 @@ def messages_from_openai(
         # Without this, the model never sees its own prior tool call
         # history and Copilot's multi-turn tool flow breaks.
         if isinstance(oaim, ChatCompletionRequestAssistantMessage) and oaim.tool_calls:
+            # ChatCompletionMessageToolCalls is a RootModel; access .root for the list
+            tc_list = oaim.tool_calls.root if hasattr(oaim.tool_calls, "root") else oaim.tool_calls
             tool_calls = []
-            for tc in oaim.tool_calls:
+            for tc in tc_list:
+                if not isinstance(tc, ChatCompletionMessageToolCall):
+                    continue
                 try:
                     args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except (json.JSONDecodeError, TypeError):
