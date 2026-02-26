@@ -369,7 +369,6 @@ async def stream_chat_completion(
 
     has_tool_calls = False
     final_tool_calls: list[ToolCall] = []
-    in_thinking = False
 
     async for event in composer.execute_workflow(initial_state, workflow):
         # Final accumulated event - capture tool calls but don't re-emit
@@ -380,37 +379,12 @@ async def stream_chat_completion(
                 has_tool_calls = True
             continue
 
-        # Stream thinking content as markdown blockquote.
-        # The executor only yields non-whitespace thoughts.
-        if event.message and event.message.thoughts:
-            thought_parts = [t.text for t in event.message.thoughts if t.text]
-            thought_text = "".join(thought_parts)
-            if thought_text.strip():
-                # Format as blockquote: prefix each line with "> "
-                bq_text = thought_text.replace("\n", "\n> ")
-                if not in_thinking:
-                    in_thinking = True
-                    bq_text = "> **💭 Thinking...**\n> " + bq_text
-                else:
-                    bq_text = bq_text
-                chunk = CreateChatCompletionStreamResponse(
-                    id=chunk_id,
-                    object="chat.completion.chunk",
-                    created=created,
-                    model=model_name,
-                    choices=[
-                        StreamChoicesItem.model_construct(
-                            index=0,
-                            delta=ChatCompletionStreamResponseDelta(content=bq_text),
-                            finish_reason=None,
-                        )
-                    ],
-                )
-                yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+        # Skip thinking/reasoning content entirely for OpenAI-compatible
+        # clients (e.g. GitHub Copilot). These clients don't understand
+        # thinking blocks and they appear as ugly nested markdown.
+        # Only stream actual content and tool calls.
 
         # Stream text content deltas directly.
-        # The executor filters raw <think> blocks internally,
-        # so we only receive post-think content here.
         if event.message and event.message.content:
             text_parts = [
                 c.text
@@ -419,10 +393,6 @@ async def stream_chat_completion(
             ]
             response_text = "".join(text_parts)
             if response_text:
-                # Close the thinking blockquote before streaming content
-                if in_thinking:
-                    in_thinking = False
-                    response_text = "\n\n" + response_text
                 chunk = CreateChatCompletionStreamResponse(
                     id=chunk_id,
                     object="chat.completion.chunk",
@@ -439,23 +409,6 @@ async def stream_chat_completion(
                     ],
                 )
                 yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
-
-    # Close thinking blockquote if it was never closed (e.g. tool call with no content)
-    if in_thinking:
-        close_chunk = CreateChatCompletionStreamResponse(
-            id=chunk_id,
-            object="chat.completion.chunk",
-            created=created,
-            model=model_name,
-            choices=[
-                StreamChoicesItem.model_construct(
-                    index=0,
-                    delta=ChatCompletionStreamResponseDelta(content="\n\n"),
-                    finish_reason=None,
-                )
-            ],
-        )
-        yield f"data: {close_chunk.model_dump_json(exclude_none=True)}\n\n"
 
     # Stream tool calls from the final accumulated event
     if final_tool_calls:

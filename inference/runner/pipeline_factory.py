@@ -110,19 +110,6 @@ class PipelineFactory:
                     f"Failed to create cached pipeline for model '{model.name}'"
                 )
 
-            assert profile.id
-
-            # Automatically lock local pipelines for safety
-            locked = self.local_cache.lock_pipeline(str(profile.id))
-            if locked:
-                self.logger.debug(
-                    f"Automatically locked pipeline {profile.id} for safe usage"
-                )
-            else:
-                self.logger.warning(
-                    f"Could not lock pipeline {profile.id} - proceeding without lock"
-                )
-
             return pipeline
 
         # Remote / API providers -> create transient each call, no caching or locking needed
@@ -257,14 +244,12 @@ class PipelineFactory:
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
 
-        # Get the pipeline (automatically locked if local provider)
         pipeline = self.get_pipeline(profile, priority, grammar)
-
-        # Check if this is a local provider that was locked
         is_local = self.local_cache.is_local(model)
 
-        # Track usage for coordination
+        # Explicitly lock local pipelines to prevent eviction during use
         if is_local:
+            self.local_cache.lock_pipeline(model_id)
             with self._coord_cond:
                 self._active_local_uses += 1
 

@@ -42,8 +42,9 @@ class _PipelineCacheEntry:
         estimated_memory: float = 0,
     ):
         self._ref = weakref.ref(pipeline)
-        # Strong reference held when pipeline is locked to prevent GC
-        self._strong_ref: Optional[BasePipeline | Embeddings] = None
+        # Strong reference keeps pipeline alive in cache.
+        # Cleared only on explicit eviction or cache removal.
+        self._strong_ref: Optional[BasePipeline | Embeddings] = pipeline
         self.priority = priority
         self.estimated_memory = (
             estimated_memory  # Store memory estimate for eviction decisions
@@ -76,21 +77,15 @@ class _PipelineCacheEntry:
         self.access_count += 1
 
     def lock(self) -> None:
-        """Mark pipeline as in-use to prevent eviction and GC."""
+        """Mark pipeline as in-use to prevent eviction."""
         self._use_count += 1
         self.in_use = True
-        # Hold a strong reference so GC cannot collect a locked pipeline
-        if self._strong_ref is None:
-            self._strong_ref = self._ref()
         self.touch()
 
     def unlock(self) -> None:
         """Release pipeline from in-use state."""
         self._use_count = max(0, self._use_count - 1)
         self.in_use = self._use_count > 0
-        # Release strong reference when fully unlocked
-        if not self.in_use:
-            self._strong_ref = None
 
     def eviction_score(self, now: float, estimated_memory: float = 0) -> float:
         """Calculate eviction score - higher score = keep longer, lower score = evict first."""

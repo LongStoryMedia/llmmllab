@@ -277,18 +277,7 @@ class BaseAgent:
 
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         system_prompt += f"""
-TEMPORAL CONTEXT:
-The current date is {current_date}.
-While this is likely past your training data, you can use this information to provide better responses. If the user asks for the date or time, respond with this date.
-
-DO NOT EVER PROVIDE ANWERS WITH LOW CONFIDENCE. IT IS BETTER TO ADMIT YOU DON'T KNOW THAN TO MAKE UP ANSWERS. ALWAYS ATTEMPT TO USE TOOLS TO FIND THE ANSWER IF YOU ARE UNSURE.
-
-TOOL USE:
-Do not make up results - always use tools to get accurate information, or organize a way to obtain them.
-If you intend to use any tools, ensure you follow the tool usage guidelines provided in the system prompt.
-If there are not results from tool usage, you must attempt to call the tool again as it is likely that the format is incorrect.
-If you believe you have made a tool call, double-check the message history to confirm there was a tool response included.
-"""
+The current date is {current_date}."""
 
         return system_prompt, convo
 
