@@ -105,19 +105,19 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "cont_batching": True,
                 "metrics": True,
                 "no_warmup": True,  # Skip warmup for faster startup
-                "cache_type_k": "f16",  # Use f16 for KV cache
-                "cache_type_v": "f16",  # Use f16 for KV cache
+                # "cache_type_k": "f16",  # Use f16 for KV cache
+                # "cache_type_v": "f16",  # Use f16 for KV cache
             }
         )
 
         # Core performance parameters
         config.update(
             {
-                "threads": os.cpu_count() or 4,
+                # "threads": os.cpu_count() or 4,
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 256,
                 "ubatch_size": params.micro_batch_size or 256,
-                "reasoning_budget": (-1 if self.profile.parameters.think else 0),
+                # "reasoning_budget": (-1 if self.profile.parameters.think else 0),
             }
         )
 
@@ -133,21 +133,21 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
             config["main_gpu"] = gcfg.main_gpu
 
         # Tensor split configuration
-        if gcfg.tensor_split:
-            config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
+        # if gcfg.tensor_split:
+        # config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
 
         # Split mode configuration
-        if hasattr(gcfg, "split_mode") and gcfg.split_mode:
-            # Pass string split modes directly to llama.cpp
-            if isinstance(gcfg.split_mode, str):
-                config["split_mode"] = gcfg.split_mode.lower()
-            else:
-                # Convert legacy integer values to strings
-                split_mode_mapping = {
-                    1: "layer",  # LLAMA_SPLIT_MODE_LAYER
-                    2: "row",  # LLAMA_SPLIT_MODE_ROW
-                }
-                config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
+        # if hasattr(gcfg, "split_mode") and gcfg.split_mode:
+        #     # Pass string split modes directly to llama.cpp
+        #     if isinstance(gcfg.split_mode, str):
+        #         config["split_mode"] = gcfg.split_mode.lower()
+        #     else:
+        #         # Convert legacy integer values to strings
+        #         split_mode_mapping = {
+        #             1: "layer",  # LLAMA_SPLIT_MODE_LAYER
+        #             2: "row",  # LLAMA_SPLIT_MODE_ROW
+        #         }
+        #         config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
 
         # MoE (Mixture of Experts) configuration
         if (

@@ -228,16 +228,21 @@ class WorkflowExecutor:
                     # executed server-side.
                     if isinstance(output, AIMessage):
                         if hasattr(output, "tool_calls") and output.tool_calls:
-                            for tc_data in output.tool_calls:
-                                tc_id = tc_data.get("id") or run_id
-                                tool_call = ToolCall(
-                                    name=tc_data.get("name", ""),
-                                    args=tc_data.get("args", {}),
-                                    execution_id=tc_id,
-                                    created_at=datetime.now(timezone.utc),
-                                )
-                                tool_calls[tc_id] = tool_call
-                                res.message.tool_calls.append(tool_call)
+                            # Only extract proxy tool calls if we haven't already
+                            # processed server-side tool calls for this run
+                            if run_id not in tool_calls:
+                                for tc_data in output.tool_calls:
+                                    tc_id = tc_data.get("id") or run_id
+                                    # Check if this tool call was already added
+                                    if tc_id not in tool_calls:
+                                        tool_call = ToolCall(
+                                            name=tc_data.get("name", ""),
+                                            args=tc_data.get("args", {}),
+                                            execution_id=tc_id,
+                                            created_at=datetime.now(timezone.utc),
+                                        )
+                                        tool_calls[tc_id] = tool_call
+                                        res.message.tool_calls.append(tool_call)
                             self.logger.info(
                                 "Extracted proxy tool calls from model output",
                                 extra={

@@ -68,7 +68,7 @@ class BasePipeline(BaseChatModel, ABC):
         # Pass the required fields to the parent constructor for Pydantic validation
         super().__init__(
             name=model.name,
-            verbose=os.getenv("LOG_LEVEL", "warning").lower() == "debug",
+            verbose=os.getenv("LOG_LEVEL", "warning").lower() == "trace",
             output_version="v1",
             tags=[
                 model.task.value,

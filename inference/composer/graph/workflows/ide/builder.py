@@ -73,15 +73,6 @@ CRITICAL THINKING GUIDELINES:
 - Do not elaborate on the same concept repeatedly
 - Make your thinking efficient and direct
 
-TOOL USAGE GUIDELINES:
-- Use available tools when you need specific information to answer the user's question
-- ALWAYS check the conversation history for previous tool results before making new tool calls
-- DO NOT mistake formatting or structured data in the conversation as tool results
-- If you see tool results in the conversation, USE THAT INFORMATION instead of calling tools again
-- DO NOT make the same tool call multiple times - previous results are in the conversation
-- DO make sure to use tools when the answer is not directly known
-- When you have gathered sufficient information from tools, provide a comprehensive final answer
-
 RESPONSE STRUCTURE:
 1. Brief analysis (if needed)
 2. Use tools only if specific information is needed
@@ -101,19 +92,19 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     parameters=ModelParameters(
         num_ctx=131072,
         repeat_last_n=-1,
-        repeat_penalty=1.1,
-        temperature=0.9,
+        repeat_penalty=0,
+        temperature=0.75,
         seed=-1,
         num_predict=-1,
         top_k=20,
-        top_p=0.8,
-        min_p=0.0,
+        top_p=1.0,
+        min_p=0.01,
         max_tokens=-1,
         n_parts=-1,
         batch_size=8192,
         micro_batch_size=1024,
         n_gpu_layers=-1,
-        stop=["<|im_end|>"],
+        stop=[],
         think=False,
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
