@@ -363,6 +363,20 @@ class WorkflowExecutor:
 
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
+                        token_usage = md.get("token_usage", {})
+                        completion_tokens = token_usage.get("completion_tokens", "?")
+                        self.logger.debug(
+                            "Model generation completed",
+                            extra={
+                                "finish_reason": reason,
+                                "completion_tokens": completion_tokens,
+                                "has_tool_calls": bool(
+                                    hasattr(output, "tool_calls")
+                                    and output.tool_calls
+                                ),
+                                "content_len": len(contents_buffer),
+                            },
+                        )
                         if reason == "tool_call" or output.tool_calls:
                             new_state = GenerationState.EXECUTING
                         if reason == "length":
