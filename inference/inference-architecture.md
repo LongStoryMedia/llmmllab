@@ -109,9 +109,9 @@
 - **FastAPI** for REST API
 - **gRPC** for streaming
 - **LangGraph** for orchestration
-- **SQLAlchemy** for ORM
+- **AsyncPG** for ORM
 - **Pytest** for testing
-- **Jupyter** for notebook notebooks
+- **AsyncPG** for ORM
 - **VS Code** for development
 
 > **Installation**
