@@ -38,6 +38,11 @@ inference-dev:
 	chmod +x ./inference/sync-code.sh
 	kubectl logs -f -n llmmll deployment/llmmll & ./inference/sync-code.sh -w
 
+test:
+	@echo "Running tests for inference and UI"
+	cd inference && pytest test/
+	cd ui && npm run test
+
 gen:
 	@echo "generating models..."
 	chmod +x ./regenerate_models.sh
@@ -57,6 +62,20 @@ validate:
 	fi
 	@echo "Validation complete!"
 
+test:
+	@echo "Running tests for inference and UI"
+	cd inference && pytest test/
+	cd ui && npm run test
+
+clean:
+	@echo "Cleaning artifacts..."
+	rm -rf ./inference/debug/out/
+	rm -rf ./ui/build/
+	rm -rf ./inference/models/
+	@echo "Artifacts cleaned."
+
+.PHONY: inference maistro ui validate test clean
+
 e2e-%:
 	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
 
@@ -66,5 +85,12 @@ clear-debug:
 	rm ./inference/debug/out/*.md
 	./inference/sync-code.sh -R
 
-.PHONY: inference maistro ui validate
+clean:
+	@echo "Cleaning artifacts..."
+	rm -rf ./inference/debug/out/
+	rm -rf ./ui/build/
+	rm -rf ./inference/models/
+	@echo "Artifacts cleaned."
+
+.PHONY: inference maistro ui validate test clean
 
