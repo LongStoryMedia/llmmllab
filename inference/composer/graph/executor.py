@@ -391,6 +391,17 @@ class WorkflowExecutor:
             contents_buffer = thoughts_buffer + contents_buffer
             thoughts_buffer = ""
 
+        # If think closed but model produced NO content and NO tool calls,
+        # the thoughts are the only output — promote them to content so
+        # the response isn't empty.
+        if thoughts_buffer and not contents_buffer and not tool_calls:
+            self.logger.debug(
+                "No content or tool calls after thinking — promoting thoughts to content",
+                extra={"thoughts_len": len(thoughts_buffer)},
+            )
+            contents_buffer = thoughts_buffer
+            thoughts_buffer = ""
+
         if contents_buffer:
             message_contents.append(
                 MessageContent(

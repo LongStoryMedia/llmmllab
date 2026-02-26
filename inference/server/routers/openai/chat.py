@@ -368,15 +368,27 @@ async def stream_chat_completion(
     yield f"data: {initial_chunk.model_dump_json(exclude_none=True)}\n\n"
 
     has_tool_calls = False
+    has_content = False
     final_tool_calls: list[ToolCall] = []
+    final_content: str = ""
 
     async for event in composer.execute_workflow(initial_state, workflow):
-        # Final accumulated event - capture tool calls but don't re-emit
-        # content that was already streamed (prevents double output).
+        # Final accumulated event - capture tool calls and fallback content
+        # but don't re-emit content that was already streamed.
         if event.done:
             if event.message and event.message.tool_calls:
                 final_tool_calls = event.message.tool_calls
                 has_tool_calls = True
+            # Capture final content as fallback (e.g. when model produced
+            # only thinking with no streamed content, the executor promotes
+            # thoughts to content in the done event).
+            if event.message and event.message.content:
+                parts = [
+                    c.text
+                    for c in event.message.content
+                    if c.type == MessageContentType.TEXT and c.text
+                ]
+                final_content = "".join(parts)
             continue
 
         # Skip thinking/reasoning content entirely for OpenAI-compatible
@@ -393,6 +405,7 @@ async def stream_chat_completion(
             ]
             response_text = "".join(text_parts)
             if response_text:
+                has_content = True
                 chunk = CreateChatCompletionStreamResponse(
                     id=chunk_id,
                     object="chat.completion.chunk",
@@ -409,6 +422,26 @@ async def stream_chat_completion(
                     ],
                 )
                 yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+
+    # Fallback: if no content was streamed but the final event has content
+    # (e.g. model only produced thinking, executor promoted it), emit it now.
+    if not has_content and not has_tool_calls and final_content:
+        chunk = CreateChatCompletionStreamResponse(
+            id=chunk_id,
+            object="chat.completion.chunk",
+            created=created,
+            model=model_name,
+            choices=[
+                StreamChoicesItem.model_construct(
+                    index=0,
+                    delta=ChatCompletionStreamResponseDelta(
+                        content=final_content
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        )
+        yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
     # Stream tool calls from the final accumulated event
     if final_tool_calls:
