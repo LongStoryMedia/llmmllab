@@ -34,7 +34,7 @@ from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger
 
 from .content_parser import parse_content, strip_think_tags
-from .tool_call_parser import RawToolCallParser
+from .tool_call_parser import RawToolCallParser, _RAW_TOOL_CALL_RE
 
 
 class WorkflowExecutor:
@@ -195,7 +195,7 @@ class WorkflowExecutor:
                             prev_state = state
                             yield res
                             continue
-                    # Regular content - handle <think> tags
+                    # Regular content - handle <think> tags and raw tool calls
                     if chunk.content:
                         text_parts = parse_content(chunk.content)
                         for text in text_parts:
@@ -221,28 +221,59 @@ class WorkflowExecutor:
                                 prev_state = state
                                 yield res
                             if content_part:
-                                contents_buffer += content_part
-                                new_state = GenerationState.RESPONDING
-                                res = self._make_response(
-                                    conversation_id,
-                                    state,
-                                    prev_state,
-                                    message_kwargs={
-                                        "content": [
-                                            MessageContent(
-                                                type=MessageContentType.TEXT,
-                                                text=content_part,
-                                            )
-                                        ]
-                                    },
-                                )
-                                if new_state != state:
-                                    self.logger.debug(
-                                        f"State transition: {state} -> {new_state}"
+                                # Strip raw tool-call XML that leaked into content
+                                if _RAW_TOOL_CALL_RE.search(content_part):
+                                    content_part, raw_tcs = (
+                                        self.content_parser.strip_raw_tool_calls(
+                                            content_part
+                                        )
                                     )
-                                    state = new_state
-                                prev_state = state
-                                yield res
+                                else:
+                                    raw_tcs = []
+                                if content_part:
+                                    contents_buffer += content_part
+                                    new_state = GenerationState.RESPONDING
+                                    res = self._make_response(
+                                        conversation_id,
+                                        state,
+                                        prev_state,
+                                        message_kwargs={
+                                            "content": [
+                                                MessageContent(
+                                                    type=MessageContentType.TEXT,
+                                                    text=content_part,
+                                                )
+                                            ]
+                                        },
+                                    )
+                                    if new_state != state:
+                                        self.logger.debug(
+                                            f"State transition: {state} -> {new_state}"
+                                        )
+                                        state = new_state
+                                    prev_state = state
+                                    yield res
+                                # Emit any tool calls parsed from stripped XML
+                                if raw_tcs:
+                                    tc_res = self._make_response(
+                                        conversation_id, state, prev_state
+                                    )
+                                    assert (
+                                        tc_res.message
+                                        and tc_res.message.tool_calls is not None
+                                    )
+                                    for tc in raw_tcs:
+                                        tc_key = tc.execution_id or tc.name
+                                        tool_calls[tc_key] = tc
+                                        tc_res.message.tool_calls.append(tc)
+                                    new_state = GenerationState.EXECUTING
+                                    if new_state != state:
+                                        self.logger.debug(
+                                            f"State transition: {state} -> {new_state}"
+                                        )
+                                        state = new_state
+                                    prev_state = state
+                                    yield tc_res
                 # --- Model generation complete ---
                 elif event_type in ("on_chat_model_end", "on_llm_end"):
                     if isinstance(output, AIMessage):
@@ -291,9 +322,15 @@ class WorkflowExecutor:
                             content_part = full_text.strip()
                             # Strip raw tool-call XML that leaked into content
                             # and parse any tool calls from the stripped portion.
-                            content_part, raw_tcs = (
-                                self.content_parser.strip_raw_tool_calls(content_part)
-                            )
+                            # First, check if content contains raw tool call XML
+                            if _RAW_TOOL_CALL_RE.search(content_part):
+                                content_part, raw_tcs = (
+                                    self.content_parser.strip_raw_tool_calls(
+                                        content_part
+                                    )
+                                )
+                            else:
+                                content_part, raw_tcs = content_part, []
                             if content_part:
                                 contents_buffer += content_part
                                 new_state = GenerationState.RESPONDING

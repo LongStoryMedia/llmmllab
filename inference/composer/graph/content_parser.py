@@ -62,4 +62,13 @@ def parse_content(content: str | List[str | dict]) -> List[str]:
     if isinstance(content, str):
         return [content]
     else:
-        return [str(c) for c in content]
+        result = []
+        for c in content:
+            if isinstance(c, dict) and "text" in c:
+                # Extract text value from content dict
+                text = c.get("text", "")
+                if isinstance(text, str):
+                    result.append(text)
+            else:
+                result.append(str(c))
+        return result

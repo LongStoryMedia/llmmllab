@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from typing import Optional, Union
+from runner.utils.model_loader import ModelLoader
 from server.middleware.auth import get_user_id
 from models.openai import DeleteModelResponse, ListModelsResponse, Model as OpenAIModel
 from models.anthropic import (
@@ -48,17 +49,55 @@ def to_anthropic_model(model: Model) -> AnthropicModel:
     )
 
 
+def from_openai_model(
+    openai_model: OpenAIModel,
+    task: ModelTask = ModelTask.TEXTTOTEXT,
+) -> Model:
+    """Convert OpenAI API model format to internal Model representation."""
+    return Model(
+        id=openai_model.id,
+        name=openai_model.id,
+        model=openai_model.id,
+        task=task,
+        modified_at=datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        digest=openai_model.id,
+        details=ModelDetails(
+            format="",
+            family="",
+            families=[],
+            parameter_size="",
+            size=0,
+            original_ctx=0,
+        ),
+        provider=ModelProvider.LLAMA_CPP,  # TODO: what are the implications here?
+    )
+
+
 @router.get("/")
-async def listModels(
-    request: Request,
-) -> Union[OpenAIModelListResponse, AnthropicModelListResponse]:
-    """Operation ID: listModels (OpenAI) / listModels (Anthropic)"""
-    user_id = get_user_id(request)
+async def listModels(request: Request) -> ListModelsResponse:
+    """Operation ID: listModels"""
+    # We're not currently using the user_id for filtering, but we may in the future
+    _ = get_user_id(request)
 
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User ID not found in request")
+    try:
+        # Use ModelLoader for consistent model loading with validation and defaults
+        model_loader = ModelLoader()
+        models_dict = model_loader.get_available_models()
 
-    raise NotImplementedError("Endpoint not yet implemented")
+        # Convert dictionary values to list
+        models = list(models_dict.values())
+
+        logger.info(f"Successfully loaded {len(models)} models for API")
+        return ListModelsResponse(
+            data=[to_openai_model(m) for m in models],
+            object="list",
+        )
+
+    except Exception as e:
+        logger.error(f"Error loading models: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error loading models: {str(e)}"
+        ) from e
 
 
 @router.get("/{model_id}")

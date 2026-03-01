@@ -20,9 +20,9 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import AsyncIterator, Optional, Type
+from typing import AsyncIterator, List, Optional, Type
 from pydantic import BaseModel
-from models import ChatResponse
+from models import ChatResponse, Message
 from utils.logging import llmmllogger
 from .core.service import CompiledStateGraph, ComposerService
 from .core.errors import ComposerError
@@ -142,6 +142,7 @@ async def create_initial_state(
     user_id: str,
     conversation_id: int,
     builder: GraphBuilder,
+    messages: Optional[List[Message]] = None,
 ):
     """Create initial workflow state from user messages and configuration.
 
@@ -158,7 +159,7 @@ async def create_initial_state(
         User configuration is retrieved from shared data layer using user_id.
         No configuration objects should be passed as arguments (architectural rule).
     """
-    return await builder.create_initial_state(user_id, conversation_id)
+    return await builder.create_initial_state(user_id, conversation_id, messages)
 
 
 async def execute_workflow(

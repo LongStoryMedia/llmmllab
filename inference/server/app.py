@@ -164,11 +164,32 @@ global_auth_middleware = AuthMiddleware(AUTH_JWKS_URI)
 # Initialize the FastAPI application with the lifespan context manager
 app = FastAPI(
     title="Inference API",
-    description="FastAPI server for inference",
+    description="""FastAPI server for inference
+
+## Authentication
+
+This API uses JWT tokens for authentication. To authorize:
+
+1. Click the "Authorize" button in the top right corner of this page
+2. Enter your JWT token in the format: `Bearer <your_token>`
+3. Click "Authorize" to add it to your session
+
+You can also use API keys via the `X-API-Key` header.
+""",
     version="0.1.0",
     redoc_url="/redoc",
     docs_url="/docs",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "images", "description": "Image generation endpoints"},
+        {"name": "chat", "description": "Chat completion endpoints"},
+        {"name": "models", "description": "Model management endpoints"},
+        {"name": "conversation", "description": "Conversation management endpoints"},
+        {"name": "users", "description": "User management endpoints"},
+        {"name": "config", "description": "Configuration endpoints"},
+        {"name": "resources", "description": "System resource endpoints"},
+    ],
+    # Note: Security schemes are added via event handler below
 )
 
 
@@ -190,6 +211,47 @@ app.state.auth_middleware = global_auth_middleware
 # Add message validation middleware to ensure proper response structure
 app.add_middleware(MessageValidationMiddleware)
 app.middleware("http")(db_init_middleware)
+
+
+# Monkey-patch app.openapi() to add security schemes
+def _get_original_openapi(self):
+    """Get the original openapi function before patching"""
+    return FastAPI.openapi(self)
+
+
+def _openapi_with_security(self):
+    """Wrapper around openapi() that adds security schemes for Swagger UI"""
+    # Call the original openapi method
+    schema = _get_original_openapi(self)
+
+    # Add security schemes to components
+    if "components" not in schema:
+        schema["components"] = {}
+
+    schema["components"]["securitySchemes"] = {
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT Bearer token. Example: 'Bearer your_token_here'",
+        },
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "scheme": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API Key header. Example: 'X-API-Key: your_key_here'",
+        },
+    }
+
+    # Set default security for all endpoints
+    schema["security"] = [{"bearerAuth": []}, {"apiKeyAuth": []}]
+
+    return schema
+
+
+# Replace the openapi method for this instance
+app.openapi = _openapi_with_security.__get__(app, type(app))
 
 
 @app.middleware("http")
@@ -299,13 +361,11 @@ app.include_router(ollama.router)
 
 # Include auto-generated OpenAI-compatible API endpoints (excluding models and files)
 for router in OPENAI_ROUTERS:
-    if router != OPENAI_ROUTERS[0]:  # Skip models router
-        app.include_router(router, prefix="/v1")
+    app.include_router(router, prefix="/v1")
 
 # Include auto-generated Anthropic-compatible API endpoints (excluding models and files)
 for router in ANTHROPIC_ROUTERS:
-    if router != ANTHROPIC_ROUTERS[0]:  # Skip models router
-        app.include_router(router, prefix="/v1")
+    app.include_router(router, prefix="/v1")
 
 # Include common endpoints (models and files)
 for router in COMMON_ROUTERS:

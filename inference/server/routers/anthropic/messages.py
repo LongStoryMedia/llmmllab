@@ -2,10 +2,11 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Union, Any
+from typing import Dict, Union, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 
 from server.middleware.auth import get_user_id
 from models.anthropic.create_message_request import CreateMessageRequest
@@ -153,7 +154,7 @@ async def stream_message(
         client_tools=client_tools,
         tool_choice=tool_choice,
     )
-    initial_state = await create_initial_state(user_id, 0, builder)
+    initial_state = await create_initial_state(user_id, 0, builder, messages)
 
     # For Anthropic streaming, we send chunks as server-sent events
     # Each chunk is a JSON object with event type and data
@@ -247,7 +248,7 @@ async def stream_message(
 
 @router.post("/", response_model=None)
 async def createMessage(
-    body: CreateMessageRequest,
+    req_body: Dict[str, Any],
     request: Request,
 ) -> Union[MessageResponse, StreamingResponse]:
     """Operation ID: createMessage"""
@@ -256,89 +257,103 @@ async def createMessage(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
-    logger.debug(body.model_dump_json(indent=2))
-    # Convert Anthropic messages to internal format
-    internal_messages = messages_from_anthropic(body.messages)
+    # TODO: figure out how to set this or map from claude code
+    req_body["model"] = "qwen3-coder-next-iq4-xs"
 
-    logger.debug(body.model_dump_json(indent=2))
+    try:
+        body = CreateMessageRequest.model_validate(req_body)
+        # Convert Anthropic messages to internal format
+        internal_messages = messages_from_anthropic(body.messages)
 
-    # Convert Anthropic tool definitions to LangChain tools for bind_tools()
-    client_tools = None
-    tool_choice = None
-    if body.tools:
-        # Convert tool schemas to dict format for bind_tools()
-        client_tools = []
-        for tool in body.tools:
-            client_tools.append(tool.model_dump(exclude_none=True))
-        if body.tool_choice:
-            # Map Anthropic tool_choice to OpenAI format
-            if body.tool_choice.type == "any":
-                tool_choice = "required"
-            elif body.tool_choice.type == "auto":
-                tool_choice = "auto"
-            elif body.tool_choice.type == "tool":
-                tool_choice = "tool"
-        logger.info(
-            "Anthropic request with tools",
-            extra={
-                "tool_count": len(body.tools),
-                "tool_names": [t.name for t in body.tools],
-                "client_tools_created": len(client_tools) if client_tools else 0,
-                "tool_choice": tool_choice,
-            },
+        # Convert Anthropic tool definitions to LangChain tools for bind_tools()
+        client_tools = None
+        tool_choice = None
+        if body.tools:
+            # Convert tool schemas to dict format for bind_tools()
+            client_tools = []
+            for tool in body.tools:
+                client_tools.append(tool.model_dump(exclude_none=True))
+            if body.tool_choice:
+                # Map Anthropic tool_choice to OpenAI format
+                if body.tool_choice.type == "any":
+                    tool_choice = "required"
+                elif body.tool_choice.type == "auto":
+                    tool_choice = "auto"
+                elif body.tool_choice.type == "tool":
+                    tool_choice = "tool"
+            logger.info(
+                "Anthropic request with tools",
+                extra={
+                    "tool_count": len(body.tools),
+                    "tool_names": [t.name for t in body.tools],
+                    "client_tools_created": len(client_tools) if client_tools else 0,
+                    "tool_choice": tool_choice,
+                },
+            )
+        else:
+            logger.debug("Anthropic request without tools")
+
+        if body.stream:
+            # Streaming response
+            return StreamingResponse(
+                stream_message(
+                    user_id,
+                    internal_messages,
+                    body.model,
+                    client_tools=client_tools,
+                    tool_choice=tool_choice,
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        # Non-streaming response
+        builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+        workflow = await compose_workflow(
+            user_id=user_id,
+            builder=builder,
+            model_name=body.model,
+            client_tools=client_tools,
+            tool_choice=tool_choice,
         )
-    else:
-        logger.debug("Anthropic request without tools")
-
-    if body.stream:
-        # Streaming response
-        return StreamingResponse(
-            stream_message(
-                user_id,
-                internal_messages,
-                body.model,
-                client_tools=client_tools,
-                tool_choice=tool_choice,
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+        initial_state = await create_initial_state(
+            user_id,
+            0,
+            builder,
+            internal_messages,
         )
+        chat_response: ChatResponse | None = None
+        async for event in execute_workflow(initial_state, workflow):
+            if event.finish_reason == "complete" and event.message:
+                chat_response = event
+        if chat_response is None:
+            raise HTTPException(
+                status_code=500, detail="Workflow did not produce a response"
+            )
 
-    # Non-streaming response
-    builder = await get_graph_builder(WorkFlowType.IDE, user_id)
-    workflow = await compose_workflow(
-        user_id=user_id,
-        builder=builder,
-        model_name=body.model,
-        client_tools=client_tools,
-        tool_choice=tool_choice,
-    )
-    initial_state = await create_initial_state(user_id, 0, builder)
-    chat_response: ChatResponse | None = None
-    async for event in execute_workflow(initial_state, workflow):
-        if event.finish_reason == "complete" and event.message:
-            chat_response = event
-    if chat_response is None:
-        raise HTTPException(
-            status_code=500, detail="Workflow did not produce a response"
+        # Determine stop_reason based on finish_reason
+        stop_reason_map: dict[str | None, str] = {
+            "stop": "end_turn",
+            "complete": "end_turn",
+            "length": "max_tokens",
+            "tool_call": "tool_use",
+        }
+        stop_reason = stop_reason_map.get(chat_response.finish_reason, "end_turn")
+
+        return anthropic_response_from_chat_response(
+            chat_response, model=body.model, stop_reason=stop_reason
         )
+    except ValidationError as ve:
+        logger.error(f"Validation error in createMessage request: {ve.json()}")
+        raise HTTPException(status_code=422, detail=json.loads(ve.json()))
 
-    # Determine stop_reason based on finish_reason
-    stop_reason_map: dict[str | None, str] = {
-        "stop": "end_turn",
-        "complete": "end_turn",
-        "length": "max_tokens",
-        "tool_call": "tool_use",
-    }
-    stop_reason = stop_reason_map.get(chat_response.finish_reason, "end_turn")
-
-    return anthropic_response_from_chat_response(
-        chat_response, model=body.model, stop_reason=stop_reason
-    )
+    except Exception as e:
+        logger.error(f"Error processing createMessage request: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/count_tokens")
