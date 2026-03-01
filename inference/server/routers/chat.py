@@ -33,6 +33,7 @@ async def composer_chat_completion(
     user_id: str,
     conversation_id: int,
     request_id: str,
+    model_name: Optional[str] = None,
     response_format: Optional[Type[BaseModel]] = None,
 ) -> AsyncIterator[str]:
     """Handle chat completions by delegating to composer interface."""
@@ -40,7 +41,9 @@ async def composer_chat_completion(
     builder = await composer.get_graph_builder(composer.WorkFlowType.DIALOG, user_id)
 
     # Compose workflow for user
-    workflow = await composer.compose_workflow(user_id, builder, response_format)
+    workflow = await composer.compose_workflow(
+        user_id, builder, model_name, response_format
+    )
 
     # Create initial state (conversation_id is already validated)
     initial_state = await composer.create_initial_state(
@@ -69,6 +72,7 @@ class ChatCompletionBody(BaseModel):
     """Request model for chat completion endpoint."""
 
     message: Message
+    model_name: Optional[str] = None
     response_format: Optional[Dict[str, Any]] = None
 
 
@@ -104,7 +108,7 @@ async def chat_completion(
 
         await storage.get_service(storage.message).add_message(msg)
         return StreamingResponse(
-            composer_chat_completion(user_id, msg.conversation_id, request_id),  # type: ignore
+            composer_chat_completion(user_id, msg.conversation_id, request_id, body.model_name, body.response_format),  # type: ignore
             media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",
