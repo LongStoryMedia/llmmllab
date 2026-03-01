@@ -156,13 +156,21 @@ def messages_from_openai(
         # history and Copilot's multi-turn tool flow breaks.
         if isinstance(oaim, ChatCompletionRequestAssistantMessage) and oaim.tool_calls:
             # ChatCompletionMessageToolCalls is a RootModel; access .root for the list
-            tc_list = oaim.tool_calls.root if hasattr(oaim.tool_calls, "root") else oaim.tool_calls
+            tc_list = (
+                oaim.tool_calls.root
+                if hasattr(oaim.tool_calls, "root")
+                else oaim.tool_calls
+            )
             tool_calls = []
             for tc in tc_list:
                 if not isinstance(tc, ChatCompletionMessageToolCall):
                     continue
                 try:
-                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                    args = (
+                        json.loads(tc.function.arguments)
+                        if tc.function.arguments
+                        else {}
+                    )
                 except (json.JSONDecodeError, TypeError):
                     args = {}
                 tool_calls.append(
@@ -214,6 +222,32 @@ def messages_from_openai(
     return messages
 
 
+def normalize_response(content_parts: list[MessageContent]) -> str:
+    """Normalize the response content from message content parts into a single string."""
+    return "\n".join(
+        part.text
+        for part in content_parts
+        if part.type == MessageContentType.TEXT and part.text
+    )
+
+
+def normalize_tool_calls(
+    tool_calls: list[ToolCall],
+) -> list[ChatCompletionMessageToolCall]:
+    """Normalize tool calls into the OpenAI chat completion format."""
+    return [
+        ChatCompletionMessageToolCall(
+            id=tc.execution_id or uuid.uuid4().hex,
+            type="function",
+            function=Function(
+                name=tc.name,
+                arguments=json.dumps(tc.args),
+            ),
+        )
+        for tc in tool_calls
+    ]
+
+
 def openai_response_from_chat_response(
     chat_response: ChatResponse,
     model: str = "unknown",
@@ -223,12 +257,9 @@ def openai_response_from_chat_response(
     # Extract text content from the message
     content: str | None = None
     if chat_response.message and chat_response.message.content:
-        text_parts = [
-            part.text
-            for part in chat_response.message.content
-            if part.type == MessageContentType.TEXT and part.text
-        ]
-        content = "".join(text_parts) if text_parts else None
+        # Normalize the response content
+        normalized_content = normalize_response(chat_response.message.content)
+        content = normalized_content
 
     # Map internal finish_reason to OpenAI finish_reason
     finish_reason_map: dict[str | None, OAIFinishReason] = {
@@ -249,19 +280,9 @@ def openai_response_from_chat_response(
         ChatCompletionMessageToolCall | ChatCompletionMessageCustomToolCall
     ] = []
     if chat_response.message and chat_response.message.tool_calls:
-        oai_tool_calls = [
-            ChatCompletionMessageToolCall(
-                id=tc.execution_id or uuid.uuid4().hex,
-                type="function",
-                function=Function(
-                    name=tc.name,
-                    arguments=json.dumps(tc.args),
-                ),
-            )
-            for tc in chat_response.message.tool_calls
-        ]
-        # If we have tool_calls, set finish_reason accordingly
-        finish_reason = "tool_calls"
+        # Normalize tool calls
+        normalized_tool_calls = normalize_tool_calls(chat_response.message.tool_calls)
+        oai_tool_calls.extend(normalized_tool_calls)
 
     message = ChatCompletionResponseMessage(
         role="assistant",
@@ -315,9 +336,9 @@ async def stream_chat_completion(
     """Stream composer events as OpenAI SSE chat completion chunks."""
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
     workflow = await composer.compose_workflow(
-        user_id,
-        builder,
-        None,
+        user_id=user_id,
+        builder=builder,
+        model_name=model_name,
         client_tools=client_tools,
         tool_choice=tool_choice,
     )
@@ -409,9 +430,7 @@ async def stream_chat_completion(
             choices=[
                 StreamChoicesItem.model_construct(
                     index=0,
-                    delta=ChatCompletionStreamResponseDelta(
-                        content=final_content
-                    ),
+                    delta=ChatCompletionStreamResponseDelta(content=final_content),
                     finish_reason=None,
                 )
             ],
@@ -538,9 +557,9 @@ async def createChatCompletion(
     # Non-streaming response
     builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
     workflow = await composer.compose_workflow(
-        user_id,
-        builder,
-        None,
+        user_id=user_id,
+        builder=builder,
+        model_name=body.model,
         client_tools=client_tools,
         tool_choice=tool_choice,
     )

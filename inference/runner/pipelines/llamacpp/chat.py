@@ -169,7 +169,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 max_retries=3,
                 timeout=self.server_manager.startup_timeout,
                 temperature=self.profile.parameters.temperature or 0.7,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens,  # type: ignore[assignment]
                 top_p=self.profile.parameters.top_p or 0.9,
                 disable_streaming="tool_calling",
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",

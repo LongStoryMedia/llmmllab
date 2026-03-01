@@ -148,16 +148,16 @@ class LlmmlLogger:
                 structlog.dev.ConsoleRenderer(
                     colors=True,
                     exception_formatter=structlog.dev.RichTracebackFormatter(
-                        show_locals=False
+                        color_system="truecolor", show_locals=False
                     ),
                 )
             )
         else:
             processors.append(
                 structlog.dev.ConsoleRenderer(
-                    colors=True,
+                    colors=False,
                     exception_formatter=structlog.dev.RichTracebackFormatter(
-                        show_locals=False
+                        color_system=None, show_locals=False
                     ),
                 )
             )

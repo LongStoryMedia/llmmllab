@@ -1,13 +1,10 @@
 """
 Generic workflow execution module for streaming CompiledStateGraph outputs.
-
 This module provides reusable workflow execution capabilities that can be used
 across different graph types and state models, extracting the streaming logic
 from ComposerService into a generic, reusable component.
 """
 
-import json
-import re
 from typing import (
     Any,
     AsyncIterator,
@@ -18,13 +15,10 @@ from typing import (
     cast,
 )
 from datetime import datetime, timezone
-
 from pydantic import BaseModel
-
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.messages import AIMessage, ToolMessage
-
 from composer.constants import STRUCTURED_AGENT_RUNNABLE_NAME
 from models import (
     MessageContentType,
@@ -36,33 +30,16 @@ from models import (
     ToolCall,
     GenerationState,
 )
-
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger
 
-# Detect raw tool-call XML that the model sometimes emits inline in content
-# when it generates text before a tool call.  llama.cpp fails to parse the
-# tool portion as structured, so the whole thing arrives as content text.
-# Handles <tool_call>, <function_call>, and <|tool_call|> variants, with
-# possible whitespace / newlines between < and the tag name.
-_RAW_TOOL_CALL_RE = re.compile(
-    r"<\s*\|?\s*(?:tool_call|function_call|tool-call|function-call)\s*\|?\s*>",
-    re.IGNORECASE | re.DOTALL,
-)
-
-# Match complete <tool_call>...body...</tool_call> blocks (or unclosed at EOF).
-_TOOL_CALL_BLOCK_RE = re.compile(
-    r"<\s*\|?\s*(?:tool_call|function_call|tool[-_]call|function[-_]call)\s*\|?\s*>"
-    r"(.*?)"
-    r"(?:<\s*/\s*\|?\s*(?:tool_call|function_call|tool[-_]call|function[-_]call)\s*\|?\s*>|$)",
-    re.IGNORECASE | re.DOTALL,
-)
+from .content_parser import parse_content, strip_think_tags
+from .tool_call_parser import RawToolCallParser
 
 
 class WorkflowExecutor:
     """
     Generic workflow executor for CompiledStateGraph streaming.
-
     Provides reusable streaming execution capabilities that can handle
     any CompiledStateGraph with any state type, as long as the state
     can be converted to a dictionary format.
@@ -75,13 +52,13 @@ class WorkflowExecutor:
     ):
         """
         Initialize the workflow executor.
-
         Args:
             logger: Optional logger instance. If None, uses default llmmllogger
             default_context: Default context string for metadata enrichment
         """
         self.logger = logger or llmmllogger.logger
         self.default_context = default_context
+        self.content_parser = RawToolCallParser()
 
     def create_thread_config(
         self,
@@ -90,22 +67,51 @@ class WorkflowExecutor:
     ) -> RunnableConfig:
         """
         Create a thread configuration for workflow checkpointing.
-
         Args:
             thread_id: Unique thread identifier for checkpointing
             additional_config: Additional configuration parameters
-
         Returns:
             RunnableConfig: Configuration for LangGraph execution
         """
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-
         if additional_config:
             config.setdefault("configurable", {}).update(additional_config)
-
         return config
 
-    # What are some recent advancements in multimodal ai models? what are some of the best open source multimodal models available? of those, which is most capable of interpreting text in an image? Find 4 articles detailing the research and development behind that article and list out the links, publication dates, authors, and a brief synopsis. find any citations within those articles and read through the citations, then list those out as well with their links, publication dates, authors and synopses.
+    def _make_response(
+        self,
+        conversation_id: int,
+        state: Optional[GenerationState],
+        prev_state: Optional[GenerationState],
+        **kwargs,
+    ) -> ChatResponse:
+        """
+        Create a ChatResponse with defaults.
+
+        Args:
+            conversation_id: Conversation identifier
+            state: Current generation state
+            prev_state: Previous generation state
+            **kwargs: Additional response kwargs
+
+        Returns:
+            ChatResponse: Constructed response object
+        """
+        msg_kwargs = {
+            "role": MessageRole.ASSISTANT,
+            "content": [],
+            "thoughts": [],
+            "tool_calls": [],
+            "conversation_id": conversation_id,
+        }
+        msg_kwargs.update(kwargs.pop("message_kwargs", {}))
+        return ChatResponse(
+            done=False,
+            message=Message(**msg_kwargs),
+            state=state,
+            prev_state=prev_state,
+            **kwargs,
+        )
 
     async def stream_workflow(
         self,
@@ -116,16 +122,13 @@ class WorkflowExecutor:
     ) -> AsyncIterator[ChatResponse]:
         """
         Execute a compiled workflow with streaming output.
-
         Streams ChatResponse events for each meaningful model chunk,
         then yields a final done=True event with accumulated results.
-
         Args:
             workflow: CompiledStateGraph to execute
             initial_state: Initial state for workflow execution
             config: Optional RunnableConfig
             thread_id: Thread ID for checkpointing (used if config is None)
-
         Yields:
             ChatResponse: Stream events from workflow execution
         """
@@ -138,47 +141,10 @@ class WorkflowExecutor:
         message_contents: List[MessageContent] = []
         state: Optional[GenerationState] = None
         prev_state: Optional[GenerationState] = state
-
         conversation_id = getattr(initial_state, "conversation_id")
         assert conversation_id is not None and isinstance(
             conversation_id, int
         ), "Initial state must have conversation_id"
-
-        def _make_response(**kwargs) -> ChatResponse:
-            """Helper to create a ChatResponse with defaults."""
-            msg_kwargs = {
-                "role": MessageRole.ASSISTANT,
-                "content": [],
-                "thoughts": [],
-                "tool_calls": [],
-                "conversation_id": conversation_id,
-            }
-            msg_kwargs.update(kwargs.pop("message_kwargs", {}))
-            return ChatResponse(
-                done=False,
-                message=Message(**msg_kwargs),
-                state=state,
-                prev_state=prev_state,
-                **kwargs,
-            )
-
-        def _strip_think_tags(text: str) -> tuple[str, str]:
-            """Split text on </think> boundary. Returns (thinking_part, content_part).
-            If no </think> found, returns ('', text) when think already closed,
-            or (text, '') when still in think section."""
-            nonlocal think_closed
-            if "</think>" in text:
-                think_closed = True
-                before, after = text.split("</think>", 1)
-                # Strip <think> prefix if present
-                before = before.lstrip()
-                if before.startswith("<think>"):
-                    before = before[len("<think>") :]
-                return before.strip(), after.lstrip("\n")
-            if not think_closed:
-                # Haven't seen </think> yet; buffer as thinking
-                return text, ""
-            return "", text
 
         try:
             # Prepare state dict
@@ -190,10 +156,8 @@ class WorkflowExecutor:
                 raise ValueError(
                     f"State type {type(initial_state)} must be dict or have model_dump method"
                 )
-
             if config is None and thread_id is not None:
                 config = self.create_thread_config(thread_id)
-
             async for event in workflow.astream_events(
                 state_dict,
                 config=config,
@@ -206,7 +170,6 @@ class WorkflowExecutor:
                 event_name = event.get("name", "")
                 run_id = event.get("run_id", "")
                 new_state = state
-
                 # --- Streaming chunks (token by token) ---
                 if event_type in (
                     "on_chat_model_stream",
@@ -218,8 +181,11 @@ class WorkflowExecutor:
                         if rc and rc.strip():
                             thoughts_buffer += rc
                             new_state = GenerationState.THINKING
-                            res = _make_response(
-                                message_kwargs={"thoughts": [Thought(text=rc)]}
+                            res = self._make_response(
+                                conversation_id,
+                                state,
+                                prev_state,
+                                message_kwargs={"thoughts": [Thought(text=rc)]},
                             )
                             if new_state != state:
                                 self.logger.debug(
@@ -229,20 +195,23 @@ class WorkflowExecutor:
                             prev_state = state
                             yield res
                             continue
-
                     # Regular content - handle <think> tags
                     if chunk.content:
-                        text_parts = self._parse_content(chunk.content)
+                        text_parts = parse_content(chunk.content)
                         for text in text_parts:
-                            thinking_part, content_part = _strip_think_tags(text)
-
+                            thinking_part, content_part, think_closed = (
+                                strip_think_tags(text, think_closed)
+                            )
                             if thinking_part:
                                 thoughts_buffer += thinking_part
                                 new_state = GenerationState.THINKING
-                                res = _make_response(
+                                res = self._make_response(
+                                    conversation_id,
+                                    state,
+                                    prev_state,
                                     message_kwargs={
                                         "thoughts": [Thought(text=thinking_part)]
-                                    }
+                                    },
                                 )
                                 if new_state != state:
                                     self.logger.debug(
@@ -251,11 +220,13 @@ class WorkflowExecutor:
                                     state = new_state
                                 prev_state = state
                                 yield res
-
                             if content_part:
                                 contents_buffer += content_part
                                 new_state = GenerationState.RESPONDING
-                                res = _make_response(
+                                res = self._make_response(
+                                    conversation_id,
+                                    state,
+                                    prev_state,
                                     message_kwargs={
                                         "content": [
                                             MessageContent(
@@ -263,7 +234,7 @@ class WorkflowExecutor:
                                                 text=content_part,
                                             )
                                         ]
-                                    }
+                                    },
                                 )
                                 if new_state != state:
                                     self.logger.debug(
@@ -272,13 +243,14 @@ class WorkflowExecutor:
                                     state = new_state
                                 prev_state = state
                                 yield res
-
                 # --- Model generation complete ---
                 elif event_type in ("on_chat_model_end", "on_llm_end"):
                     if isinstance(output, AIMessage):
                         # Extract proxy tool calls from bind_tools()
                         if hasattr(output, "tool_calls") and output.tool_calls:
-                            res = _make_response()
+                            res = self._make_response(
+                                conversation_id, state, prev_state
+                            )
                             assert res.message and res.message.tool_calls is not None
                             for tc_data in output.tool_calls:
                                 tc_id = tc_data.get("id") or run_id
@@ -299,7 +271,6 @@ class WorkflowExecutor:
                                 state = new_state
                             prev_state = state
                             yield res
-
                         # Extract content from non-streaming end events
                         # (when streaming is disabled for tool calling).
                         # Skip when tool_calls are present — the content
@@ -309,9 +280,8 @@ class WorkflowExecutor:
                             hasattr(output, "tool_calls") and output.tool_calls
                         )
                         if output.content and not contents_buffer and not has_end_tc:
-                            text_parts = self._parse_content(output.content)
+                            text_parts = parse_content(output.content)
                             full_text = "".join(text_parts)
-
                             # For non-streaming responses the chat-template
                             # prefix (e.g. </think>) is NOT included in the
                             # API response content — only streaming includes
@@ -319,17 +289,18 @@ class WorkflowExecutor:
                             # everything as thinking.  Bypass it when no
                             # streaming occurred (contents_buffer was empty).
                             content_part = full_text.strip()
-
                             # Strip raw tool-call XML that leaked into content
                             # and parse any tool calls from the stripped portion.
-                            content_part, raw_tcs = self._strip_raw_tool_calls(
-                                content_part
+                            content_part, raw_tcs = (
+                                self.content_parser.strip_raw_tool_calls(content_part)
                             )
-
                             if content_part:
                                 contents_buffer += content_part
                                 new_state = GenerationState.RESPONDING
-                                res = _make_response(
+                                res = self._make_response(
+                                    conversation_id,
+                                    state,
+                                    prev_state,
                                     message_kwargs={
                                         "content": [
                                             MessageContent(
@@ -337,7 +308,7 @@ class WorkflowExecutor:
                                                 text=content_part,
                                             )
                                         ]
-                                    }
+                                    },
                                 )
                                 if new_state != state:
                                     self.logger.debug(
@@ -346,10 +317,11 @@ class WorkflowExecutor:
                                     state = new_state
                                 prev_state = state
                                 yield res
-
                             # Emit any tool calls parsed from stripped XML
                             if raw_tcs:
-                                tc_res = _make_response()
+                                tc_res = self._make_response(
+                                    conversation_id, state, prev_state
+                                )
                                 assert (
                                     tc_res.message
                                     and tc_res.message.tool_calls is not None
@@ -366,7 +338,6 @@ class WorkflowExecutor:
                                     state = new_state
                                 prev_state = state
                                 yield tc_res
-
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
                         self.logger.debug(
@@ -377,7 +348,6 @@ class WorkflowExecutor:
                                 "content_len": len(contents_buffer),
                             },
                         )
-
                 # --- Structured output (grammar mode) ---
                 elif (
                     event_type == "on_chain_end"
@@ -386,10 +356,9 @@ class WorkflowExecutor:
                     new_state = GenerationState.FORMATTING
                     if isinstance(output, BaseModel):
                         output = output.model_dump()
-                    res = _make_response()
+                    res = self._make_response(conversation_id, state, prev_state)
                     assert res.message
                     res.message.structured_output = output
-
                 # --- Server-side tool execution ---
                 elif event_type.endswith("_tool_start"):
                     new_state = GenerationState.EXECUTING
@@ -413,9 +382,13 @@ class WorkflowExecutor:
                     tc.result_data = output.model_dump()
                     tc.created_at = datetime.now(timezone.utc)
                     tool_calls[run_id] = tc
-                    res = _make_response(message_kwargs={"tool_calls": [tc]})
+                    res = self._make_response(
+                        conversation_id,
+                        state,
+                        prev_state,
+                        message_kwargs={"tool_calls": [tc]},
+                    )
                     yield res
-
         except Exception as e:
             self.logger.error(
                 "Workflow execution failed", extra={"error": str(e)}, exc_info=True
@@ -438,14 +411,12 @@ class WorkflowExecutor:
                 finish_reason="error",
                 total_duration=total_duration,
             )
-
         # Build final accumulated message
-
         # If think never closed, the buffered "thoughts" are actually content
         if thoughts_buffer and not think_closed:
             contents_buffer = thoughts_buffer + contents_buffer
             thoughts_buffer = ""
-
+            think_closed = True
         # If think closed but model produced NO content and NO tool calls,
         # the thoughts are the only output — promote them to content so
         # the response isn't empty.
@@ -456,7 +427,7 @@ class WorkflowExecutor:
             )
             contents_buffer = thoughts_buffer
             thoughts_buffer = ""
-
+            think_closed = True
         if contents_buffer:
             message_contents.append(
                 MessageContent(
@@ -465,12 +436,10 @@ class WorkflowExecutor:
                     created_at=datetime.now(timezone.utc),
                 )
             )
-
         if thoughts_buffer:
             thoughts.append(
                 Thought(text=thoughts_buffer, created_at=datetime.now(timezone.utc))
             )
-
         self.logger.info("Workflow execution completed. Producing final output.")
         self.logger.debug(
             "Final output buffers",
@@ -496,135 +465,6 @@ class WorkflowExecutor:
             * 1000.0,
         )
 
-    def _strip_raw_tool_calls(
-        self, content: str
-    ) -> Tuple[str, List[ToolCall]]:
-        """Strip raw tool-call XML and parse tool calls from it.
-
-        When the model generates text followed by an inline tool call in
-        XML format (e.g. ``<tool_call>func_name<arg_key>…``), llama.cpp
-        may not recognise the structured tool call and returns everything
-        as plain content.  Strip everything from the first raw tool-call
-        tag onwards, parse tool calls from the stripped portion, and
-        return both the cleaned content and extracted tool calls.
-        """
-        match = _RAW_TOOL_CALL_RE.search(content)
-        if not match:
-            return content, []
-
-        cleaned = content[: match.start()].rstrip()
-        raw_portion = content[match.start() :]
-        stripped_len = len(content) - len(cleaned)
-
-        # Parse tool calls from the stripped XML
-        parsed_tcs = self._parse_raw_tool_calls(raw_portion)
-
-        self.logger.warning(
-            "Stripped raw tool-call XML from content",
-            extra={
-                "stripped_chars": stripped_len,
-                "kept_len": len(cleaned),
-                "parsed_tool_calls": len(parsed_tcs),
-                "tool_names": [tc.name for tc in parsed_tcs],
-            },
-        )
-        return cleaned, parsed_tcs
-
-    def _parse_raw_tool_calls(self, raw: str) -> List[ToolCall]:
-        """Parse tool calls from raw XML in GLM native or JSON format.
-
-        Handles two formats:
-        1. GLM XML: ``<tool_call>func<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>``
-        2. JSON:    ``<tool_call>{"name": "func", "arguments": {...}}</tool_call>``
-        """
-        parsed: List[ToolCall] = []
-        for block_match in _TOOL_CALL_BLOCK_RE.finditer(raw):
-            body = block_match.group(1).strip()
-            if not body:
-                continue
-
-            # --- Try JSON format first ---
-            if body.startswith("{"):
-                try:
-                    data = json.loads(body)
-                    if isinstance(data, dict) and "name" in data:
-                        args = data.get("arguments", data.get("args", {}))
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except json.JSONDecodeError:
-                                args = {"raw": args}
-                        parsed.append(
-                            ToolCall(
-                                name=data["name"],
-                                args=args if isinstance(args, dict) else {},
-                                execution_id=f"raw_{data['name']}_{len(parsed)}",
-                                created_at=datetime.now(timezone.utc),
-                            )
-                        )
-                        continue
-                except json.JSONDecodeError:
-                    pass
-
-            # --- GLM XML format: func_name<arg_key>key</arg_key><arg_value>val</arg_value> ---
-            arg_key_pos = body.find("<arg_key>")
-            if arg_key_pos == -1:
-                continue
-            func_name = body[:arg_key_pos].strip()
-            if not func_name:
-                continue
-
-            args: Dict[str, Any] = {}
-            remaining = body[arg_key_pos:]
-            while remaining:
-                ks = remaining.find("<arg_key>")
-                if ks == -1:
-                    break
-                ke = remaining.find("</arg_key>", ks)
-                if ke == -1:
-                    break
-                key = remaining[ks + len("<arg_key>") : ke].strip()
-
-                vs = remaining.find("<arg_value>", ke)
-                if vs == -1:
-                    break
-                ve = remaining.find("</arg_value>", vs)
-                if ve == -1:
-                    # Value extends to end of block (unclosed tag)
-                    value = remaining[vs + len("<arg_value>") :]
-                    args[key] = value
-                    break
-                value = remaining[vs + len("<arg_value>") : ve]
-                args[key] = value
-                remaining = remaining[ve + len("</arg_value>") :]
-
-            if func_name:
-                parsed.append(
-                    ToolCall(
-                        name=func_name,
-                        args=args,
-                        execution_id=f"raw_{func_name}_{len(parsed)}",
-                        created_at=datetime.now(timezone.utc),
-                    )
-                )
-
-        return parsed
-
-    def _parse_content(self, content: str | List[str | Dict[str, Any]]) -> List[str]:
-        """
-        Parse message content into a list of strings.
-
-        Args:
-            content: Content which can be a string or list of strings/dicts
-
-        Returns:
-            List[str]: Parsed list of string content
-        """
-        if isinstance(content, str):
-            return [content]
-        else:
-            return [str(c) for c in content]
-
 
 # Convenience factory functions
 def create_executor(
@@ -632,11 +472,9 @@ def create_executor(
 ) -> WorkflowExecutor:
     """
     Create a new WorkflowExecutor instance.
-
     Args:
         logger: Optional logger instance
         context: Default context name
-
     Returns:
         WorkflowExecutor: New executor instance
     """
@@ -653,7 +491,6 @@ async def stream_workflow(
 ) -> AsyncIterator[ChatResponse]:
     """
     Convenience function for streaming workflow execution.
-
     Args:
         workflow: CompiledStateGraph to execute
         initial_state: Initial state for workflow execution
@@ -661,12 +498,10 @@ async def stream_workflow(
         config: Optional RunnableConfig
         logger: Optional logger instance
         context: Context name for metadata
-
     Yields:
         Dict[str, Any]: Stream events from workflow execution
     """
     executor = create_executor(logger=logger, context=context)
-
     async for event in executor.stream_workflow(
         workflow=workflow,
         initial_state=initial_state,

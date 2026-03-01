@@ -73,6 +73,9 @@ class PipelineFactory:
         metadata: Optional[dict] = {},
     ) -> Union[BasePipeline, Embeddings]:
         model_id = profile.model_name
+        self.logger.debug(
+            f"Requesting pipeline for model_id: {model_id}, priority: {priority}, grammar: {grammar}, metadata: {metadata}"
+        )
         model = self._get_model_by_id(model_id)
         if not model:
             raise RuntimeError(f"Model with ID '{model_id}' not found.")
@@ -332,12 +335,16 @@ class PipelineFactory:
 
         match model.provider:
             case ModelProvider.LLAMA_CPP:
-                from .pipelines.llamacpp.chat import ChatLlamaCppPipeline  # pylint: disable=import-outside-toplevel
+                from .pipelines.llamacpp.chat import (
+                    ChatLlamaCppPipeline,
+                )  # pylint: disable=import-outside-toplevel
 
                 return ChatLlamaCppPipeline(model, profile, grammar, metadata)
             case ModelProvider.OPENAI:
                 import os
-                from langchain_openai import ChatOpenAI  # pylint: disable=import-outside-toplevel
+                from langchain_openai import (
+                    ChatOpenAI,
+                )  # pylint: disable=import-outside-toplevel
                 from pydantic import SecretStr
 
                 return ChatOpenAI(  # type: ignore[return-value]
@@ -346,7 +353,9 @@ class PipelineFactory:
                 )
             case ModelProvider.ANTHROPIC:
                 import os
-                from langchain_anthropic import ChatAnthropic  # pylint: disable=import-outside-toplevel
+                from langchain_anthropic import (
+                    ChatAnthropic,
+                )  # pylint: disable=import-outside-toplevel
                 from pydantic import SecretStr
 
                 return ChatAnthropic(  # type: ignore[return-value]

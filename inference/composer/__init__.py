@@ -94,6 +94,7 @@ async def get_or_init_composer_service(builder: GraphBuilder) -> ComposerService
 async def compose_workflow(
     user_id: str,
     builder: GraphBuilder,
+    model_name: Optional[str] = None,
     response_format: Optional[Type[BaseModel]] = None,
     **build_kwargs,
 ) -> CompiledStateGraph:
@@ -111,7 +112,12 @@ async def compose_workflow(
         CompiledStateGraph: Ready to execute LangGraph workflow
     """
     svc = await _manager.get_or_init_service(builder)
-    return await svc.compose_workflow(user_id, response_format, **build_kwargs)
+    return await svc.compose_workflow(
+        user_id=user_id,
+        model_name=model_name,
+        response_format=response_format,
+        **build_kwargs,
+    )
 
 
 async def clear_workflow_cache(user_id: str) -> None:

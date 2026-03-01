@@ -179,7 +179,7 @@ async def delete_conversation(conversation_id: int, request: Request):
 @router.get("/cancel")
 async def cancel_conversation(request: Request):
     """
-    Delete a conversation and all its messages.
+    Cancel the current conversation by clearing workflow cache and local pipeline cache.
     """
     logger.info(f"Received cancel request")
     user_id = get_user_id(request)

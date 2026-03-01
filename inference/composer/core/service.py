@@ -14,6 +14,7 @@ from typing import Dict, Optional, Type
 
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
+from transformers import ModelCard
 
 from models import (
     Message,
@@ -54,6 +55,7 @@ class ComposerService:
     async def compose_workflow(
         self,
         user_id: str,
+        model_name: Optional[str] = None,
         response_format: Optional[Type[BaseModel]] = None,
         **build_kwargs,
     ) -> CompiledStateGraph:
@@ -87,6 +89,9 @@ class ComposerService:
                 # Simplified cache key - master workflow is the same for all users
                 cache_key = f"workflow_{user_id}"
 
+                if model_name:
+                    cache_key += f"_{model_name}"
+
                 cached_workflow = await user_cache.get(cache_key)
                 if cached_workflow:
                     self.logger.debug(
@@ -106,12 +111,12 @@ class ComposerService:
                 workflow = await user_cache.get_or_create(
                     cache_key,
                     lambda: self.graph_builder.build_workflow(
-                        user_id, response_format, **build_kwargs
+                        user_id, response_format, model_name=model_name, **build_kwargs
                     ),
                 )
             else:
                 workflow = await self.graph_builder.build_workflow(
-                    user_id, response_format, **build_kwargs
+                    user_id, response_format, model_name=model_name, **build_kwargs
                 )
 
             self.logger.info(

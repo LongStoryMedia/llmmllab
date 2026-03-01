@@ -1,0 +1,1301 @@
+openapi: 3.1.0
+info:
+  title: Anthropic Claude API
+  description: |
+    The Claude API is a RESTful API providing programmatic access to Claude AI models.
+    All requests require authentication via API key and an `anthropic-version` header.
+  version: "2023-06-01"
+  contact:
+    url: https://support.claude.com
+  termsOfService: https://www.anthropic.com/legal/commercial-terms
+
+servers:
+  - url: https://api.anthropic.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Your Anthropic API key from the Console.
+
+  parameters:
+    AnthropicVersion:
+      name: anthropic-version
+      in: header
+      required: true
+      schema:
+        type: string
+        example: "2023-06-01"
+      description: API version string (e.g. `2023-06-01`).
+    AnthropicBeta:
+      name: anthropic-beta
+      in: header
+      required: false
+      schema:
+        type: string
+        example: "message-batches-2024-09-24"
+      description: |
+        Comma-separated list of beta feature flags. Examples:
+        `message-batches-2024-09-24`, `prompt-caching-2024-07-31`,
+        `computer-use-2024-10-22`, `files-api-2025-04-14`, `skills-2025-10-02`.
+
+  schemas:
+    # ─── Common ───────────────────────────────────────────────────────────────
+    CacheControl:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [ephemeral]
+        ttl:
+          type: string
+          description: Time-to-live for the cache entry. Defaults to `5m`.
+          example: "5m"
+      required: [type]
+
+    # ─── Content Blocks ───────────────────────────────────────────────────────
+    TextContentBlock:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [text]
+        text:
+          type: string
+          maxLength: 5000000
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+      required: [type, text]
+
+    ImageSource:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [base64, url, file]
+        media_type:
+          type: string
+          enum: [image/jpeg, image/png, image/gif, image/webp]
+          description: Required when type is `base64`.
+        data:
+          type: string
+          format: byte
+          description: Base64-encoded image data. Required when type is `base64`.
+        url:
+          type: string
+          format: uri
+          description: URL of the image. Required when type is `url`.
+        file_id:
+          type: string
+          description: File ID from the Files API. Required when type is `file`.
+      required: [type]
+
+    ImageContentBlock:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [image]
+        source:
+          $ref: "#/components/schemas/ImageSource"
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+      required: [type, source]
+
+    DocumentSource:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [base64, url, file, text, content]
+        media_type:
+          type: string
+          enum: [application/pdf, text/plain]
+        data:
+          type: string
+          format: byte
+        url:
+          type: string
+          format: uri
+        file_id:
+          type: string
+        text:
+          type: string
+          description: Plain text content when type is `text`.
+        content:
+          type: array
+          description: Custom content blocks when type is `content`.
+          items:
+            $ref: "#/components/schemas/TextContentBlock"
+      required: [type]
+
+    DocumentContentBlock:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [document]
+        source:
+          $ref: "#/components/schemas/DocumentSource"
+        title:
+          type: string
+          description: Optional title for the document.
+        context:
+          type: string
+          description: Optional context/description for the document.
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+      required: [type, source]
+
+    ToolUseContentBlock:
+      type: object
+      description: A tool invocation block in an assistant message.
+      properties:
+        type:
+          type: string
+          enum: [tool_use]
+        id:
+          type: string
+          description: Unique identifier for this tool use.
+        name:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+          description: Tool input as a JSON object.
+      required: [type, id, name, input]
+
+    ToolResultContentBlock:
+      type: object
+      description: Result of a tool call, sent by the user in a subsequent message.
+      properties:
+        type:
+          type: string
+          enum: [tool_result]
+        tool_use_id:
+          type: string
+          description: The `id` from the corresponding `tool_use` block.
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                oneOf:
+                  - $ref: "#/components/schemas/TextContentBlock"
+                  - $ref: "#/components/schemas/ImageContentBlock"
+        is_error:
+          type: boolean
+          description: Whether this result represents an error.
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+      required: [type, tool_use_id]
+
+    ThinkingContentBlock:
+      type: object
+      description: Extended thinking block (beta). Present in responses when extended thinking is enabled.
+      properties:
+        type:
+          type: string
+          enum: [thinking]
+        thinking:
+          type: string
+      required: [type, thinking]
+
+    RedactedThinkingContentBlock:
+      type: object
+      description: Redacted thinking block (beta).
+      properties:
+        type:
+          type: string
+          enum: [redacted_thinking]
+        data:
+          type: string
+      required: [type, data]
+
+    InputContentBlock:
+      oneOf:
+        - $ref: "#/components/schemas/TextContentBlock"
+        - $ref: "#/components/schemas/ImageContentBlock"
+        - $ref: "#/components/schemas/DocumentContentBlock"
+        - $ref: "#/components/schemas/ToolUseContentBlock"
+        - $ref: "#/components/schemas/ToolResultContentBlock"
+
+    OutputContentBlock:
+      oneOf:
+        - $ref: "#/components/schemas/TextContentBlock"
+        - $ref: "#/components/schemas/ToolUseContentBlock"
+        - $ref: "#/components/schemas/ThinkingContentBlock"
+        - $ref: "#/components/schemas/RedactedThinkingContentBlock"
+
+    # ─── Messages ─────────────────────────────────────────────────────────────
+    InputMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          oneOf:
+            - type: string
+              description: Simple text content shorthand.
+            - type: array
+              items:
+                $ref: "#/components/schemas/InputContentBlock"
+      required: [role, content]
+
+    SystemPrompt:
+      oneOf:
+        - type: string
+          description: Simple text system prompt.
+        - type: array
+          items:
+            $ref: "#/components/schemas/TextContentBlock"
+          description: Structured system prompt (supports cache control).
+
+    # ─── Tools ────────────────────────────────────────────────────────────────
+    ClientTool:
+      type: object
+      description: A client-side tool definition.
+      properties:
+        type:
+          type: string
+          enum: [custom]
+          description: Omit or set to `custom` for client tools.
+        name:
+          type: string
+          description: Tool name (used by the model when calling the tool).
+        description:
+          type: string
+          description: Detailed description of what the tool does.
+        input_schema:
+          type: object
+          description: JSON Schema for the tool's input.
+          properties:
+            type:
+              type: string
+              enum: [object]
+            properties:
+              type: object
+              additionalProperties: true
+            required:
+              type: array
+              items:
+                type: string
+          required: [type]
+        cache_control:
+          $ref: "#/components/schemas/CacheControl"
+      required: [name, input_schema]
+
+    ServerTool:
+      type: object
+      description: An Anthropic-managed server-side tool.
+      properties:
+        type:
+          type: string
+          description: Versioned tool type, e.g. `web_search_20250305`, `text_editor_20250124`, `bash_20250124`, `computer_20250124`.
+          example: web_search_20250305
+        name:
+          type: string
+          description: Optional override name for the tool.
+      required: [type]
+
+    Tool:
+      oneOf:
+        - $ref: "#/components/schemas/ClientTool"
+        - $ref: "#/components/schemas/ServerTool"
+
+    ToolChoice:
+      oneOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [auto]
+              description: Model chooses whether to call a tool.
+          required: [type]
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [any]
+              description: Model must call at least one tool.
+          required: [type]
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [tool]
+              description: Force a specific tool.
+            name:
+              type: string
+              description: Name of the tool to call.
+          required: [type, name]
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [none]
+              description: Model must not call any tool.
+          required: [type]
+
+    # ─── Thinking ─────────────────────────────────────────────────────────────
+    ThinkingConfig:
+      type: object
+      description: Extended thinking configuration (beta).
+      properties:
+        type:
+          type: string
+          enum: [enabled, disabled]
+        budget_tokens:
+          type: integer
+          description: Maximum tokens to spend on thinking. Required when enabled.
+          minimum: 1024
+      required: [type]
+
+    # ─── Usage ────────────────────────────────────────────────────────────────
+    Usage:
+      type: object
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cache_creation_input_tokens:
+          type: integer
+        cache_read_input_tokens:
+          type: integer
+        server_tool_use:
+          type: object
+          properties:
+            web_search_requests:
+              type: integer
+
+    # ─── Messages Request / Response ─────────────────────────────────────────
+    CreateMessageRequest:
+      type: object
+      required: [model, max_tokens, messages]
+      properties:
+        model:
+          type: string
+          description: |
+            The model to use. Specify the full version string.
+            Examples: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`.
+          example: claude-opus-4-6
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/InputMessage"
+          description: Prior conversational turns. Consecutive turns of the same role are merged.
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: Maximum number of tokens to generate (absolute ceiling).
+          example: 1024
+        system:
+          $ref: "#/components/schemas/SystemPrompt"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tool"
+        tool_choice:
+          $ref: "#/components/schemas/ToolChoice"
+        thinking:
+          $ref: "#/components/schemas/ThinkingConfig"
+        temperature:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: Randomness (0 = deterministic, 1 = creative). Default 1.0. Must be 1.0 when thinking is enabled.
+          default: 1.0
+        top_p:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          description: Nucleus sampling threshold.
+        top_k:
+          type: integer
+          minimum: 0
+          description: Top-k sampling. Only sample from the top K options for each subsequent token.
+        stop_sequences:
+          type: array
+          items:
+            type: string
+          description: Custom stop sequences. Model stops generating when it encounters any of these.
+        stream:
+          type: boolean
+          default: false
+          description: If true, stream the response using server-sent events.
+        metadata:
+          type: object
+          properties:
+            user_id:
+              type: string
+              description: External identifier for the user (uuid or opaque id, no PII).
+        service_tier:
+          type: string
+          enum: [auto, standard_only]
+          description: Determines whether to use priority or standard capacity.
+        inference_geo:
+          type: string
+          description: Data residency control – specify where model inference runs.
+          example: us
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique message identifier (`msg_…`).
+          example: msg_01XFDUDYJgAACzvnptvVoYEL
+        type:
+          type: string
+          enum: [message]
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutputContentBlock"
+        model:
+          type: string
+          example: claude-opus-4-6
+        stop_reason:
+          type: string
+          nullable: true
+          enum: [end_turn, max_tokens, stop_sequence, tool_use, pause_turn]
+        stop_sequence:
+          type: string
+          nullable: true
+          description: Which stop sequence triggered the stop (if `stop_reason` is `stop_sequence`).
+        usage:
+          $ref: "#/components/schemas/Usage"
+      required: [id, type, role, content, model, stop_reason, usage]
+
+    # ─── Token Counting ───────────────────────────────────────────────────────
+    CountTokensRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+          example: claude-opus-4-6
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/InputMessage"
+        system:
+          $ref: "#/components/schemas/SystemPrompt"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tool"
+        thinking:
+          $ref: "#/components/schemas/ThinkingConfig"
+
+    CountTokensResponse:
+      type: object
+      properties:
+        input_tokens:
+          type: integer
+          description: Total number of tokens in the request.
+      required: [input_tokens]
+
+    # ─── Message Batches ──────────────────────────────────────────────────────
+    BatchRequest:
+      type: object
+      properties:
+        custom_id:
+          type: string
+          description: Developer-assigned identifier for this request (opaque, no PII).
+        params:
+          $ref: "#/components/schemas/CreateMessageRequest"
+      required: [custom_id, params]
+
+    CreateBatchRequest:
+      type: object
+      required: [requests]
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchRequest"
+          description: Up to 100,000 requests per batch.
+
+    BatchRequestCount:
+      type: object
+      properties:
+        processing:
+          type: integer
+        succeeded:
+          type: integer
+        errored:
+          type: integer
+        canceled:
+          type: integer
+        expired:
+          type: integer
+
+    BatchResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Batch identifier (`msgbatch_…`).
+          example: msgbatch_013Zva2CMHLNnXjNJJKqJ2EF
+        type:
+          type: string
+          enum: [message_batch]
+        processing_status:
+          type: string
+          enum: [in_progress, canceling, ended]
+        request_counts:
+          $ref: "#/components/schemas/BatchRequestCount"
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        cancel_initiated_at:
+          type: string
+          format: date-time
+          nullable: true
+        results_url:
+          type: string
+          nullable: true
+          description: URL to download JSONL results when processing is complete.
+      required:
+        [id, type, processing_status, request_counts, created_at, expires_at]
+
+    # ─── Models ───────────────────────────────────────────────────────────────
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+          example: claude-opus-4-6
+        type:
+          type: string
+          enum: [model]
+        display_name:
+          type: string
+          example: Claude Opus 4.6
+        created_at:
+          type: string
+          format: date-time
+      required: [id, type, display_name, created_at]
+
+    ModelListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Model"
+        first_id:
+          type: string
+          nullable: true
+        last_id:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+      required: [data, has_more]
+
+    # ─── Files API ────────────────────────────────────────────────────────────
+    FileMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          description: File identifier (`file_…`).
+          example: file_011CNxMGxHa4P2Vc9RJQ8Ahm
+        type:
+          type: string
+          enum: [file]
+        filename:
+          type: string
+        size:
+          type: integer
+          description: File size in bytes.
+        created_at:
+          type: string
+          format: date-time
+        purpose:
+          type: string
+          description: Intended use of the file.
+      required: [id, type, filename, size, created_at]
+
+    FileListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileMetadata"
+        first_id:
+          type: string
+          nullable: true
+        last_id:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+      required: [data, has_more]
+
+    DeleteResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        deleted:
+          type: boolean
+      required: [id, deleted]
+
+    # ─── Text Completions (Legacy) ────────────────────────────────────────────
+    CreateCompletionRequest:
+      type: object
+      required: [model, max_tokens_to_sample, prompt]
+      properties:
+        model:
+          type: string
+          example: claude-opus-4-6
+        prompt:
+          type: string
+          description: |
+            Alternating `\n\nHuman:` / `\n\nAssistant:` formatted prompt.
+          example: "\n\nHuman: Hello, world!\n\nAssistant:"
+        max_tokens_to_sample:
+          type: integer
+          minimum: 1
+          example: 256
+        stop_sequences:
+          type: array
+          items:
+            type: string
+        temperature:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          default: 1.0
+        top_p:
+          type: number
+        top_k:
+          type: integer
+        stream:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+          properties:
+            user_id:
+              type: string
+
+    CompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: compl_018CKm6gsux7P8yMcwZbeCPw
+        type:
+          type: string
+          enum: [completion]
+        completion:
+          type: string
+        model:
+          type: string
+        stop_reason:
+          type: string
+          enum: [stop_sequence, max_tokens]
+        stop:
+          type: string
+          nullable: true
+      required: [id, type, completion, model, stop_reason]
+
+    # ─── Errors ───────────────────────────────────────────────────────────────
+    ErrorDetail:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - invalid_request_error
+            - authentication_error
+            - permission_error
+            - not_found_error
+            - request_too_large
+            - rate_limit_error
+            - api_error
+            - overloaded_error
+        message:
+          type: string
+      required: [type, message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [error]
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required: [type, error]
+
+paths:
+  # ─── Messages ───────────────────────────────────────────────────────────────
+  /v1/messages:
+    post:
+      summary: Create a Message
+      description: |
+        Send a structured list of input messages to Claude and receive the next
+        message in the conversation. Supports single queries and multi-turn
+        conversations. Set `stream: true` for server-sent event streaming.
+      operationId: createMessage
+      tags: [Messages]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageRequest"
+            example:
+              model: claude-opus-4-6
+              max_tokens: 1024
+              messages:
+                - role: user
+                  content: Hello, Claude
+      responses:
+        "200":
+          description: Successful response
+          headers:
+            request-id:
+              schema:
+                type: string
+              description: Globally unique request identifier.
+            anthropic-organization-id:
+              schema:
+                type: string
+              description: Organization ID of the API key used.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Permission error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request too large (max 32 MB for Messages)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "529":
+          description: API overloaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Token Counting ─────────────────────────────────────────────────────────
+  /v1/messages/count_tokens:
+    post:
+      summary: Count tokens in a Message
+      description: |
+        Count the number of tokens a request would consume before sending it.
+        Useful for managing costs and staying within rate limits.
+      operationId: countTokens
+      tags: [Messages]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CountTokensRequest"
+      responses:
+        "200":
+          description: Token count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountTokensResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Message Batches ─────────────────────────────────────────────────────────
+  /v1/messages/batches:
+    post:
+      summary: Create a Message Batch
+      description: |
+        Submit a batch of up to 100,000 Messages requests for asynchronous
+        processing at 50% cost reduction. Requires the
+        `message-batches-2024-09-24` beta header.
+      operationId: createMessageBatch
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBatchRequest"
+      responses:
+        "200":
+          description: Batch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request too large (max 256 MB for Batches)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List Message Batches
+      description: List all message batches for the workspace, most recent first.
+      operationId: listMessageBatches
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: before_id
+          in: query
+          schema:
+            type: string
+          description: Return batches before this ID (for pagination).
+        - name: after_id
+          in: query
+          schema:
+            type: string
+          description: Return batches after this ID (for pagination).
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: List of batches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BatchResponse"
+                  first_id:
+                    type: string
+                    nullable: true
+                  last_id:
+                    type: string
+                    nullable: true
+                  has_more:
+                    type: boolean
+
+  /v1/messages/batches/{batch_id}:
+    get:
+      summary: Get a Message Batch
+      description: Retrieve the status of a message batch.
+      operationId: getMessageBatch
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Batch details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a Message Batch
+      description: Delete a message batch and all results associated with it.
+      operationId: deleteMessageBatch
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deletion confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+
+  /v1/messages/batches/{batch_id}/cancel:
+    post:
+      summary: Cancel a Message Batch
+      description: Cancel an in-progress message batch. Already-completed requests are not affected.
+      operationId: cancelMessageBatch
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Batch cancellation initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchResponse"
+
+  /v1/messages/batches/{batch_id}/results:
+    get:
+      summary: Get Message Batch Results
+      description: |
+        Stream results for a completed batch as JSONL. Each line is a JSON object
+        with `custom_id` and either a `result` (on success) or `error`.
+        Only available when `processing_status` is `ended`.
+      operationId: getMessageBatchResults
+      tags: [Batches]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JSONL stream of results
+          content:
+            application/jsonl:
+              schema:
+                type: string
+
+  # ─── Models ──────────────────────────────────────────────────────────────────
+  /v1/models:
+    get:
+      summary: List Models
+      description: List available Claude models, most recently released first.
+      operationId: listModels
+      tags: [Models]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - name: before_id
+          in: query
+          schema:
+            type: string
+        - name: after_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: List of models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelListResponse"
+
+  /v1/models/{model_id}:
+    get:
+      summary: Get a Model
+      description: Get details for a specific Claude model.
+      operationId: getModel
+      tags: [Models]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: claude-opus-4-6
+      responses:
+        "200":
+          description: Model details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Model"
+        "404":
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Files API (Beta) ────────────────────────────────────────────────────────
+  /v1/files:
+    post:
+      summary: Upload a File
+      description: |
+        Upload a file to use across multiple API calls (e.g. PDFs, images).
+        Requires the `files-api-2025-04-14` beta header.
+        Max file size: 500 MB total per request.
+      operationId: uploadFile
+      tags: [Files]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload.
+              required: [file]
+      responses:
+        "200":
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+
+    get:
+      summary: List Files
+      description: List uploaded files for the workspace.
+      operationId: listFiles
+      tags: [Files]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: before_id
+          in: query
+          schema:
+            type: string
+        - name: after_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+
+  /v1/files/{file_id}:
+    get:
+      summary: Get File Metadata
+      description: Retrieve metadata for a specific file.
+      operationId: getFile
+      tags: [Files]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a File
+      description: Delete an uploaded file.
+      operationId: deleteFile
+      tags: [Files]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+
+  /v1/files/{file_id}/content:
+    get:
+      summary: Get File Content
+      description: Download the raw content of an uploaded file.
+      operationId: getFileContent
+      tags: [Files]
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  # ─── Text Completions (Legacy) ────────────────────────────────────────────
+  /v1/complete:
+    post:
+      summary: Create a Text Completion (Legacy)
+      description: |
+        **Deprecated.** Use the Messages API instead. Creates a completion for
+        the provided prompt using the legacy `\n\nHuman:` / `\n\nAssistant:`
+        format.
+      operationId: createCompletion
+      tags: [Completions]
+      deprecated: true
+      parameters:
+        - $ref: "#/components/parameters/AnthropicVersion"
+        - $ref: "#/components/parameters/AnthropicBeta"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompletionRequest"
+            example:
+              model: claude-opus-4-6
+              max_tokens_to_sample: 256
+              prompt: "\n\nHuman: Hello, world!\n\nAssistant:"
+      responses:
+        "200":
+          description: Completion response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+tags:
+  - name: Messages
+    description: Core conversational API for sending messages to Claude models.
+  - name: Batches
+    description: Asynchronous batch processing of Messages requests (50% cost reduction).
+  - name: Models
+    description: List and retrieve available Claude model details.
+  - name: Files
+    description: Upload and manage files for reuse across API calls (beta).
+  - name: Completions
+    description: Legacy text completion API (deprecated - use Messages instead).

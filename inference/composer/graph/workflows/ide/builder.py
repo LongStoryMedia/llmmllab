@@ -159,6 +159,7 @@ class IdeGraphBuilder(GraphBuilder):
         client_tools: Optional[List[Union[BaseTool, Dict[str, Any]]]] = None,
         server_tools: Optional[List[BaseTool]] = None,
         tool_choice: Optional[str] = None,
+        model_name: Optional[str] = None,
     ) -> CompiledStateGraph:
         """
         Build IDE workflow with optional tool support.
@@ -176,9 +177,22 @@ class IdeGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            primary_pipeline = pipeline_factory.get_pipeline(
-                profile=IDE_PRIMARY_PROFILE
+            prof = IDE_PRIMARY_PROFILE
+            if model_name:
+                prof = ModelProfile(
+                    **{
+                        **prof.model_dump(),
+                        "model_name": model_name,
+                    }
+                )
+
+            self.logger.debug(
+                "Building workflow",
+                user_id=user_id,
+                model=prof.model_name,
+                model_arg=model_name,
             )
+            primary_pipeline = pipeline_factory.get_pipeline(profile=prof)
             # Keep a strong reference to the original pipeline throughout build_workflow
             # so GC cannot collect it when bind_tools returns a RunnableBinding wrapper
             primary_model = primary_pipeline
@@ -192,7 +206,7 @@ class IdeGraphBuilder(GraphBuilder):
 
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
-                profile=IDE_PRIMARY_PROFILE,
+                profile=prof,
                 component_name="PrimaryCodingAgent",
             )
 
