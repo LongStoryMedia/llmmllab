@@ -6,14 +6,8 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .cache_control import CacheControl
 
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
 
 class TextContentBlock(BaseModel):
     type: Annotated[Literal["text"], Field(...)]
@@ -21,5 +15,6 @@ class TextContentBlock(BaseModel):
     cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
 
     model_config = ConfigDict(extra="ignore")
+
 
 TextContentBlock.model_rebuild()

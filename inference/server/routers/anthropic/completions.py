@@ -16,7 +16,7 @@ router = APIRouter(prefix="/complete", tags=["Completions"])
 async def createCompletion(
     request: Request,
     body: CreateCompletionRequest,
-) -> Union[CompletionResponse, StreamingResponse]:
+):
     """Operation ID: createCompletion"""
     user_id = get_user_id(request)
 

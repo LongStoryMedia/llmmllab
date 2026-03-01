@@ -6,44 +6,28 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .cache_control import CacheControl
+from .document_source import DocumentSource
 
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class DocumentSource(BaseModel):
-    type: Annotated[Literal["base64", "url", "file", "text", "content"], Field(...)]
-    media_type: Annotated[Optional[Literal["application/pdf", "text/plain"]], Field(default=None)] = None
-    data: Annotated[Optional[str], Field(default=None)] = None
-    url: Annotated[Optional[AnyUrl], Field(default=None)] = None
-    file_id: Annotated[Optional[str], Field(default=None)] = None
-    text: Annotated[Optional[str], Field(default=None, description="Plain text content when type is `text`.")] = None
-    """Plain text content when type is `text`."""
-    content: Annotated[Optional[List[TextContentBlock]], Field(default=None, description="Custom content blocks when type is `content`.")] = None
-    """Custom content blocks when type is `content`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class TextContentBlock(BaseModel):
-    type: Annotated[Literal["text"], Field(...)]
-    text: Annotated[str, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
 
 class DocumentContentBlock(BaseModel):
     type: Annotated[Literal["document"], Field(...)]
     source: Annotated[DocumentSource, Field(...)]
-    title: Annotated[Optional[str], Field(default=None, description="Optional title for the document.")] = None
+    title: Annotated[
+        Optional[str],
+        Field(default=None, description="Optional title for the document."),
+    ] = None
     """Optional title for the document."""
-    context: Annotated[Optional[str], Field(default=None, description="Optional context/description for the document.")] = None
+    context: Annotated[
+        Optional[str],
+        Field(
+            default=None, description="Optional context/description for the document."
+        ),
+    ] = None
     """Optional context/description for the document."""
     cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
 
     model_config = ConfigDict(extra="ignore")
+
 
 DocumentContentBlock.model_rebuild()

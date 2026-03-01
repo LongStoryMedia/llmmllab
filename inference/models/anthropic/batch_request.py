@@ -5,171 +5,21 @@ from __future__ import annotations
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
+from .create_message_request import CreateMessageRequest
 
-
-
-class CreateMessageRequest(BaseModel):
-    model: Annotated[str, Field(..., description="The model to use. Specify the full version string. Examples: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`. ")]
-    """The model to use. Specify the full version string. Examples: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`. """
-    messages: Annotated[List[InputMessage], Field(..., description="Prior conversational turns. Consecutive turns of the same role are merged.")]
-    """Prior conversational turns. Consecutive turns of the same role are merged."""
-    max_tokens: Annotated[int, Field(..., description="Maximum number of tokens to generate (absolute ceiling).", ge=1)]
-    """Maximum number of tokens to generate (absolute ceiling)."""
-    system: Annotated[Optional[SystemPrompt], Field(default=None)] = None
-    tools: Annotated[Optional[List[Tool]], Field(default=None)] = None
-    tool_choice: Annotated[Optional[ToolChoice], Field(default=None)] = None
-    thinking: Annotated[Optional[ThinkingConfig], Field(default=None)] = None
-    temperature: Annotated[Optional[float], Field(default=1.0, description="Randomness (0 = deterministic, 1 = creative). Default 1.0. Must be 1.0 when thinking is enabled.", ge=0.0, le=1.0)] = 1.0
-    """Randomness (0 = deterministic, 1 = creative). Default 1.0. Must be 1.0 when thinking is enabled."""
-    top_p: Annotated[Optional[float], Field(default=None, description="Nucleus sampling threshold.", ge=0.0, le=1.0)] = None
-    """Nucleus sampling threshold."""
-    top_k: Annotated[Optional[int], Field(default=None, description="Top-k sampling. Only sample from the top K options for each subsequent token.", ge=0)] = None
-    """Top-k sampling. Only sample from the top K options for each subsequent token."""
-    stop_sequences: Annotated[Optional[List[str]], Field(default=None, description="Custom stop sequences. Model stops generating when it encounters any of these.")] = None
-    """Custom stop sequences. Model stops generating when it encounters any of these."""
-    stream: Annotated[Optional[bool], Field(default=False, description="If true, stream the response using server-sent events.")] = False
-    """If true, stream the response using server-sent events."""
-    metadata: Annotated[Optional[Metadata], Field(default=None)] = None
-    service_tier: Annotated[Optional[Literal["auto", "standard_only"]], Field(default=None, description="Determines whether to use priority or standard capacity.")] = None
-    """Determines whether to use priority or standard capacity."""
-    inference_geo: Annotated[Optional[str], Field(default=None, description="Data residency control – specify where model inference runs.")] = None
-    """Data residency control – specify where model inference runs."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class InputMessage(BaseModel):
-    role: Annotated[Literal["user", "assistant"], Field(...)]
-    content: Annotated[Union[str, List[InputContentBlock]], Field(...)]
-
-    model_config = ConfigDict(extra="ignore")
-
-InputContentBlock = Union[TextContentBlock, ImageContentBlock, DocumentContentBlock, ToolUseContentBlock, ToolResultContentBlock]
-
-class DocumentContentBlock(BaseModel):
-    type: Annotated[Literal["document"], Field(...)]
-    source: Annotated[DocumentSource, Field(...)]
-    title: Annotated[Optional[str], Field(default=None, description="Optional title for the document.")] = None
-    """Optional title for the document."""
-    context: Annotated[Optional[str], Field(default=None, description="Optional context/description for the document.")] = None
-    """Optional context/description for the document."""
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class DocumentSource(BaseModel):
-    type: Annotated[Literal["base64", "url", "file", "text", "content"], Field(...)]
-    media_type: Annotated[Optional[Literal["application/pdf", "text/plain"]], Field(default=None)] = None
-    data: Annotated[Optional[str], Field(default=None)] = None
-    url: Annotated[Optional[AnyUrl], Field(default=None)] = None
-    file_id: Annotated[Optional[str], Field(default=None)] = None
-    text: Annotated[Optional[str], Field(default=None, description="Plain text content when type is `text`.")] = None
-    """Plain text content when type is `text`."""
-    content: Annotated[Optional[List[TextContentBlock]], Field(default=None, description="Custom content blocks when type is `content`.")] = None
-    """Custom content blocks when type is `content`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ImageContentBlock(BaseModel):
-    type: Annotated[Literal["image"], Field(...)]
-    source: Annotated[ImageSource, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class ImageSource(BaseModel):
-    type: Annotated[Literal["base64", "url", "file"], Field(...)]
-    media_type: Annotated[Optional[Literal["image/jpeg", "image/png", "image/gif", "image/webp"]], Field(default=None, description="Required when type is `base64`.")] = None
-    """Required when type is `base64`."""
-    data: Annotated[Optional[str], Field(default=None, description="Base64-encoded image data. Required when type is `base64`.")] = None
-    """Base64-encoded image data. Required when type is `base64`."""
-    url: Annotated[Optional[AnyUrl], Field(default=None, description="URL of the image. Required when type is `url`.")] = None
-    """URL of the image. Required when type is `url`."""
-    file_id: Annotated[Optional[str], Field(default=None, description="File ID from the Files API. Required when type is `file`.")] = None
-    """File ID from the Files API. Required when type is `file`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ToolUseContentBlock(BaseModel):
-    """A tool invocation block in an assistant message."""
-    type: Annotated[Literal["tool_use"], Field(...)]
-    id: Annotated[str, Field(..., description="Unique identifier for this tool use.")]
-    """Unique identifier for this tool use."""
-    name: Annotated[str, Field(...)]
-    input: Annotated[Dict[str, Any], Field(..., description="Tool input as a JSON object.")]
-    """Tool input as a JSON object."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ToolResultContentBlock(BaseModel):
-    """Result of a tool call, sent by the user in a subsequent message."""
-    type: Annotated[Literal["tool_result"], Field(...)]
-    tool_use_id: Annotated[str, Field(..., description="The `id` from the corresponding `tool_use` block.")]
-    """The `id` from the corresponding `tool_use` block."""
-    content: Annotated[Optional[Union[str, List[Union[TextContentBlock, ImageContentBlock]]]], Field(default=None)] = None
-    is_error: Annotated[Optional[bool], Field(default=None, description="Whether this result represents an error.")] = None
-    """Whether this result represents an error."""
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class TextContentBlock(BaseModel):
-    type: Annotated[Literal["text"], Field(...)]
-    text: Annotated[str, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class ToolChoice(BaseModel):
-    pass
-
-class ThinkingConfig(BaseModel):
-    """Extended thinking configuration (beta)."""
-    type: Annotated[Literal["enabled", "disabled"], Field(...)]
-    budget_tokens: Annotated[Optional[int], Field(default=None, description="Maximum tokens to spend on thinking. Required when enabled.", ge=1024)] = None
-    """Maximum tokens to spend on thinking. Required when enabled."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class SystemPrompt(BaseModel):
-    pass
-
-Tool = Union[ClientTool, ServerTool]
-
-class ServerTool(BaseModel):
-    """An Anthropic-managed server-side tool."""
-    type: Annotated[str, Field(..., description="Versioned tool type, e.g. `web_search_20250305`, `text_editor_20250124`, `bash_20250124`, `computer_20250124`.")]
-    """Versioned tool type, e.g. `web_search_20250305`, `text_editor_20250124`, `bash_20250124`, `computer_20250124`."""
-    name: Annotated[Optional[str], Field(default=None, description="Optional override name for the tool.")] = None
-    """Optional override name for the tool."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ClientTool(BaseModel):
-    """A client-side tool definition."""
-    type: Annotated[Optional[Literal["custom"]], Field(default=None, description="Omit or set to `custom` for client tools.")] = None
-    """Omit or set to `custom` for client tools."""
-    name: Annotated[str, Field(..., description="Tool name (used by the model when calling the tool).")]
-    """Tool name (used by the model when calling the tool)."""
-    description: Annotated[Optional[str], Field(default=None, description="Detailed description of what the tool does.")] = None
-    """Detailed description of what the tool does."""
-    input_schema: Annotated[InputSchema, Field(..., description="JSON Schema for the tool's input.")]
-    """JSON Schema for the tool's input."""
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
 
 class BatchRequest(BaseModel):
-    custom_id: Annotated[str, Field(..., description="Developer-assigned identifier for this request (opaque, no PII).")]
+    custom_id: Annotated[
+        str,
+        Field(
+            ...,
+            description="Developer-assigned identifier for this request (opaque, no PII).",
+        ),
+    ]
     """Developer-assigned identifier for this request (opaque, no PII)."""
     params: Annotated[CreateMessageRequest, Field(...)]
 
     model_config = ConfigDict(extra="ignore")
+
 
 BatchRequest.model_rebuild()

@@ -5,17 +5,18 @@ from __future__ import annotations
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
+from .metadata import Metadata
 
-
-
-class Metadata(BaseModel):
-    user_id: Annotated[Optional[str], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
 
 class CreateCompletionRequest(BaseModel):
     model: Annotated[str, Field(...)]
-    prompt: Annotated[str, Field(..., description="Alternating `\n\nHuman:` / `\n\nAssistant:` formatted prompt. ")]
+    prompt: Annotated[
+        str,
+        Field(
+            ...,
+            description="Alternating `\n\nHuman:` / `\n\nAssistant:` formatted prompt. ",
+        ),
+    ]
     """Alternating `\n\nHuman:` / `\n\nAssistant:` formatted prompt. """
     max_tokens_to_sample: Annotated[int, Field(..., ge=1)]
     stop_sequences: Annotated[Optional[List[str]], Field(default=None)] = None
@@ -26,5 +27,6 @@ class CreateCompletionRequest(BaseModel):
     metadata: Annotated[Optional[Metadata], Field(default=None)] = None
 
     model_config = ConfigDict(extra="ignore")
+
 
 CreateCompletionRequest.model_rebuild()

@@ -6,52 +6,31 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .cache_control import CacheControl
+from .text_content_block import TextContentBlock
+from .image_content_block import ImageContentBlock
 
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ImageContentBlock(BaseModel):
-    type: Annotated[Literal["image"], Field(...)]
-    source: Annotated[ImageSource, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class ImageSource(BaseModel):
-    type: Annotated[Literal["base64", "url", "file"], Field(...)]
-    media_type: Annotated[Optional[Literal["image/jpeg", "image/png", "image/gif", "image/webp"]], Field(default=None, description="Required when type is `base64`.")] = None
-    """Required when type is `base64`."""
-    data: Annotated[Optional[str], Field(default=None, description="Base64-encoded image data. Required when type is `base64`.")] = None
-    """Base64-encoded image data. Required when type is `base64`."""
-    url: Annotated[Optional[AnyUrl], Field(default=None, description="URL of the image. Required when type is `url`.")] = None
-    """URL of the image. Required when type is `url`."""
-    file_id: Annotated[Optional[str], Field(default=None, description="File ID from the Files API. Required when type is `file`.")] = None
-    """File ID from the Files API. Required when type is `file`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class TextContentBlock(BaseModel):
-    type: Annotated[Literal["text"], Field(...)]
-    text: Annotated[str, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
 
 class ToolResultContentBlock(BaseModel):
     """Result of a tool call, sent by the user in a subsequent message."""
+
     type: Annotated[Literal["tool_result"], Field(...)]
-    tool_use_id: Annotated[str, Field(..., description="The `id` from the corresponding `tool_use` block.")]
+    tool_use_id: Annotated[
+        str, Field(..., description="The `id` from the corresponding `tool_use` block.")
+    ]
     """The `id` from the corresponding `tool_use` block."""
-    content: Annotated[Optional[Union[str, List[Union[TextContentBlock, ImageContentBlock]]]], Field(default=None)] = None
-    is_error: Annotated[Optional[bool], Field(default=None, description="Whether this result represents an error.")] = None
+    content: Annotated[
+        Optional[Union[str, List[Union[TextContentBlock, ImageContentBlock]]]],
+        Field(default=None),
+    ] = None
+    is_error: Annotated[
+        Optional[bool],
+        Field(default=None, description="Whether this result represents an error."),
+    ] = None
     """Whether this result represents an error."""
     cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
 
     model_config = ConfigDict(extra="ignore")
+
 
 ToolResultContentBlock.model_rebuild()

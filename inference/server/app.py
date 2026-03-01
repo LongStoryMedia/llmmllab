@@ -59,6 +59,8 @@ from server.routers import (
     api_key,
 )
 from server.routers.openai import ROUTERS as OPENAI_ROUTERS
+from server.routers.anthropic import ROUTERS as ANTHROPIC_ROUTERS
+from server.routers.common import ROUTERS as COMMON_ROUTERS
 from server.middleware import (
     AuthMiddleware,
     db_init_middleware,
@@ -295,8 +297,18 @@ app.include_router(db_admin.router)
 # Include Ollama-compatible API endpoints
 app.include_router(ollama.router)
 
-# Include auto-generated OpenAI-compatible API endpoints
+# Include auto-generated OpenAI-compatible API endpoints (excluding models and files)
 for router in OPENAI_ROUTERS:
+    if router != OPENAI_ROUTERS[0]:  # Skip models router
+        app.include_router(router, prefix="/v1")
+
+# Include auto-generated Anthropic-compatible API endpoints (excluding models and files)
+for router in ANTHROPIC_ROUTERS:
+    if router != ANTHROPIC_ROUTERS[0]:  # Skip models router
+        app.include_router(router, prefix="/v1")
+
+# Include common endpoints (models and files)
+for router in COMMON_ROUTERS:
     app.include_router(router, prefix="/v1")
 
 # Include API key management endpoints

@@ -6,20 +6,8 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .file_metadata import FileMetadata
 
-
-class FileMetadata(BaseModel):
-    id: Annotated[str, Field(..., description="File identifier (`file_…`).")]
-    """File identifier (`file_…`)."""
-    type: Annotated[Literal["file"], Field(...)]
-    filename: Annotated[str, Field(...)]
-    size: Annotated[int, Field(..., description="File size in bytes.")]
-    """File size in bytes."""
-    created_at: Annotated[datetime, Field(...)]
-    purpose: Annotated[Optional[str], Field(default=None, description="Intended use of the file.")] = None
-    """Intended use of the file."""
-
-    model_config = ConfigDict(extra="ignore")
 
 class FileListResponse(BaseModel):
     data: Annotated[List[FileMetadata], Field(...)]
@@ -28,5 +16,6 @@ class FileListResponse(BaseModel):
     has_more: Annotated[bool, Field(...)]
 
     model_config = ConfigDict(extra="ignore")
+
 
 FileListResponse.model_rebuild()

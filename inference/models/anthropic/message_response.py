@@ -6,57 +6,9 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .output_content_block import OutputContentBlock
+from .usage import Usage
 
-
-class Usage(BaseModel):
-    input_tokens: Annotated[Optional[int], Field(default=None)] = None
-    output_tokens: Annotated[Optional[int], Field(default=None)] = None
-    cache_creation_input_tokens: Annotated[Optional[int], Field(default=None)] = None
-    cache_read_input_tokens: Annotated[Optional[int], Field(default=None)] = None
-    server_tool_use: Annotated[Optional[ServerToolUse], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-OutputContentBlock = Union[TextContentBlock, ToolUseContentBlock, ThinkingContentBlock, RedactedThinkingContentBlock]
-
-class ThinkingContentBlock(BaseModel):
-    """Extended thinking block (beta). Present in responses when extended thinking is enabled."""
-    type: Annotated[Literal["thinking"], Field(...)]
-    thinking: Annotated[str, Field(...)]
-
-    model_config = ConfigDict(extra="ignore")
-
-class ToolUseContentBlock(BaseModel):
-    """A tool invocation block in an assistant message."""
-    type: Annotated[Literal["tool_use"], Field(...)]
-    id: Annotated[str, Field(..., description="Unique identifier for this tool use.")]
-    """Unique identifier for this tool use."""
-    name: Annotated[str, Field(...)]
-    input: Annotated[Dict[str, Any], Field(..., description="Tool input as a JSON object.")]
-    """Tool input as a JSON object."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class TextContentBlock(BaseModel):
-    type: Annotated[Literal["text"], Field(...)]
-    text: Annotated[str, Field(...)]
-    cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
-
-    model_config = ConfigDict(extra="ignore")
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class RedactedThinkingContentBlock(BaseModel):
-    """Redacted thinking block (beta)."""
-    type: Annotated[Literal["redacted_thinking"], Field(...)]
-    data: Annotated[str, Field(...)]
-
-    model_config = ConfigDict(extra="ignore")
 
 class MessageResponse(BaseModel):
     id: Annotated[str, Field(..., description="Unique message identifier (`msg_…`).")]
@@ -65,11 +17,21 @@ class MessageResponse(BaseModel):
     role: Annotated[Literal["assistant"], Field(...)]
     content: Annotated[List[OutputContentBlock], Field(...)]
     model: Annotated[str, Field(...)]
-    stop_reason: Annotated[Literal["end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn"], Field(...)]
-    stop_sequence: Annotated[Optional[str], Field(default=None, description="Which stop sequence triggered the stop (if `stop_reason` is `stop_sequence`).")] = None
+    stop_reason: Annotated[
+        Literal["end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn"],
+        Field(...),
+    ]
+    stop_sequence: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            description="Which stop sequence triggered the stop (if `stop_reason` is `stop_sequence`).",
+        ),
+    ] = None
     """Which stop sequence triggered the stop (if `stop_reason` is `stop_sequence`)."""
     usage: Annotated[Usage, Field(...)]
 
     model_config = ConfigDict(extra="ignore")
+
 
 MessageResponse.model_rebuild()

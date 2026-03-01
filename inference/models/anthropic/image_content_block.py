@@ -6,27 +6,9 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
+from .cache_control import CacheControl
+from .image_source import ImageSource
 
-
-class CacheControl(BaseModel):
-    type: Annotated[Literal["ephemeral"], Field(...)]
-    ttl: Annotated[Optional[str], Field(default=None, description="Time-to-live for the cache entry. Defaults to `5m`.")] = None
-    """Time-to-live for the cache entry. Defaults to `5m`."""
-
-    model_config = ConfigDict(extra="ignore")
-
-class ImageSource(BaseModel):
-    type: Annotated[Literal["base64", "url", "file"], Field(...)]
-    media_type: Annotated[Optional[Literal["image/jpeg", "image/png", "image/gif", "image/webp"]], Field(default=None, description="Required when type is `base64`.")] = None
-    """Required when type is `base64`."""
-    data: Annotated[Optional[str], Field(default=None, description="Base64-encoded image data. Required when type is `base64`.")] = None
-    """Base64-encoded image data. Required when type is `base64`."""
-    url: Annotated[Optional[AnyUrl], Field(default=None, description="URL of the image. Required when type is `url`.")] = None
-    """URL of the image. Required when type is `url`."""
-    file_id: Annotated[Optional[str], Field(default=None, description="File ID from the Files API. Required when type is `file`.")] = None
-    """File ID from the Files API. Required when type is `file`."""
-
-    model_config = ConfigDict(extra="ignore")
 
 class ImageContentBlock(BaseModel):
     type: Annotated[Literal["image"], Field(...)]
@@ -34,5 +16,6 @@ class ImageContentBlock(BaseModel):
     cache_control: Annotated[Optional[CacheControl], Field(default=None)] = None
 
     model_config = ConfigDict(extra="ignore")
+
 
 ImageContentBlock.model_rebuild()

@@ -18,7 +18,7 @@ router = APIRouter(prefix="/messages", tags=["Messages"])
 async def createMessage(
     request: Request,
     body: CreateMessageRequest,
-) -> Union[MessageResponse, StreamingResponse]:
+):
     """Operation ID: createMessage"""
     user_id = get_user_id(request)
 
