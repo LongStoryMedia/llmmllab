@@ -20,7 +20,12 @@ from models.anthropic.usage import Usage
 from models.message import Message, MessageRole, MessageContent, MessageContentType
 from models.tool_call import ToolCall
 from models.chat_response import ChatResponse
-from composer import compose_workflow, create_initial_state, execute_workflow, get_graph_builder
+from composer import (
+    compose_workflow,
+    create_initial_state,
+    execute_workflow,
+    get_graph_builder,
+)
 from composer.graph.workflows.factory import WorkFlowType
 from utils.logging import llmmllogger
 
@@ -41,36 +46,28 @@ def messages_from_anthropic(
         # Handle content that can be either a string or a list of content blocks
         content = msg.content
         if isinstance(content, str):
-            contents.append(MessageContent(
-                type=MessageContentType.TEXT,
-                text=content
-            ))
+            contents.append(MessageContent(type=MessageContentType.TEXT, text=content))
         elif isinstance(content, list):
             for block in content:
                 if block.type == "text":
-                    contents.append(MessageContent(
-                        type=MessageContentType.TEXT,
-                        text=block.text
-                    ))
+                    contents.append(
+                        MessageContent(type=MessageContentType.TEXT, text=block.text)
+                    )
                 elif block.type == "tool_use":
                     # Convert tool_use blocks to tool_calls for internal format
                     if tool_calls is None:
                         tool_calls = []
-                    tool_calls.append(ToolCall(
-                        execution_id=block.id,
-                        name=block.name,
-                        args=block.input
-                    ))
+                    tool_calls.append(
+                        ToolCall(
+                            execution_id=block.id, name=block.name, args=block.input
+                        )
+                    )
                 # Note: tool_result and other block types may need handling
                 # For now, we focus on text and tool_use
 
         msg_role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
 
-        messages.append(Message(
-            role=msg_role,
-            content=contents,
-            tool_calls=tool_calls
-        ))
+        messages.append(Message(role=msg_role, content=contents, tool_calls=tool_calls))
 
     return messages
 
@@ -81,46 +78,54 @@ def anthropic_response_from_chat_response(
     stop_reason: str = "end_turn",
 ) -> MessageResponse:
     """Convert internal ChatResponse to Anthropic MessageResponse format."""
-    
+
     content_blocks: list[OutputContentBlock] = []
-    
+
     if chat_response.message and chat_response.message.content:
         # Extract text content
         for part in chat_response.message.content:
             if part.type == MessageContentType.TEXT and part.text:
-                content_blocks.append(TextContentBlock(
-                    type="text",
-                    text=part.text
-                ))
-    
+                content_blocks.append(TextContentBlock(type="text", text=part.text))
+
     # Extract tool calls and convert to tool_use blocks
     if chat_response.message and chat_response.message.tool_calls:
         for tc in chat_response.message.tool_calls:
-            content_blocks.append(ToolUseContentBlock(
-                type="tool_use",
-                id=tc.execution_id or uuid.uuid4().hex,
-                name=tc.name,
-                input=tc.args
-            ))
-    
+            content_blocks.append(
+                ToolUseContentBlock(
+                    type="tool_use",
+                    id=tc.execution_id or uuid.uuid4().hex,
+                    name=tc.name,
+                    input=tc.args,
+                )
+            )
+
     # Handle thinking content if present
     if chat_response.message and chat_response.message.thoughts:
         for thought in chat_response.message.thoughts:
-            content_blocks.append(ThinkingContentBlock(
-                type="thinking",
-                thinking=thought.text if thought.text else ""
-            ))
-    
+            content_blocks.append(
+                ThinkingContentBlock(
+                    type="thinking", thinking=thought.text if thought.text else ""
+                )
+            )
+
     # Build usage
     usage = Usage(
         input_tokens=int(chat_response.prompt_eval_count or 0),
         output_tokens=int(chat_response.eval_count or 0),
     )
-    
+
     # Map string stop_reason to literal type
-    valid_stop_reasons: list[str] = ["end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn"]
-    actual_stop_reason = stop_reason if stop_reason in valid_stop_reasons else "end_turn"
-    
+    valid_stop_reasons: list[str] = [
+        "end_turn",
+        "max_tokens",
+        "stop_sequence",
+        "tool_use",
+        "pause_turn",
+    ]
+    actual_stop_reason = (
+        stop_reason if stop_reason in valid_stop_reasons else "end_turn"
+    )
+
     return MessageResponse(
         id=f"msg_{uuid.uuid4().hex[:24]}",
         type="message",
@@ -152,7 +157,7 @@ async def stream_message(
 
     # For Anthropic streaming, we send chunks as server-sent events
     # Each chunk is a JSON object with event type and data
-    
+
     has_tool_calls = False
     has_content = False
     final_tool_calls: list[ToolCall] = []
@@ -167,10 +172,9 @@ async def stream_message(
             if event.message and event.message.content:
                 for part in event.message.content:
                     if part.type == MessageContentType.TEXT and part.text:
-                        final_content_blocks.append(TextContentBlock(
-                            type="text",
-                            text=part.text
-                        ))
+                        final_content_blocks.append(
+                            TextContentBlock(type="text", text=part.text)
+                        )
                     elif part.type == MessageContentType.TOOL_CALL:
                         # This shouldn't happen in content, but handle if present
                         pass
@@ -183,11 +187,8 @@ async def stream_message(
                     has_content = True
                     chunk = {
                         "type": "content_block_delta",
-                        "delta": {
-                            "type": "text_delta",
-                            "text": part.text
-                        },
-                        "index": 0
+                        "delta": {"type": "text_delta", "text": part.text},
+                        "index": 0,
                     }
                     yield f"data: {json.dumps(chunk)}\n\n"
 
@@ -205,15 +206,14 @@ async def stream_message(
                 delta_text = block.thinking
             elif block.type == "tool_use" and hasattr(block, "name"):
                 delta_type = "tool_use_delta"
-                delta_text = json.dumps({"name": block.name, "input": getattr(block, "input", {})})
-            
+                delta_text = json.dumps(
+                    {"name": block.name, "input": getattr(block, "input", {})}
+                )
+
             chunk = {
                 "type": "content_block_delta",
-                "delta": {
-                    "type": delta_type,
-                    "text": delta_text
-                },
-                "index": i
+                "delta": {"type": delta_type, "text": delta_text},
+                "index": i,
             }
             yield f"data: {json.dumps(chunk)}\n\n"
 
@@ -225,9 +225,9 @@ async def stream_message(
                 "delta": {
                     "type": "tool_use_delta",
                     "name": tc.name,
-                    "input": json.dumps(tc.args)
+                    "input": json.dumps(tc.args),
                 },
-                "index": i + len(final_content_blocks)
+                "index": i + len(final_content_blocks),
             }
             yield f"data: {json.dumps(chunk)}\n\n"
 
@@ -235,12 +235,11 @@ async def stream_message(
     stop_reason = "tool_use" if has_tool_calls else "end_turn"
     final_chunk = {
         "type": "message_delta",
-        "delta": {
-            "stop_reason": stop_reason
-        },
+        "delta": {"stop_reason": stop_reason},
         "usage": {
-            "output_tokens": sum(1 for _ in final_content_blocks) + sum(1 for _ in final_tool_calls)
-        }
+            "output_tokens": sum(1 for _ in final_content_blocks)
+            + sum(1 for _ in final_tool_calls)
+        },
     }
     yield f"data: {json.dumps(final_chunk)}\n\n"
     yield "data: [DONE]\n\n"
@@ -257,8 +256,11 @@ async def createMessage(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
+    logger.debug(body.model_dump_json(indent=2))
     # Convert Anthropic messages to internal format
     internal_messages = messages_from_anthropic(body.messages)
+
+    logger.debug(body.model_dump_json(indent=2))
 
     # Convert Anthropic tool definitions to LangChain tools for bind_tools()
     client_tools = None
@@ -324,7 +326,7 @@ async def createMessage(
         raise HTTPException(
             status_code=500, detail="Workflow did not produce a response"
         )
-    
+
     # Determine stop_reason based on finish_reason
     stop_reason_map: dict[str | None, str] = {
         "stop": "end_turn",
@@ -333,8 +335,10 @@ async def createMessage(
         "tool_call": "tool_use",
     }
     stop_reason = stop_reason_map.get(chat_response.finish_reason, "end_turn")
-    
-    return anthropic_response_from_chat_response(chat_response, model=body.model, stop_reason=stop_reason)
+
+    return anthropic_response_from_chat_response(
+        chat_response, model=body.model, stop_reason=stop_reason
+    )
 
 
 @router.post("/count_tokens")
