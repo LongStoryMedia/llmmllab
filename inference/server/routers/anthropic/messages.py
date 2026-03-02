@@ -1,7 +1,6 @@
 import json
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
 from typing import Dict, Union, Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,40 +34,144 @@ logger = llmmllogger.bind(component="anthropic_messages_router")
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
 
+def _sse(event_type: str, data: dict) -> str:
+    """Format a server-sent event with the required Anthropic event/data structure."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
 def messages_from_anthropic(
     anthropic_messages: list,
+    system: Any = None,
 ) -> list[Message]:
-    """Convert Anthropic messages to internal Message format."""
-    messages = []
-    for msg in anthropic_messages:
-        contents = []
-        tool_calls = None
+    """Convert Anthropic messages to internal Message format.
 
-        # Handle content that can be either a string or a list of content blocks
+    Handles:
+    - String content
+    - Text and tool_use blocks in assistant messages
+    - tool_result blocks in user messages (expanded to TOOL role messages)
+    - System prompt (prepended as SYSTEM message)
+    """
+    messages: list[Message] = []
+
+    # Prepend system message if present
+    if system is not None:
+        if isinstance(system, str):
+            system_text = system
+        else:
+            # List of TextContentBlock
+            system_text = "\n".join(
+                block.text
+                for block in system
+                if hasattr(block, "text") and block.text
+            )
+        if system_text:
+            messages.append(
+                Message(
+                    role=MessageRole.SYSTEM,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=system_text)],
+                )
+            )
+
+    for msg in anthropic_messages:
         content = msg.content
+
+        # Simple string content
         if isinstance(content, str):
-            contents.append(MessageContent(type=MessageContentType.TEXT, text=content))
-        elif isinstance(content, list):
-            for block in content:
-                if block.type == "text":
-                    contents.append(
-                        MessageContent(type=MessageContentType.TEXT, text=block.text)
-                    )
-                elif block.type == "tool_use":
-                    # Convert tool_use blocks to tool_calls for internal format
-                    if tool_calls is None:
-                        tool_calls = []
-                    tool_calls.append(
-                        ToolCall(
-                            execution_id=block.id, name=block.name, args=block.input
+            role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+            messages.append(
+                Message(
+                    role=role,
+                    content=[MessageContent(type=MessageContentType.TEXT, text=content)],
+                )
+            )
+            continue
+
+        # List of content blocks
+        if msg.role == "user":
+            tool_result_blocks = [
+                b for b in content if hasattr(b, "type") and b.type == "tool_result"
+            ]
+            if tool_result_blocks:
+                # Each tool_result block becomes a separate TOOL message (mirrors OAI tool messages)
+                for block in tool_result_blocks:
+                    result_text = ""
+                    if isinstance(block.content, str):
+                        result_text = block.content
+                    elif isinstance(block.content, list):
+                        result_text = "\n".join(
+                            b.text
+                            for b in block.content
+                            if hasattr(b, "text") and b.text
+                        )
+                    messages.append(
+                        Message(
+                            role=MessageRole.TOOL,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT, text=result_text
+                                )
+                            ],
+                            tool_calls=[
+                                ToolCall(
+                                    name="tool_result",
+                                    execution_id=block.tool_use_id,
+                                    args={},
+                                )
+                            ],
                         )
                     )
-                # Note: tool_result and other block types may need handling
-                # For now, we focus on text and tool_use
+                # Handle any non-tool_result text blocks in the same user message
+                other_text = [
+                    b.text
+                    for b in content
+                    if hasattr(b, "type") and b.type == "text" and hasattr(b, "text") and b.text
+                ]
+                if other_text:
+                    messages.append(
+                        Message(
+                            role=MessageRole.USER,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text="\n".join(other_text),
+                                )
+                            ],
+                        )
+                    )
+                continue
 
-        msg_role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+        # Regular user or assistant message with text and/or tool_use blocks
+        text_contents: list[MessageContent] = []
+        tool_calls: list[ToolCall] | None = None
 
-        messages.append(Message(role=msg_role, content=contents, tool_calls=tool_calls))
+        for block in content:
+            if not hasattr(block, "type"):
+                continue
+            if block.type == "text":
+                text_contents.append(
+                    MessageContent(type=MessageContentType.TEXT, text=block.text)
+                )
+            elif block.type == "tool_use":
+                if tool_calls is None:
+                    tool_calls = []
+                tool_calls.append(
+                    ToolCall(
+                        execution_id=block.id,
+                        name=block.name,
+                        args=block.input if isinstance(block.input, dict) else {},
+                    )
+                )
+
+        role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+        if text_contents or tool_calls:
+            messages.append(
+                Message(
+                    role=role,
+                    content=text_contents
+                    or [MessageContent(type=MessageContentType.TEXT, text="")],
+                    tool_calls=tool_calls,
+                )
+            )
 
     return messages
 
@@ -82,25 +185,7 @@ def anthropic_response_from_chat_response(
 
     content_blocks: list[OutputContentBlock] = []
 
-    if chat_response.message and chat_response.message.content:
-        # Extract text content
-        for part in chat_response.message.content:
-            if part.type == MessageContentType.TEXT and part.text:
-                content_blocks.append(TextContentBlock(type="text", text=part.text))
-
-    # Extract tool calls and convert to tool_use blocks
-    if chat_response.message and chat_response.message.tool_calls:
-        for tc in chat_response.message.tool_calls:
-            content_blocks.append(
-                ToolUseContentBlock(
-                    type="tool_use",
-                    id=tc.execution_id or uuid.uuid4().hex,
-                    name=tc.name,
-                    input=tc.args,
-                )
-            )
-
-    # Handle thinking content if present
+    # Thinking blocks first (per Anthropic spec ordering)
     if chat_response.message and chat_response.message.thoughts:
         for thought in chat_response.message.thoughts:
             content_blocks.append(
@@ -109,14 +194,30 @@ def anthropic_response_from_chat_response(
                 )
             )
 
-    # Build usage
+    # Text blocks
+    if chat_response.message and chat_response.message.content:
+        for part in chat_response.message.content:
+            if part.type == MessageContentType.TEXT and part.text:
+                content_blocks.append(TextContentBlock(type="text", text=part.text))
+
+    # Tool use blocks
+    if chat_response.message and chat_response.message.tool_calls:
+        for tc in chat_response.message.tool_calls:
+            content_blocks.append(
+                ToolUseContentBlock(
+                    type="tool_use",
+                    id=tc.execution_id or f"toolu_{uuid.uuid4().hex[:24]}",
+                    name=tc.name,
+                    input=tc.args,
+                )
+            )
+
     usage = Usage(
         input_tokens=int(chat_response.prompt_eval_count or 0),
         output_tokens=int(chat_response.eval_count or 0),
     )
 
-    # Map string stop_reason to literal type
-    valid_stop_reasons: list[str] = [
+    valid_stop_reasons = [
         "end_turn",
         "max_tokens",
         "stop_sequence",
@@ -145,7 +246,12 @@ async def stream_message(
     client_tools: list | None = None,
     tool_choice: str | None = None,
 ) -> AsyncIterator[str]:
-    """Stream composer events as Anthropic SSE message chunks."""
+    """Stream composer events as Anthropic SSE message chunks.
+
+    Emits the full Anthropic streaming event sequence:
+      message_start → ping → content_block_start → content_block_delta(s)
+      → content_block_stop → message_delta → message_stop
+    """
     builder = await get_graph_builder(WorkFlowType.IDE, user_id)
     workflow = await compose_workflow(
         user_id=user_id,
@@ -156,94 +262,152 @@ async def stream_message(
     )
     initial_state = await create_initial_state(user_id, 0, builder, messages)
 
-    # For Anthropic streaming, we send chunks as server-sent events
-    # Each chunk is a JSON object with event type and data
+    msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 
-    has_tool_calls = False
+    yield _sse(
+        "message_start",
+        {
+            "type": "message_start",
+            "message": {
+                "id": msg_id,
+                "type": "message",
+                "role": "assistant",
+                "model": model_name,
+                "content": [],
+                "stop_reason": None,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
+        },
+    )
+    yield _sse("ping", {"type": "ping"})
+
+    text_block_started = False
+    text_block_index = 0
     has_content = False
+    has_tool_calls = False
     final_tool_calls: list[ToolCall] = []
-    final_content_blocks: list[OutputContentBlock] = []
+    final_content: str = ""
+    input_tokens = 0
+    output_tokens = 0
 
     async for event in execute_workflow(initial_state, workflow):
-        # Final accumulated event - capture tool calls and content
         if event.done:
             if event.message and event.message.tool_calls:
                 final_tool_calls = event.message.tool_calls
                 has_tool_calls = True
+            # Capture final content as fallback for non-streamed responses
+            # (e.g. when thinking was promoted to content by the executor)
             if event.message and event.message.content:
-                for part in event.message.content:
-                    if part.type == MessageContentType.TEXT and part.text:
-                        final_content_blocks.append(
-                            TextContentBlock(type="text", text=part.text)
-                        )
-                    elif part.type == MessageContentType.TOOL_CALL:
-                        # This shouldn't happen in content, but handle if present
-                        pass
+                parts = [
+                    c.text
+                    for c in event.message.content
+                    if c.type == MessageContentType.TEXT and c.text
+                ]
+                final_content = "".join(parts)
+            if event.prompt_eval_count:
+                input_tokens = int(event.prompt_eval_count)
+            if event.eval_count:
+                output_tokens = int(event.eval_count)
             continue
 
-        # Stream text content deltas directly
+        # Stream live text deltas
         if event.message and event.message.content:
             for part in event.message.content:
                 if part.type == MessageContentType.TEXT and part.text:
+                    if not text_block_started:
+                        yield _sse(
+                            "content_block_start",
+                            {
+                                "type": "content_block_start",
+                                "index": text_block_index,
+                                "content_block": {"type": "text", "text": ""},
+                            },
+                        )
+                        text_block_started = True
                     has_content = True
-                    chunk = {
-                        "type": "content_block_delta",
-                        "delta": {"type": "text_delta", "text": part.text},
-                        "index": 0,
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                    yield _sse(
+                        "content_block_delta",
+                        {
+                            "type": "content_block_delta",
+                            "index": text_block_index,
+                            "delta": {"type": "text_delta", "text": part.text},
+                        },
+                    )
 
-    # Send final content blocks if no streaming occurred
-    if final_content_blocks and not has_content:
-        for i, block in enumerate(final_content_blocks):
-            # Determine delta type based on block type
-            delta_type = "text_delta"
-            delta_text = ""
-            if block.type == "text" and hasattr(block, "text"):
-                delta_type = "text_delta"
-                delta_text = block.text
-            elif block.type == "thinking" and hasattr(block, "thinking"):
-                delta_type = "thinking_delta"
-                delta_text = block.thinking
-            elif block.type == "tool_use" and hasattr(block, "name"):
-                delta_type = "tool_use_delta"
-                delta_text = json.dumps(
-                    {"name": block.name, "input": getattr(block, "input", {})}
-                )
-
-            chunk = {
-                "type": "content_block_delta",
-                "delta": {"type": delta_type, "text": delta_text},
-                "index": i,
-            }
-            yield f"data: {json.dumps(chunk)}\n\n"
-
-    # Send tool use blocks
-    if final_tool_calls:
-        for i, tc in enumerate(final_tool_calls):
-            chunk = {
-                "type": "content_block_delta",
-                "delta": {
-                    "type": "tool_use_delta",
-                    "name": tc.name,
-                    "input": json.dumps(tc.args),
+    # Fallback: emit content from done event if nothing was streamed live
+    if not has_content and not has_tool_calls and final_content:
+        if not text_block_started:
+            yield _sse(
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": text_block_index,
+                    "content_block": {"type": "text", "text": ""},
                 },
-                "index": i + len(final_content_blocks),
-            }
-            yield f"data: {json.dumps(chunk)}\n\n"
+            )
+            text_block_started = True
+        yield _sse(
+            "content_block_delta",
+            {
+                "type": "content_block_delta",
+                "index": text_block_index,
+                "delta": {"type": "text_delta", "text": final_content},
+            },
+        )
 
-    # Final chunk with stop reason
+    # Close the text block
+    if text_block_started:
+        yield _sse(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": text_block_index},
+        )
+
+    # Emit tool_use blocks (always come from the final done event)
+    tool_block_start = text_block_index + (1 if text_block_started else 0)
+    for i, tc in enumerate(final_tool_calls):
+        block_index = tool_block_start + i
+        tc_id = tc.execution_id or f"toolu_{uuid.uuid4().hex[:24]}"
+
+        yield _sse(
+            "content_block_start",
+            {
+                "type": "content_block_start",
+                "index": block_index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": tc_id,
+                    "name": tc.name,
+                    "input": {},
+                },
+            },
+        )
+        yield _sse(
+            "content_block_delta",
+            {
+                "type": "content_block_delta",
+                "index": block_index,
+                "delta": {
+                    "type": "input_json_delta",
+                    "partial_json": json.dumps(tc.args),
+                },
+            },
+        )
+        yield _sse(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": block_index},
+        )
+
     stop_reason = "tool_use" if has_tool_calls else "end_turn"
-    final_chunk = {
-        "type": "message_delta",
-        "delta": {"stop_reason": stop_reason},
-        "usage": {
-            "output_tokens": sum(1 for _ in final_content_blocks)
-            + sum(1 for _ in final_tool_calls)
+    yield _sse(
+        "message_delta",
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+            "usage": {"output_tokens": output_tokens},
         },
-    }
-    yield f"data: {json.dumps(final_chunk)}\n\n"
-    yield "data: [DONE]\n\n"
+    )
+    yield _sse("message_stop", {"type": "message_stop"})
 
 
 @router.post("/", response_model=None)
@@ -262,19 +426,13 @@ async def createMessage(
 
     try:
         body = CreateMessageRequest.model_validate(req_body)
-        # Convert Anthropic messages to internal format
-        internal_messages = messages_from_anthropic(body.messages)
+        internal_messages = messages_from_anthropic(body.messages, system=body.system)
 
-        # Convert Anthropic tool definitions to LangChain tools for bind_tools()
         client_tools = None
         tool_choice = None
         if body.tools:
-            # Convert tool schemas to dict format for bind_tools()
-            client_tools = []
-            for tool in body.tools:
-                client_tools.append(tool.model_dump(exclude_none=True))
+            client_tools = [tool.model_dump(exclude_none=True) for tool in body.tools]
             if body.tool_choice:
-                # Map Anthropic tool_choice to OpenAI format
                 if body.tool_choice.type == "any":
                     tool_choice = "required"
                 elif body.tool_choice.type == "auto":
@@ -286,7 +444,7 @@ async def createMessage(
                 extra={
                     "tool_count": len(body.tools),
                     "tool_names": [t.name for t in body.tools],
-                    "client_tools_created": len(client_tools) if client_tools else 0,
+                    "client_tools_created": len(client_tools),
                     "tool_choice": tool_choice,
                 },
             )
@@ -294,7 +452,6 @@ async def createMessage(
             logger.debug("Anthropic request without tools")
 
         if body.stream:
-            # Streaming response
             return StreamingResponse(
                 stream_message(
                     user_id,
@@ -328,14 +485,13 @@ async def createMessage(
         )
         chat_response: ChatResponse | None = None
         async for event in execute_workflow(initial_state, workflow):
-            if event.finish_reason == "complete" and event.message:
+            if event.done and event.message:
                 chat_response = event
         if chat_response is None:
             raise HTTPException(
                 status_code=500, detail="Workflow did not produce a response"
             )
 
-        # Determine stop_reason based on finish_reason
         stop_reason_map: dict[str | None, str] = {
             "stop": "end_turn",
             "complete": "end_turn",
