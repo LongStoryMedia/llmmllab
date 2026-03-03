@@ -166,7 +166,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 base_url=base_url,
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
                 model="local-model",  # Standard llama.cpp model name
-                max_retries=3,
+                max_retries=1,
                 timeout=self.server_manager.startup_timeout,
                 temperature=self.profile.parameters.temperature or 0.7,
                 max_tokens=max_tokens,  # type: ignore[assignment]

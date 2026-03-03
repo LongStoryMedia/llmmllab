@@ -3,6 +3,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Dict, Union, Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
@@ -27,6 +28,8 @@ from composer import (
     get_graph_builder,
 )
 from composer.graph.workflows.factory import WorkFlowType
+from runner import pipeline_factory
+from runner.pipelines.llamacpp.chat import ChatLlamaCppPipeline
 from utils.logging import llmmllogger
 
 
@@ -404,13 +407,13 @@ async def stream_message(
         {
             "type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": None},
-            "usage": {"output_tokens": output_tokens},
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
         },
     )
     yield _sse("message_stop", {"type": "message_stop"})
 
 
-@router.post("/", response_model=None)
+@router.post("", response_model=None)
 async def createMessage(
     req_body: Dict[str, Any],
     request: Request,
@@ -517,10 +520,72 @@ async def countTokens(
     request: Request,
     body: CountTokensRequest,
 ) -> CountTokensResponse:
-    """Operation ID: countTokens"""
+    """Operation ID: countTokens
+
+    Estimates the token count for a message request by forwarding the
+    rendered text to the running llama-server's /tokenize endpoint.
+    """
     user_id = get_user_id(request)
 
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
-    raise NotImplementedError("Endpoint not yet implemented")
+    try:
+        # Convert Anthropic messages to internal format
+        internal_messages = messages_from_anthropic(body.messages, system=body.system)
+
+        # Build a plain-text representation of the conversation for tokenization.
+        # This mirrors what the chat template will produce (approximately).
+        parts: list[str] = []
+        for msg in internal_messages:
+            role_tag = msg.role.value if msg.role else "user"
+            text = ""
+            if msg.content:
+                text = " ".join(
+                    c.text for c in msg.content if c.type == MessageContentType.TEXT and c.text
+                )
+            parts.append(f"<|{role_tag}|>\n{text}")
+
+        # Include tool definitions if present — they contribute to token count
+        if body.tools:
+            for tool in body.tools:
+                parts.append(json.dumps(tool.model_dump(exclude_none=True)))
+
+        combined_text = "\n".join(parts)
+
+        # Try to reach the running llama-server's /tokenize endpoint
+        # via the cached pipeline's server_manager for accurate counts.
+        token_count: int | None = None
+        try:
+            cache = pipeline_factory.local_cache
+            with cache._lock:
+                for entry in cache._cache.values():
+                    pipeline = entry.pipeline
+                    if isinstance(pipeline, ChatLlamaCppPipeline) and pipeline.server_manager:
+                        server_url = pipeline.server_manager.server_url
+                        break
+                else:
+                    server_url = None
+
+            if server_url:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(
+                        f"{server_url}/tokenize",
+                        json={"content": combined_text},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        tokens = data.get("tokens", [])
+                        token_count = len(tokens)
+        except Exception as e:
+            logger.debug(f"llama-server tokenize unavailable, using estimate: {e}")
+
+        # Fallback: rough estimate (~4 chars per token, common for BPE tokenizers)
+        if token_count is None:
+            token_count = max(1, len(combined_text) // 4)
+
+        return CountTokensResponse(input_tokens=token_count)
+
+    except Exception as e:
+        logger.error(f"Error in countTokens: {e}")
+        raise HTTPException(status_code=400, detail=str(e))

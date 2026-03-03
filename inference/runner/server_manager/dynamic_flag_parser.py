@@ -54,6 +54,7 @@ class DynamicFlagParser:
             return []
 
         flags = []
+        flag_map = {}  # Track flags by their base name for deduplication
 
         # Parse line by line looking for flag definitions
         lines = help_output.split("\n")
@@ -160,10 +161,16 @@ class DynamicFlagParser:
                 # Check for value type after flag name
                 if len(tokens) > 1:
                     potential_value_type = tokens[1]
-                    # Check for choice patterns like {none,layer,row}
+                    # Check for choice patterns like {none,layer,row} or [on|off|auto]
                     if potential_value_type.startswith(
                         "{"
                     ) and potential_value_type.endswith("}"):
+                        value_type = potential_value_type
+                    elif (
+                        potential_value_type.startswith("[")
+                        and potential_value_type.endswith("]")
+                        and "|" in potential_value_type
+                    ):
                         value_type = potential_value_type
                     elif potential_value_type.upper() in [
                         "N",
@@ -216,7 +223,7 @@ class DynamicFlagParser:
                     pattern in desc_lower
                     for pattern in [
                         "(default: disabled)",
-                        "(default: enabled)", 
+                        "(default: enabled)",
                         "enable ",
                         "disable ",
                         "restrict to only",
@@ -246,11 +253,33 @@ class DynamicFlagParser:
                 ):
                     takes_value = True
 
-            # Determine argument type
-            arg_type = self._infer_argument_type(description, takes_value, value_type)
-
             if long_flags or short_flags:
+                # Extract base flag name for deduplication
+                # For --no-XXX flags, base is XXX; for --xxx flags, base is xxx
+                primary_long = (
+                    long_flags[0]
+                    if long_flags
+                    else (short_flags[0] if short_flags else "")
+                )
+                base_name = primary_long.lstrip("-")
+
+                # Check if ANY form is a negation flag (not just the primary)
+                # This handles cases like "--warmup, --no-warmup" on the same help line
+                is_negation = any(
+                    f.lstrip("-").startswith("no-") for f in (long_flags + short_flags)
+                )
+
+                # Extract actual base name (without no- prefix if present)
+                if base_name.startswith("no-"):
+                    base_name = base_name[3:]
+
+                # Determine argument type (now that we know if it's a negation flag)
+                arg_type = self._infer_argument_type(
+                    description, takes_value, value_type, is_negation
+                )
+
                 flag_info = {
+                    "base_name": base_name,
                     "short_flags": short_flags,
                     "long_flags": long_flags,
                     "type": arg_type["type"],
@@ -258,25 +287,53 @@ class DynamicFlagParser:
                     "help": description,
                     "takes_value": takes_value,
                     "value_type": value_type,
+                    "is_negation": is_negation,
                 }
-                flags.append(flag_info)
+
+                # Store or update in map (negation variants override positive forms)
+                if base_name not in flag_map or flag_info["is_negation"]:
+                    flag_map[base_name] = flag_info
+
+        # Convert map to list
+        flags = list(flag_map.values())
 
         self.parsed_flags = flags
         logger.info(f"Parsed {len(flags)} flags from llama.cpp help output")
         return flags
 
     def _infer_argument_type(
-        self, description: str, takes_value: bool, value_type: Optional[str] = None
+        self,
+        description: str,
+        takes_value: bool,
+        value_type: Optional[str] = None,
+        is_negation: bool = False,
     ) -> Dict[str, Any]:
-        """Infer argument type from description and value requirement."""
+        """Infer argument type from description and value requirement.
+
+        CRITICAL: For boolean flags, ALWAYS use store_true action!
+        The is_negation parameter is accepted but NOT used for action determination.
+
+        Reason: The config dict uses semantics like config["no_warmup"] = True to mean
+        "include the --no-warmup flag in the command". This is a PRESENCE indicator.
+        - store_true action: if flag present in argv, set destination to True
+        - This correctly represents: flag present (True) or absent (False default)
+        - store_false is NOT used because flag absence is already default (False)
+
+        The destination name (e.g., "no_warmup") handles the negation semantics;
+        the action only indicates presence.
+        """
         desc_lower = description.lower()
 
         # Boolean flags (no value) - only for flags that actually don't take values
         if not takes_value:
+            # ALWAYS use store_true for boolean flags, regardless of is_negation
             return {"type": None, "action": "store_true"}
 
-        # Choice patterns like {none,layer,row} - treat as string
-        if value_type and value_type.startswith("{") and value_type.endswith("}"):
+        # Choice patterns like {none,layer,row} or [on|off|auto] - treat as string
+        if value_type and (
+            (value_type.startswith("{") and value_type.endswith("}"))
+            or (value_type.startswith("[") and value_type.endswith("]") and "|" in value_type)
+        ):
             return {"type": str, "action": "store"}
 
         # String flags based on value type indicators (highest priority)
@@ -349,30 +406,84 @@ class DynamicFlagParser:
         # String flags (default for value-taking flags)
         return {"type": str, "action": "store"}
 
+    def _get_dest_name(self, flag_info: Dict[str, Any]) -> str:
+        """Get the destination name for a flag.
+
+        Uses the FIRST flag form from the help output as the basis for the destination.
+        This ensures consistency: when registering both --cont-batching and --no-cont-batching,
+        they both map to destination "cont_batching".
+
+        The builder will use config keys that match this destination name.
+        """
+        # Prefer long flags over short flags
+        if flag_info.get("long_flags"):
+            primary_flag = flag_info["long_flags"][0]
+        elif flag_info.get("short_flags"):
+            primary_flag = flag_info["short_flags"][0]
+        else:
+            raise ValueError(f"No valid flags found in flag_info: {flag_info}")
+
+        # Strip leading dashes and convert hyphens to underscores for destination name
+        dest = primary_flag.lstrip("-").replace("-", "_")
+        return dest
+
     def build_parser(self, base_parser: argparse.ArgumentParser) -> None:
-        """Add dynamically discovered flags to the argument parser."""
+        """Add dynamically discovered flags to the argument parser.
+
+        For flags with both positive and negative forms (e.g., --warmup, --no-warmup),
+        we register them separately with individual destinations so that:
+        - --warmup sets destination "warmup"
+        - --no-warmup sets destination "no_warmup"
+
+        This allows the builder to use whichever form it chooses via the config dict.
+        """
         flags = self.parse_flags()
 
         added_count = 0
         for flag_info in flags:
             try:
-                # Combine short and long flags
                 flag_names = flag_info["short_flags"] + flag_info["long_flags"]
+
                 if not flag_names:
                     continue
 
-                # Build argparse arguments
-                kwargs = {"help": flag_info["help"]}
-
-                if flag_info["action"] == "store_true":
-                    kwargs["action"] = "store_true"
+                # For boolean flags with multiple forms, register each form separately
+                # with its own destination
+                if flag_info.get("action") == "store_true" and len(flag_names) > 1:
+                    for flag_name in flag_names:
+                        try:
+                            # Each flag gets its own destination based on its form
+                            dest = flag_name.lstrip("-").replace("-", "_")
+                            kwargs = {
+                                "help": flag_info["help"],
+                                "dest": dest,
+                                "action": "store_true",
+                            }
+                            base_parser.add_argument(flag_name, **kwargs)
+                            added_count += 1
+                        except argparse.ArgumentError as e:
+                            logger.debug(f"Skipping flag {flag_name}: {e}")
+                            continue
                 else:
-                    if flag_info["type"]:
-                        kwargs["type"] = flag_info["type"]
+                    # For non-boolean flags or single-form boolean flags, use default logic
+                    dest = self._get_dest_name(flag_info)
 
-                # Add the argument
-                base_parser.add_argument(*flag_names, **kwargs)
-                added_count += 1
+                    kwargs = {"help": flag_info["help"]}
+                    kwargs["dest"] = dest
+
+                    # Handle actions
+                    action = flag_info.get("action", "store")
+                    if action in ["store_true", "store_false"]:
+                        kwargs["action"] = action
+                    elif flag_info.get("type"):
+                        kwargs["type"] = flag_info["type"]
+                        kwargs["action"] = "store"
+                    else:
+                        kwargs["action"] = action
+
+                    # Add the argument
+                    base_parser.add_argument(*flag_names, **kwargs)
+                    added_count += 1
 
             except argparse.ArgumentError as e:
                 # Skip conflicting arguments (probably already defined)

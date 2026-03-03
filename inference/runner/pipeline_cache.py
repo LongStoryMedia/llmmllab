@@ -54,6 +54,7 @@ class _PipelineCacheEntry:
         self.access_count = 1
         self.in_use = False  # Prevent eviction while pipeline is actively generating
         self._use_count = 0  # Track concurrent usage
+        self.persistent = False  # Never expire via timeout (OOM eviction still applies)
 
     @property
     def pipeline(self) -> Optional[BasePipeline | Embeddings]:
@@ -280,7 +281,8 @@ class LocalPipelineCacheManager:
             self._cache[profile_id] = _PipelineCacheEntry(pipeline, priority, required)
             self.logger.debug(f"💾 Cached NEW pipeline for {profile_id}")
 
-        # Auto-mark small models (likely embeddings) as persistent
+        # Auto-mark small models (likely embeddings) as persistent — they're tiny
+        # and cheap to keep loaded indefinitely.
         if required < 2 * 1024 * 1024 * 1024:  # < 2GB
             self.set_persistent(profile_id, True)
             self.logger.info(f"🔒 Auto-marked small model {profile_id} as persistent")
@@ -310,6 +312,10 @@ class LocalPipelineCacheManager:
                     expired.append(mid)
                     continue
 
+                # Never time-out persistent entries; OOM eviction handles them if needed
+                if entry.persistent:
+                    continue
+
                 # Calculate dynamic timeout based on pipeline characteristics
                 base_timeout = self._cache_timeout
 
@@ -319,7 +325,10 @@ class LocalPipelineCacheManager:
                 elif entry.estimated_memory < 5 * 1024 * 1024 * 1024:  # < 5GB
                     timeout_multiplier = 3.0  # 3x longer for medium models
                 else:
-                    timeout_multiplier = 1.0  # Standard timeout for large models
+                    # Large inference models (>= 5GB): 6x base = 30 min inactivity timeout.
+                    # Long enough to survive pauses in a coding session; short enough to
+                    # unload when the user is genuinely done and free the GPU.
+                    timeout_multiplier = 6.0
 
                 # High priority models get longer timeout
                 if entry.priority.value >= 4:  # HIGH or URGENT priority
@@ -420,16 +429,11 @@ class LocalPipelineCacheManager:
         with self._lock:
             entry = self._cache.get(model_id)
             if entry and entry.is_alive():
-                # For persistent pipelines, significantly boost their eviction score
+                entry.persistent = persistent
                 if persistent:
-                    # Set very high access count to make it less likely to be evicted
-                    entry.access_count = max(entry.access_count, 1000)
-                    # Update last accessed to prevent timeout
                     entry.touch()
                     self.logger.info(f"🔒 Marked pipeline {model_id} as persistent")
                 else:
-                    # Reset to normal access pattern
-                    entry.access_count = min(entry.access_count, 10)
                     self.logger.info(
                         f"🔓 Removed persistent marking from pipeline {model_id}"
                     )
