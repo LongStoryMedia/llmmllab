@@ -10,8 +10,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from models.config_utils import resolve_gpu_config
-from utils.logging import llmmllogger
+from runner.models.config_utils import resolve_gpu_config
+from runner.utils.logging import llmmllogger
 
 from .base_argument_builder import BaseArgumentBuilder
 from .dynamic_flag_parser import DynamicFlagParser

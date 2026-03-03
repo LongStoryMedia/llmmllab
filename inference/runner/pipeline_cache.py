@@ -27,7 +27,7 @@ from runner.models import (
     ModelParameters,
 )
 from pipelines.base import BasePipeline
-from utils.logging import llmmllogger
+from runner.utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .utils.resizer import Resizer
 from .utils.intelligent_oom_recovery import IntelligentOOMRecovery

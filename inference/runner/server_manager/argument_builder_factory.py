@@ -7,7 +7,7 @@ builders based on the server type.
 
 from typing import Optional
 
-from models import Model, ModelProfile, UserConfig
+from runner.models import Model, ModelProfile, UserConfig
 from .base_argument_builder import BaseArgumentBuilder
 from .llamacpp_argument_builder import LlamaCppArgumentBuilder
 

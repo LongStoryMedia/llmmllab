@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from models import Model, ModelProfile, UserConfig
-from utils.logging import llmmllogger
+from runner.models import Model, ModelProfile, UserConfig
+from runner.utils.logging import llmmllogger
 
 
 class BaseServerManager(ABC):

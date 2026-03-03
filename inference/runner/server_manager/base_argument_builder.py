@@ -10,8 +10,8 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from models import Model, ModelProfile, UserConfig
-from utils.logging import llmmllogger
+from runner.models import Model, ModelProfile, UserConfig
+from runner.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="BaseArgumentBuilder")
 

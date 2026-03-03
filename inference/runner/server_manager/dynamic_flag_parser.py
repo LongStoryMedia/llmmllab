@@ -10,7 +10,7 @@ import argparse
 import re
 import subprocess
 from typing import Any, Dict, List, Optional
-from utils.logging import llmmllogger
+from runner.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="DynamicFlagParser")
 

@@ -347,7 +347,7 @@ class Resizer:
         cpu_memory_gb = model_size_gb * cpu_layer_proportion
 
         # Debug logging for memory breakdown
-        from utils.logging import llmmllogger
+        from runner.utils.logging import llmmllogger
 
         logger = llmmllogger.bind(component="Resizer")
         logger.debug(

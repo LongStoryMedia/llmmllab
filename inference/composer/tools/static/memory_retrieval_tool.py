@@ -28,8 +28,8 @@ from langchain.tools import ToolRuntime
 from composer.graph.state import WorkflowState
 from runner import pipeline_factory
 from server.db import storage
-from server.models import ModelProfileType
-from server.models.default_configs import DEFAULT_MEMORY_CONFIG
+from runner.models import ModelProfileType
+from runner.models.default_configs import DEFAULT_MEMORY_CONFIG
 from server.utils.model_profile import get_model_profile
 from server.utils.logging import llmmllogger
 

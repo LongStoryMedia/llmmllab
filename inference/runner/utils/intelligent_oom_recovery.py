@@ -22,7 +22,7 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 
-from utils.logging import llmmllogger
+from runner.utils.logging import llmmllogger
 from runner.models import (
     Model,
     ModelProfile,
