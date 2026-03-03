@@ -1,6 +1,6 @@
 from typing import Optional, Dict, TypedDict
 
-from models import Model, ModelDetails, OptimalParameters
+from runner.models import Model, ModelDetails, OptimalParameters
 
 
 import re

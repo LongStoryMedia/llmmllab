@@ -10,7 +10,7 @@ from typing import Optional, List
 import torch
 from langchain_core.tools import BaseTool
 
-from models import (
+from runner.models import (
     Model,
     Message,
     ChatResponse,

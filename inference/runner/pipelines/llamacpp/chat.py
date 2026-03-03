@@ -15,10 +15,10 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from models import Model, ModelProfile, ModelProfileType
+from runner.models import Model, ModelProfile, ModelProfileType
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
-from utils.logging import llmmllogger
+from runner.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
 

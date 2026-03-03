@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException, Request
 from db import storage
 from server.middleware.auth import get_user_id, is_admin
 
-from models.user import User
-from models.conversation import Conversation
+from server.models.user import User
+from server.models.conversation import Conversation
 
 router = APIRouter(prefix="/users", tags=["users"])
 

@@ -23,7 +23,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 
 from utils.logging import llmmllogger
-from models import (
+from runner.models import (
     Model,
     ModelProfile,
     DevStats,

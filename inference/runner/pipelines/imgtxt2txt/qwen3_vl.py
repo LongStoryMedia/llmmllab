@@ -13,7 +13,7 @@ from pydantic import BaseModel  # noqa: F401
 # llama_cpp imported lazily within methods to reduce unnecessary top-level dependencies
 # Pillow not required for text-only stabilization; multimodal image loading currently disabled.
 
-from models import Model, ModelProfile, OptimalParameters
+from runner.models import Model, ModelProfile, OptimalParameters
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
 
 

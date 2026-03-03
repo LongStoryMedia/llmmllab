@@ -17,7 +17,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 
-from models import (
+from runner.models import (
     Model,
     ModelProfile,
     ModelProvider,
@@ -26,7 +26,7 @@ from models import (
     OptimalParameters,
     ModelParameters,
 )
-from runner.pipelines.base import BasePipeline
+from pipelines.base import BasePipeline
 from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .utils.resizer import Resizer

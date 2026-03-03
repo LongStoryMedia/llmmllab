@@ -63,7 +63,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
 
 from server import config  # Import config for auth settings
-from utils.logging import llmmllogger
+from server.utils.logging import llmmllogger
 
 
 # Custom context keys (equivalent to Go's contextKey type)

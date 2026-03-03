@@ -11,8 +11,8 @@ import asyncio
 import requests
 from langchain_core.embeddings import Embeddings
 
-from models import Model, ModelProfile, UserConfig
-from utils.logging import llmmllogger
+from runner.models import Model, ModelProfile, UserConfig
+from runner.utils.logging import llmmllogger
 from runner.server_manager import LlamaCppServerManager
 
 

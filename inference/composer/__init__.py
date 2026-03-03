@@ -22,13 +22,14 @@ Architectural Role:
 
 from typing import AsyncIterator, List, Optional, Type
 from pydantic import BaseModel
-from models import ChatResponse, Message
-from utils.logging import llmmllogger
+from server.models import ChatResponse, Message
+from server.utils.logging import llmmllogger
 from .core.service import CompiledStateGraph, ComposerService
 from .core.errors import ComposerError
 from .graph.executor import stream_workflow
 from .graph.workflows.base import GraphBuilder
 from .graph.workflows.factory import WorkFlowType, get_builder
+from .runner import RunnerService
 
 
 class ComposerServiceManager:
@@ -186,10 +187,21 @@ async def get_graph_builder(workflow_type: WorkFlowType, user_id: str) -> GraphB
     return await get_builder(workflow_type, user_id)
 
 
+async def get_runner_service() -> RunnerService:
+    """
+    Get the runner service interface.
+
+    Returns:
+        RunnerService instance for communicating with the runner service
+    """
+    return RunnerService(base_url="http://runner:8000")
+
+
 # Convenience exports for direct usage
 __all__ = [
     "shutdown_composer",
     "compose_workflow",
     "create_initial_state",
     "execute_workflow",
+    "get_runner_service",
 ]

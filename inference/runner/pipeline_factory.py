@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
-from models import (
+from runner.models import (
     Model,
     ModelProfile,
     ModelProvider,
@@ -18,7 +18,7 @@ from models import (
     PipelinePriority,
 )
 from runner.pipelines.base import BasePipeline
-from utils.logging import llmmllogger
+from runner.utils.logging import llmmllogger
 from .pipeline_cache import LocalPipelineCacheManager
 
 try:

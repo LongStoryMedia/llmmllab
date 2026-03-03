@@ -14,9 +14,9 @@ from datetime import datetime
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from models.message_content import MessageContent
-from models.message_content_type import MessageContentType
-from utils.logging import llmmllogger
+from server.models.message_content import MessageContent
+from server.models.message_content_type import MessageContentType
+from server.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="message_validation_middleware")
 

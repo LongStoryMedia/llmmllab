@@ -20,7 +20,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.messages import AIMessage, ToolMessage
 from composer.constants import STRUCTURED_AGENT_RUNNABLE_NAME
-from models import (
+from server.models import (
     MessageContentType,
     MessageRole,
     Message,
@@ -31,7 +31,7 @@ from models import (
     GenerationState,
 )
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
-from utils.logging import llmmllogger
+from server.utils.logging import llmmllogger
 
 from .content_parser import parse_content, strip_think_tags
 from .tool_call_parser import RawToolCallParser, _RAW_TOOL_CALL_RE

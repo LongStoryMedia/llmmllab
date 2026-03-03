@@ -11,8 +11,8 @@ from structlog.typing import FilteringBoundLogger
 
 from langchain.tools import BaseTool
 
-from models import Tool, UserConfig
-from utils.logging import llmmllogger
+from server.models import Tool, UserConfig
+from composer.utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,

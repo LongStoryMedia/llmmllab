@@ -24,7 +24,7 @@ from models import (
     MessageContentType,
     Conversation,
 )
-from utils.logging import llmmllogger
+from server.utils.logging import llmmllogger
 import composer
 from runner.utils.model_loader import ModelLoader
 from utils import extract_text_from_message  # Import logging utility

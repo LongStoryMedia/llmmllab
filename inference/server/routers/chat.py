@@ -18,8 +18,8 @@ from models import (
     Message,
 )
 from utils import extract_text_from_message  # Import logging utility
-from utils.logging import llmmllogger
-from utils.message_transformation import transform_file_content_to_documents
+from server.utils.logging import llmmllogger
+from server.utils.message_transformation import transform_file_content_to_documents
 
 # Import composer interface and streaming state management
 import composer

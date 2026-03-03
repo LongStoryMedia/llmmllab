@@ -7,7 +7,7 @@ import operator
 from typing import List, Optional, Annotated, Sequence, Union
 from pydantic import BaseModel, Field
 
-from models import (
+from server.models import (
     Memory,
     MessageContent,
     MessageContentType,

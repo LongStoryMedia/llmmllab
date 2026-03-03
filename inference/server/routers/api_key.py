@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from server.middleware.auth import get_user_id
 from db import storage
 from models import ApiKey, ApiKeyResponse, ApiKeyRequest
-from utils.logging import llmmllogger
+from server.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="api_key_router")
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])

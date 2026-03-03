@@ -14,7 +14,7 @@ from langchain_core.outputs import ChatResult, ChatGenerationChunk
 from langchain_core.language_models import BaseChatModel
 
 
-from models import Model, ModelProfile
+from runner.models import Model, ModelProfile
 
 
 # Enable HTTP logging for debugging

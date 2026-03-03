@@ -3,9 +3,9 @@ import os
 import yaml
 from typing import Any, Dict, List, Optional
 
-from models import LoraWeight, Model, ModelDetails
+from runner.models import LoraWeight, Model, ModelDetails
 
-from utils.logging import llmmllogger
+from ..utils.logging import llmmllogger
 
 
 class ModelLoader:

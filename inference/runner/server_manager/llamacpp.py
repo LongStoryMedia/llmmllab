@@ -7,8 +7,8 @@ Now uses structured argument building via argparse for cleaner flag management.
 
 from typing import List, Optional
 
-from models import Model, ModelProfile, UserConfig
-from models.config_utils import resolve_parameter_optimization_config
+from runner.models import Model, ModelProfile, UserConfig
+from runner.models.config_utils import resolve_parameter_optimization_config
 from runner.server_manager.base import BaseServerManager
 from runner.server_manager import create_argument_builder
 

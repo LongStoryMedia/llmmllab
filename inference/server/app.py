@@ -68,8 +68,8 @@ from server.middleware import (
 )
 from server.config import AUTH_JWKS_URI
 from server.cleanup_service import cleanup_service
-from db.maintenance import maintenance_service
-from utils.logging import llmmllogger
+from server.db.maintenance import maintenance_service
+from server.utils.logging import llmmllogger
 from composer import shutdown_composer
 from runner import local_pipeline_cache
 

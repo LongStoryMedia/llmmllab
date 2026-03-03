@@ -1,6 +1,6 @@
 import os
 from typing import Any, Dict
-from utils.logging import llmmllogger
+from server.utils.logging import llmmllogger
 
 
 logger = llmmllogger.logger.bind(component="Server")
