@@ -20,14 +20,7 @@ from composer.constants import (
     AGENT_NODE_NAME,
     TOOL_NODE_NAME,
 )
-from models.default_configs import (
-    create_default_user_config,
-    DEFAULT_MODEL_PROFILE_CONFIG,
-    DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
-)
-from models.default_model_profiles import (
-    DEFAULT_TEXT_TO_TEXT_MODEL,
-)
+
 from models import (
     ModelProfileType,
     UserConfig,
@@ -38,6 +31,14 @@ from models import (
     MessageContentType,
     ModelProfile,
     ModelParameters,
+    GPUConfig,
+    ParameterOptimizationConfig,
+    PerformanceParameter,
+    ParameterTuningStrategy,
+    CrashPrevention,
+    ToolConfig,
+    WorkflowConfig,
+    CircuitBreakerConfig,
 )
 from runner import pipeline_factory
 
@@ -81,35 +82,169 @@ TOOL CALLING:
 - Only use tools that are available to you."""
 
 
+# Default parameter optimization configuration (disabled by default)
+IDE_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
+    enabled=False,
+    parameters=[
+        PerformanceParameter(
+            parameter_name="n_ctx",
+            priority=1,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=15,
+            floor=65536,  # Start with current profile setting and push higher
+            operator="*",
+            modifier=2,  # More aggressive scaling
+            max_value=262144,  # Push to model's trained context limit
+        ),
+        PerformanceParameter(
+            parameter_name="n_gpu_layers",
+            priority=2,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=10,
+            floor=1,  # Start low and find the maximum that works
+            operator="+",
+            modifier=10,  # Smaller increments for precise optimization
+            max_value=999,  # Very high limit (effectively unlimited GPU layers)
+        ),
+        PerformanceParameter(
+            parameter_name="n_batch",
+            priority=3,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=15,
+            floor=128,  # Start with profile setting and push higher
+            operator="*",
+            modifier=2,  # More aggressive scaling for throughput
+            max_value=16384,  # Allow much larger batches for high-memory systems
+        ),
+        PerformanceParameter(
+            parameter_name="n_ubatch",
+            priority=4,
+            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            max_search_attempts=15,
+            floor=128,  # Start with profile setting and push higher
+            operator="*",
+            modifier=2,  # More aggressive scaling
+            max_value=16384,  # Allow much larger ubatch for throughput
+        ),
+    ],
+    crash_prevention=CrashPrevention(
+        enable_preallocation_test=False,
+        memory_buffer_mb=4096,
+        timeout_seconds=120,
+        enable_graceful_degradation=False,
+    ),
+)
+
+# Default GPU configuration
+IDE_GPU_CONFIG = GPUConfig(
+    no_kv_offload=False,
+    gpu_layers=-1,  # Use all GPU layers by default
+    main_gpu=0,
+    main_gpu_device_id=None,
+    tensor_split=None,
+    tensor_split_devices=None,
+    split_mode="layer",
+    offload_kqv=True,
+)
+
+
+# Default tool configuration
+IDE_TOOL_CONFIG = ToolConfig(
+    tool_similarity_threshold=0.9,
+    tool_modification_threshold=0.6,
+    enable_tool_generation=True,
+    max_tool_retries=3,
+    tool_timeout=30.0,
+    enable_tool_caching=True,
+    tool_cache_ttl=1800,
+    enable_semantic_search=True,
+    search_top_k=10,
+)
+
+
+# Default workflow configuration
+IDE_WORKFLOW_CONFIG = WorkflowConfig(
+    enable_workflow_caching=True,
+    workflow_cache_ttl=3600,
+    max_parallel_tools=5,
+    enable_multi_agent=False,
+    default_timeout=60.0,
+    max_context_length=128000,
+    context_trim_threshold=0.8,
+    enable_streaming=True,
+    stream_buffer_size=1024,
+)
+
+
+# Default circuit breaker configuration
+IDE_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
+    base_timeout=60.0,
+    deep_research_timeout=120.0,
+    max_retries=2,
+    cooldown_period=30.0,
+    enable_perplexity_guard=False,  # Disabled by default to prevent cutting off web search formatting
+    perplexity_window=40,
+    perplexity_threshold=10.0,
+    avg_logprob_floor=-6.0,
+    enable_repetition_detection=False,  # Disabled by default to reduce false positives
+    repetition_ngram=6,
+    repetition_threshold=6,
+    min_tokens_for_eval=20,
+    perplexity_log_interval_tokens=20,
+    log_repetition_events=True,
+    tool_gen_repetition_ngram=4,
+    tool_gen_repetition_threshold=3,
+)
+
 IDE_PRIMARY_PROFILE = ModelProfile(
-    id=DEFAULT_MODEL_PROFILE_CONFIG.primary_profile_id,
+    id=uuid.UUID("10000000-2000-3000-4000-500000000000"),
     user_id="system",
     name="Primary (Default)",
     type=ModelProfileType.Primary.value,
     description="Primary model profile for general chat and reasoning.",
     model_name="glm-4.7-flash",
     parameters=ModelParameters(
-        num_ctx=262144,
+        # Context window size - max tokens the model can process at once
+        num_ctx=100000,
+        # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
+        # Token repetition penalty - penalize repeated tokens (0 = disabled)
         repeat_penalty=0,
+        # Sampling temperature - higher = more creative, lower = more deterministic
         temperature=0.7,
+        # Random seed for reproducibility
         seed=-1,
+        # Max new tokens to generate (num_predict) (-1 = unlimited)
         num_predict=-1,
+        # Top-K sampling - only consider top K tokens by probability
         top_k=20,
+        # Top-P (nucleus) sampling - consider tokens accounting for top P probability
         top_p=0.95,
+        # Minimum probability threshold for token selection
         min_p=0.01,
+        # Fallback max tokens limit
         max_tokens=-1,
+        # Tensor parallel parts (-1 = auto)
         n_parts=-1,
-        batch_size=8192,
+        # Prompt processing batch size - process multiple prompts in parallel
+        batch_size=2048,
+        # Generation batch size - tokens per decode step per GPU (-1 = auto)
         micro_batch_size=1024,
+        # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
+        # Stop generation sequences
         stop=[],
+        # Enable reasoning/thinking mode
         think=False,
+        # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower)
+        kv_on_cpu=True,
+        n_cpu_moe=20,
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
-    parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
+    parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=None,
     updated_at=None,
+    gpu_config=IDE_GPU_CONFIG,
 )
 
 
@@ -274,7 +409,18 @@ class IdeGraphBuilder(GraphBuilder):
             messages=messages,
             current_user_message=current_user_message,
             user_id=user_id,
-            user_config=create_default_user_config(user_id),
+            user_config=UserConfig(
+                user_id=user_id,
+                memory=None,
+                summarization=None,
+                image_generation=None,
+                model_profiles=None,
+                circuit_breaker=IDE_CIRCUIT_BREAKER_CONFIG,
+                gpu_config=IDE_GPU_CONFIG,
+                workflow=IDE_WORKFLOW_CONFIG,
+                tool=IDE_GPU_CONFIG,
+                parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
+            ),
             conversation_id=conversation_id,
             things_to_remember=[current_user_message],
         )
