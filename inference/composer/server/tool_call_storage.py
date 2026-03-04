@@ -1,0 +1,230 @@
+"""
+Storage service for managing tool call entities in the database.
+Tool calls represent execution results from tools associated with messages.
+"""
+
+import asyncpg
+from typing import List, Optional
+from datetime import datetime, timezone
+from composer.models.tool_call import ToolCall
+from composer.server.db_utils import TypedConnection, typed_pool
+from composer.utils.logging import llmmllogger
+
+logger = llmmllogger.bind(component="tool_call_storage")
+
+
+class ToolCallStorage:
+    """Storage service for tool call entities with CRUD operations."""
+
+    def __init__(self, pool: asyncpg.Pool, get_query):
+        self.pool = pool
+        self.typed_pool = typed_pool(pool)
+        self.get_query = get_query
+        self.logger = llmmllogger.bind(component="tool_call_storage_instance")
+
+    async def add_tool_call(
+        self,
+        tool_call: ToolCall,
+        conn: Optional[TypedConnection] = None,
+    ) -> Optional[int]:
+        """
+        Add a new tool call to the database.
+
+        Args:
+            message_id: ID of the associated message
+            tool_execution_result: The tool execution result data
+            created_at: Optional timestamp (defaults to NOW())
+
+        Returns:
+            The ID of the created tool call, or None on failure
+        """
+        try:
+            # Use provided connection or acquire a new one
+            if conn is None:
+                async with self.typed_pool.acquire() as connection:
+                    return await self._add_tool_call(tool_call, connection)
+            else:
+                return await self._add_tool_call(tool_call, conn)
+
+        except Exception as e:
+            self.logger.error(
+                f"Error adding tool call for message {tool_call.message_id}: {e}"
+            )
+            return None
+
+    async def _add_tool_call(
+        self,
+        tool_call: ToolCall,
+        conn: TypedConnection,
+    ) -> Optional[int]:
+        """Internal method to add tool call using a specific connection."""
+        import json
+
+        # Convert optional dict fields to JSON strings with safe serialization
+        try:
+            args_json = json.dumps(tool_call.args) if tool_call.args else "{}"
+        except (TypeError, ValueError) as e:
+            self.logger.error(
+                f"Failed to serialize tool_call.args: {e}, args: {tool_call.args}"
+            )
+            # Filter out non-serializable objects
+            if tool_call.args and isinstance(tool_call.args, dict):
+                safe_args = {
+                    k: (
+                        str(v)
+                        if not isinstance(v, (str, int, float, bool, list, dict))
+                        else v
+                    )
+                    for k, v in tool_call.args.items()
+                }
+                args_json = json.dumps(safe_args)
+            else:
+                args_json = "{}"
+
+        try:
+            result_data_json = (
+                json.dumps(tool_call.result_data) if tool_call.result_data else "{}"
+            )
+        except (TypeError, ValueError) as e:
+            self.logger.error(
+                f"Failed to serialize tool_call.result_data: {e}, result_data: {tool_call.result_data}"
+            )
+            # Filter out non-serializable objects
+            if tool_call.result_data and isinstance(tool_call.result_data, dict):
+                safe_result = {
+                    k: (
+                        str(v)
+                        if not isinstance(v, (str, int, float, bool, list, dict))
+                        else v
+                    )
+                    for k, v in tool_call.result_data.items()
+                }
+                result_data_json = json.dumps(safe_result)
+            else:
+                result_data_json = "{}"
+
+        try:
+            resource_usage_json = (
+                tool_call.resource_usage.model_dump_json()
+                if tool_call.resource_usage
+                else "{}"
+            )
+        except (TypeError, ValueError) as e:
+            self.logger.error(f"Failed to serialize tool_call.resource_usage: {e}")
+            resource_usage_json = "{}"
+
+        row = await conn.fetchrow(
+            self.get_query("tool_call.add_tool_call"),
+            tool_call.message_id,  # $1
+            tool_call.name,  # $2
+            tool_call.execution_id,  # $3
+            tool_call.success,  # $4
+            args_json,  # $5
+            result_data_json,  # $6
+            tool_call.error_message,  # $7
+            tool_call.execution_time_ms,  # $8
+            resource_usage_json,  # $9
+            tool_call.created_at,  # $10
+        )
+
+        if row:
+            tool_call_id = row["id"]
+            self.logger.info(
+                f"Added tool call {tool_call_id} ({tool_call.name}) for message {tool_call.message_id}"
+            )
+            return tool_call_id
+        else:
+            self.logger.error(
+                f"Failed to add tool call for message {tool_call.message_id}"
+            )
+            return None
+
+    async def get_tool_calls_by_message(self, message_id: int) -> List[ToolCall]:
+        """
+        Retrieve all tool calls associated with a message.
+
+        Args:
+            message_id: ID of the message
+
+        Returns:
+            List of ToolCall objects
+        """
+        try:
+            async with self.typed_pool.acquire() as conn:
+                rows = await conn.fetch(
+                    self.get_query("tool_call.get_by_message"), message_id
+                )
+
+                tool_calls = []
+                for row in rows:
+                    # Parse JSON fields back to dict/objects
+                    import json
+
+                    args = row["args"]
+                    if isinstance(args, str):
+                        args = json.loads(args) if args.strip() else {}
+                    elif args is None:
+                        args = {}
+
+                    result_data = row["result_data"]
+                    if isinstance(result_data, str):
+                        result_data = (
+                            json.loads(result_data) if result_data.strip() else {}
+                        )
+                    elif result_data is None or result_data == {}:
+                        result_data = None
+
+                    resource_usage_data = row["resource_usage"]
+                    if isinstance(resource_usage_data, str):
+                        resource_usage_data = (
+                            json.loads(resource_usage_data)
+                            if resource_usage_data.strip()
+                            else {}
+                        )
+
+                    resource_usage = None
+                    if resource_usage_data and isinstance(resource_usage_data, dict):
+                        from composer.models.resource_usage import ResourceUsage
+
+                        try:
+                            resource_usage = ResourceUsage(**resource_usage_data)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to parse resource_usage: {e}")
+                            resource_usage = None
+
+                    created_at = row["created_at"]
+                    if isinstance(created_at, str):
+                        created_at = datetime.fromisoformat(created_at).replace(
+                            tzinfo=timezone.utc
+                        )
+
+                    tool_execution_result = ToolCall(
+                        name=row[
+                            "tool_name"
+                        ],  # Map tool_name from DB to name field in model
+                        execution_id=row["execution_id"],
+                        success=row["success"],
+                        args=args,
+                        result_data=result_data,
+                        error_message=row["error_message"],
+                        execution_time_ms=(
+                            int(row["execution_time_ms"])
+                            if row["execution_time_ms"]
+                            else None
+                        ),
+                        resource_usage=resource_usage,
+                        message_id=message_id,
+                        created_at=created_at,
+                    )
+                    tool_calls.append(tool_execution_result)
+
+                self.logger.debug(
+                    f"Retrieved {len(tool_calls)} tool calls for message {message_id}"
+                )
+                return tool_calls
+
+        except Exception as e:
+            self.logger.error(
+                f"Error retrieving tool calls for message {message_id}: {e}"
+            )
+            return []

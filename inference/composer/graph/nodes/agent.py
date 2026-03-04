@@ -16,7 +16,7 @@ from composer.graph.middleware.summarization_middleware import SummarizationMidd
 from composer.constants import AGENT_NODE_NAME, STRUCTURED_AGENT_RUNNABLE_NAME
 
 from composer.models import NodeMetadata, Message, MessageRole
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 
 class AgentNode:

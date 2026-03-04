@@ -22,8 +22,8 @@ from composer.models import (
     NodeMetadata,
 )
 
-from utils.logging import llmmllogger
-from utils.message_conversion import (
+from composer.utils.logging import llmmllogger
+from composer.utils.message_conversion import (
     normalize_message_input,
     MessageInput,
     extract_text_from_message,

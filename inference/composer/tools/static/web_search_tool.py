@@ -34,7 +34,7 @@ import os
 from typing import Annotated, List, Literal, Optional
 
 from langchain_core.tools import tool
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 from composer.models import SearchResult, SearchResultContent, WebSearchConfig
 
 # Import from langchain_community (preferred) then fallback to langchain_classic

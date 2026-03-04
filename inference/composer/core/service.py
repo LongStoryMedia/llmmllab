@@ -73,8 +73,7 @@ class ComposerService:
         """
         try:
             # 1. Get user configuration from shared data layer
-            # This will be replaced with server API call in future
-            from db import storage  # pylint: disable=import-outside-toplevel
+            from composer.server import storage  # pylint: disable=import-outside-toplevel
 
             user_config = await storage.get_service(
                 storage.user_config

@@ -15,8 +15,8 @@ from langchain.agents.middleware import AgentMiddleware, AgentState
 from langgraph.runtime import Runtime
 
 
-from utils.message_conversion import lc_messages_to_messages
-from utils.logging import llmmllogger
+from composer.utils.message_conversion import lc_messages_to_messages
+from composer.utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
 

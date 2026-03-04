@@ -6,11 +6,11 @@ Searches for similar memories using embeddings.
 from typing import TYPE_CHECKING
 from composer.graph.state import WorkflowState
 from composer.agents.embed import EmbeddingAgent
-from utils import extract_text_from_message
-from utils.logging import llmmllogger
+from composer.utils.message_conversion import extract_text_from_message
+from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from db.memory_storage import MemoryStorage
+    from composer.server.memory_storage import MemoryStorage
 
 
 class MemorySearchNode:

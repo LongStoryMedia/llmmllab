@@ -10,7 +10,7 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import Field
 
 from composer.models import DynamicTool
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 from .security import ToolSecurityValidator
 

@@ -19,8 +19,8 @@ from composer.models import (
     Document,
 )
 from composer.graph.state import WorkflowState
-from utils.message_conversion import extract_text_from_message
-from utils.logging import llmmllogger
+from composer.utils.message_conversion import extract_text_from_message
+from composer.utils.logging import llmmllogger
 
 
 if TYPE_CHECKING:

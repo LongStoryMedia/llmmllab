@@ -7,11 +7,12 @@ Centralized tool management with sophisticated static/dynamic tool merging.
 import asyncio
 from typing import Dict, List, Optional, Any, Sequence
 
-from langchain.tools import BaseTool
 from structlog.typing import FilteringBoundLogger
 
-from composer.utils.logging import llmmllogger
+from langchain.tools import BaseTool
+
 from composer.models import Tool, UserConfig
+from composer.utils.logging import llmmllogger
 from composer.tools.static import (
     web_search,
     read_web_content,
@@ -300,11 +301,11 @@ class ToolRegistry:
         This replaces the functionality of StaticToolLoadingNode.
         """
         try:
-            from db import storage  # pylint: disable=unused-import
+            from composer.server import server  # pylint: disable=unused-import
 
             # Get all previously generated dynamic tools for this user
-            dynamic_tools, _ = await storage.get_service(
-                storage.dynamic_tool
+            dynamic_tools, _ = await server.get_service(
+                server.dynamic_tool
             ).list_tools_by_user(user_id=self.user_id, limit=100, offset=0)
 
             # Convert DynamicTool instances to executable tools for reuse
@@ -374,7 +375,7 @@ class ToolRegistry:
                 )
             )
 
-            from db import storage  # pylint: disable=import-outside-toplevel
+            from composer.server import storage  # pylint: disable=import-outside-toplevel
 
             # Convert specs to executable tools and store
             new_executable_tools = []

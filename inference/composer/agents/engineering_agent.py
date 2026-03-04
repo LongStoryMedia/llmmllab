@@ -23,11 +23,11 @@ from composer.models import (
 from composer.agents.base import BaseAgent
 from composer.core.errors import NodeExecutionError
 
-from utils.message_conversion import extract_text_from_message
-from utils.logging import llmmllogger
+from composer.utils.message_conversion import extract_text_from_message
+from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from db import DynamicToolStorage
+    from composer.server import DynamicToolStorage
 
 
 NON_TOOL_NAME = "__NON_TOOL__"

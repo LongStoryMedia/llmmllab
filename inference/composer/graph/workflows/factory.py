@@ -17,19 +17,20 @@ class WorkFlowType(StrEnum):
     DIALOG = "dialog"
 
 
-async def get_builder(workflow_type: WorkFlowType, user_id: str) -> GraphBuilder:
-    """Factory function to get the appropriate workflow builder based on type."""
+async def get_builder(
+    workflow_type: WorkFlowType, user_id: str, user_config
+) -> GraphBuilder:
+    """Factory function to get the appropriate workflow builder based on type.
 
-    # 1. Get user configuration from shared data layer
-    from db import storage  # pylint: disable=import-outside-toplevel
-
-    user_config = await storage.get_service(storage.user_config).get_user_config(
-        user_id
-    )
+    Args:
+        workflow_type: Type of workflow to build
+        user_id: User identifier
+        user_config: UserConfig object (passed from server layer)
+    """
 
     if workflow_type == WorkFlowType.IDE:
-        return IdeGraphBuilder(storage, user_config)
+        return IdeGraphBuilder(None, user_config)
     elif workflow_type == WorkFlowType.DIALOG:
-        return DialogGraphBuilder(storage, user_config)
+        return DialogGraphBuilder(None, user_config)
     else:
         raise ValueError(f"Unsupported workflow type: {workflow_type}")

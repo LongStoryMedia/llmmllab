@@ -54,8 +54,7 @@ class WorkflowCache:
     async def _get_user_config(self, user_id: str):
         """Get user configuration from shared data layer."""
         try:
-            # This will be replaced with server API call in future
-            from db import storage  # pylint: disable=import-outside-toplevel
+            from composer.server import storage  # pylint: disable=import-outside-toplevel
 
             # Initialize storage if not done
             if not storage.pool:

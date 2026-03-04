@@ -29,7 +29,6 @@ from .core.errors import ComposerError
 from .graph.executor import stream_workflow
 from .graph.workflows.base import GraphBuilder
 from .graph.workflows.factory import WorkFlowType, get_builder
-from .runner import RunnerService
 
 
 class ComposerServiceManager:
@@ -144,23 +143,36 @@ async def create_initial_state(
     conversation_id: int,
     builder: GraphBuilder,
     messages: Optional[List[Message]] = None,
+    user_config=None,
+    conversation=None,
+    summaries=None,
 ):
     """Create initial workflow state from user messages and configuration.
 
     Args:
         user_id: User ID for configuration retrieval from shared data layer
-        messages: List of conversation messages
-        workflow_type: Type of workflow
-        additional_context: Optional additional context for state initialization
+        conversation_id: Conversation identifier
+        builder: GraphBuilder instance
+        messages: List of conversation messages (optional, retrieved from db if not provided)
+        user_config: UserConfig object (optional, retrieved from db if not provided)
+        conversation: Conversation object (optional, retrieved from db if not provided)
+        summaries: List of Summary objects (optional, retrieved from db if not provided)
 
     Returns:
         WorkflowState: Initial state for workflow execution
 
     Note:
-        User configuration is retrieved from shared data layer using user_id.
-        No configuration objects should be passed as arguments (architectural rule).
+        When possible, pass user_config as an argument from the server layer
+        instead of having composer retrieve it from the database.
     """
-    return await builder.create_initial_state(user_id, conversation_id, messages)
+    return await builder.create_initial_state(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        messages=messages,
+        user_config=user_config,
+        conversation=conversation,
+        summaries=summaries,
+    )
 
 
 async def execute_workflow(
@@ -182,19 +194,11 @@ async def execute_workflow(
         yield event
 
 
-async def get_graph_builder(workflow_type: WorkFlowType, user_id: str) -> GraphBuilder:
+async def get_graph_builder(
+    workflow_type: WorkFlowType, user_id: str, user_config
+) -> GraphBuilder:
     """Get the workflow builder instance. Should be implemented by external service."""
-    return await get_builder(workflow_type, user_id)
-
-
-async def get_runner_service() -> RunnerService:
-    """
-    Get the runner service interface.
-
-    Returns:
-        RunnerService instance for communicating with the runner service
-    """
-    return RunnerService(base_url="http://runner:8000")
+    return await get_builder(workflow_type, user_id, user_config)
 
 
 # Convenience exports for direct usage
@@ -203,5 +207,5 @@ __all__ = [
     "compose_workflow",
     "create_initial_state",
     "execute_workflow",
-    "get_runner_service",
+    "get_graph_builder",
 ]

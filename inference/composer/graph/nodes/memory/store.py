@@ -6,10 +6,10 @@ Stores messages as memories with their embeddings.
 from typing import List, TYPE_CHECKING
 from composer.graph.state import WorkflowState
 from composer.models import Memory
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from db.memory_storage import MemoryStorage
+    from composer.server.memory_storage import MemoryStorage
 
 
 class MemoryStorageNode:

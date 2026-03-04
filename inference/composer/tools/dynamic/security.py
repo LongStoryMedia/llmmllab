@@ -3,7 +3,7 @@ Security validation for dynamic tools to prevent unsafe code execution
 """
 
 import ast
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="tool_security_validator")
 

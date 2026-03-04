@@ -27,15 +27,15 @@ from composer.models import (
     ChatResponse,
     Message,
 )
-from utils.logging import llmmllogger, serialize_event_data
-from utils.message_conversion import (
+from composer.utils.logging import llmmllogger, serialize_event_data
+from composer.utils.message_conversion import (
     normalize_message_input,
     messages_to_lc_messages,
     lc_message_to_message,
     MessageInput,
     extract_text_from_message,
 )
-from utils.grammar_generator import parse_structured_output
+from composer.utils.grammar_generator import parse_structured_output
 
 # Get the 'asyncio' logger
 asyncio_logger = logging.getLogger("asyncio")

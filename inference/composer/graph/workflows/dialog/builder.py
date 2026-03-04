@@ -30,10 +30,10 @@ from composer.models import (
     MessageContent,
     MessageContentType,
 )
-from runner import pipeline_factory
+from composer.runner import pipeline_factory
 
-from utils.model_profile import get_model_profile_for_task
-from utils.logging import llmmllogger
+from composer.utils.model_profile import get_model_profile_for_task
+from composer.utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
@@ -49,16 +49,16 @@ from composer.tools.registry import registry_manager
 from composer.graph.state import WorkflowState, assemble_context_messages
 
 if TYPE_CHECKING:
-    from db import Storage
-    from db.userconfig_storage import UserConfigStorage
-    from db.conversation_storage import ConversationStorage
-    from db.message_storage import MessageStorage
-    from db.model_profile_storage import ModelProfileStorage
-    from db.memory_storage import MemoryStorage
-    from db.summary_storage import SummaryStorage
-    from db.search_storage import SearchStorage
-    from db.dynamic_tool_storage import DynamicToolStorage
-    from db.checkpoint_storage import CheckpointStorage
+    from composer.server import Storage
+    from composer.server.userconfig_storage import UserConfigStorage
+    from composer.server.conversation_storage import ConversationStorage
+    from composer.server.message_storage import MessageStorage
+    from composer.server.model_profile_storage import ModelProfileStorage
+    from composer.server.memory_storage import MemoryStorage
+    from composer.server.summary_storage import SummaryStorage
+    from composer.server.search_storage import SearchStorage
+    from composer.server.dynamic_tool_storage import DynamicToolStorage
+    from composer.server.checkpoint_storage import CheckpointStorage
 
 
 class DialogGraphBuilder(GraphBuilder):
@@ -318,27 +318,42 @@ class DialogGraphBuilder(GraphBuilder):
         self,
         user_id: str,
         conversation_id: int,
+        user_config=None,
+        messages=None,
+        conversation=None,
+        summaries=None,
     ) -> WorkflowState:
-        """Create initial workflow state from messages."""
+        """Create initial workflow state from messages.
 
-        # Get user configuration from shared data layer
-        from db import storage  # pylint: disable=import-outside-toplevel
+        Args:
+            user_id: User identifier
+            conversation_id: Conversation identifier
+            user_config: UserConfig object (optional, retrieved from db if not provided)
+            messages: List of Message objects (optional, retrieved from db if not provided)
+            conversation: Conversation object (optional, retrieved from db if not provided)
+            summaries: List of Summary objects (optional, retrieved from db if not provided)
+        """
 
-        user_config = await storage.get_service(storage.user_config).get_user_config(
-            user_id
-        )
+        # Get data from db if not provided
+        if user_config is None or messages is None or conversation is None or summaries is None:
+            from composer.server import storage  # pylint: disable=import-outside-toplevel
 
-        messages = await storage.get_service(storage.message).get_conversation_history(
-            conversation_id
-        )
-
-        conversation = await storage.get_service(storage.conversation).get_conversation(
-            conversation_id
-        )
-
-        summaries = await storage.get_service(
-            storage.summary
-        ).get_summaries_for_conversation(conversation_id)
+            if user_config is None:
+                user_config = await storage.get_service(storage.user_config).get_user_config(
+                    user_id
+                )
+            if messages is None:
+                messages = await storage.get_service(storage.message).get_conversation_history(
+                    conversation_id
+                )
+            if conversation is None:
+                conversation = await storage.get_service(storage.conversation).get_conversation(
+                    conversation_id
+                )
+            if summaries is None:
+                summaries = await storage.get_service(
+                    storage.summary
+                ).get_summaries_for_conversation(conversation_id)
 
         # WorkflowState expects Message objects, not BaseMessage objects
         # So we use the messages directly without LangChain conversion

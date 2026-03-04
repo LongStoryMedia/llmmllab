@@ -2,10 +2,10 @@ from typing import Optional, List
 from langchain_core.tools import tool
 
 from composer.models import DynamicTool, Tool
-from db import DynamicToolStorage, storage
+from composer.server import DynamicToolStorage, storage
 from composer.tools.dynamic.security import ToolSecurityValidator
 from composer.tools.dynamic.generator import DynamicToolRunner
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ToolGeneratorTool")
 

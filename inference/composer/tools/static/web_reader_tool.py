@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 
 logger = llmmllogger.logger.bind(component="WebReader")

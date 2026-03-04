@@ -20,8 +20,8 @@ from composer.models import (
     SearchTopicSynthesis,
     Summary,
 )
-from utils.grammar_generator import parse_structured_output
-from utils.message_conversion import extract_text_from_message
+from composer.utils.grammar_generator import parse_structured_output
+from composer.utils.message_conversion import extract_text_from_message
 
 
 class TitleResponse(BaseModel):

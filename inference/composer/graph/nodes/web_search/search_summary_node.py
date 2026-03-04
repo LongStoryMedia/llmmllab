@@ -7,8 +7,8 @@ key point extraction, and source attribution.
 
 from composer.agents.chat import ChatAgent
 from composer.graph.state import WorkflowState
-from utils import extract_text_from_message
-from utils.logging import llmmllogger
+from composer.utils.message_conversion import extract_text_from_message
+from composer.utils.logging import llmmllogger
 from composer.models import NodeMetadata
 
 

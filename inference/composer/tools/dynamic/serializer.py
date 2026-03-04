@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import BaseTool
 
 from composer.models import Tool
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 from composer.tools.registry import ToolRegistry
 
 
