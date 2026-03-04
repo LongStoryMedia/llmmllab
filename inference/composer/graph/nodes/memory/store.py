@@ -9,7 +9,7 @@ from composer.models import Memory
 from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from composer.server.memory_storage import MemoryStorage
+    from composer.server.memory import Memory
 
 
 class MemoryStorageNode:
@@ -22,14 +22,14 @@ class MemoryStorageNode:
 
     def __init__(
         self,
-        memory_storage: "MemoryStorage",
+        memory_service: "Memory",
     ):
         """Initialize memory storage node with dependency injection.
 
         Args:
-            memory_agent: Required MemoryAgent instance
+            memory_service: Required Memory service instance
         """
-        self.memory_storage = memory_storage
+        self.memory_service = memory_service
         self.logger = llmmllogger.logger.bind(component="MemoryStorageNode")
 
     async def __call__(self, state: WorkflowState) -> WorkflowState:
@@ -99,7 +99,7 @@ class MemoryStorageNode:
         """
         try:
             # Use injected storage service
-            memory_svc = self.memory_storage
+            memory_svc = self.memory_service
 
             # Store each message with its embedding
             success_count = 0

@@ -2,7 +2,7 @@ from typing import Optional, List
 from langchain_core.tools import tool
 
 from composer.models import DynamicTool, Tool
-from composer.server import DynamicToolStorage, storage
+from composer.server import server
 from composer.tools.dynamic.security import ToolSecurityValidator
 from composer.tools.dynamic.generator import DynamicToolRunner
 from composer.utils.logging import llmmllogger
@@ -35,9 +35,9 @@ async def tool_generator(task_description: str, user_id: str) -> str:
             )
             return "Error: User registry not found. Please ensure the system is properly initialized for this user."
 
-        tool_storage: Optional[DynamicToolStorage] = storage.dynamic_tool
-        if not tool_storage:
-            return "Error: DynamicToolStorage is not available."
+        tool_service: Optional[DynamicTool] = server.dynamic_tool
+        if not tool_service:
+            return "Error: DynamicTool service is not available."
 
         engineering_agent = tool_registry.engineering_agent
         if not engineering_agent:
@@ -87,7 +87,7 @@ async def tool_generator(task_description: str, user_id: str) -> str:
         logger.info("Storing new dynamic tool in the database...")
         new_tool_spec.user_id = user_id
 
-        created_tool = await tool_storage.create_tool(new_tool_spec)
+        created_tool = await tool_service.create_tool(new_tool_spec)
         if not created_tool:
             return "Error: Failed to store the new tool in the database."
         logger.info(

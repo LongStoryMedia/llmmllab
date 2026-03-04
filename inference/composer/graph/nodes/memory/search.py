@@ -10,7 +10,7 @@ from composer.utils.message_conversion import extract_text_from_message
 from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from composer.server.memory_storage import MemoryStorage
+    from composer.server.memory import Memory
 
 
 class MemorySearchNode:
@@ -24,15 +24,15 @@ class MemorySearchNode:
     def __init__(
         self,
         embedding_agent: "EmbeddingAgent",
-        memory_storage: "MemoryStorage",
+        memory_service: "Memory",
     ):
         """Initialize memory search node with dependency injection.
 
         Args:
             embedding_agent: Required EmbeddingAgent instance
-            memory_storage: Required MemoryStorage instance
+            memory_service: Required Memory service instance
         """
-        self.memory_storage = memory_storage
+        self.memory_service = memory_service
         self.embedding_agent = embedding_agent
         self.logger = llmmllogger.logger.bind(component="MemorySearchNode")
 
@@ -88,7 +88,7 @@ class MemorySearchNode:
             )
 
             # Use storage layer for similarity search with conversation filtering
-            memories = await self.memory_storage.search_similarity(
+            memories = await self.memory_service.search_similarity(
                 embeddings=embeddings,
                 min_similarity=similarity_threshold,
                 limit=max_results,

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from composer.models.image_metadata import ImageMetadata
 
 
-class MessageStore(ABC):
+class Message(ABC):
     @abstractmethod
     async def add_message(self, message: dict, usr_cfg: dict) -> int: ...
     @abstractmethod
@@ -21,7 +21,7 @@ class MessageStore(ABC):
     async def delete_message(self, message_id: int) -> None: ...
 
 
-class ConversationStore(ABC):
+class Conversation(ABC):
     @abstractmethod
     async def create_conversation(
         self, conversation: "Conversation"
@@ -36,7 +36,7 @@ class ConversationStore(ABC):
     async def delete_conversation(self, conversation_id: int) -> None: ...
 
 
-class SummaryStore(ABC):
+class Summary(ABC):
     @abstractmethod
     async def create_summary(
         self, conversation_id: int, content: str, level: int, source_ids: List[int]
@@ -55,7 +55,7 @@ class SummaryStore(ABC):
     async def get_summary(self, summary_id: int) -> Optional[dict]: ...
 
 
-class ModelProfileStore(ABC):
+class ModelProfile(ABC):
     @abstractmethod
     async def create_model_profile(self, profile: dict) -> str: ...
     @abstractmethod
@@ -68,7 +68,7 @@ class ModelProfileStore(ABC):
     async def list_model_profiles_by_user(self, user_id: str) -> List[dict]: ...
 
 
-class ResearchTaskStore(ABC):
+class ResearchTask(ABC):
     @abstractmethod
     async def save_research_task(
         self, user_id: str, query: str, conversation_id: Optional[int]
@@ -109,7 +109,7 @@ class ResearchTaskStore(ABC):
     async def get_subtasks_for_task(self, task_id: int) -> List[dict]: ...
 
 
-class MemoryStore(ABC):
+class Memory(ABC):
     @abstractmethod
     async def init_memory_schema(self) -> None: ...
     @abstractmethod
@@ -143,7 +143,7 @@ class MemoryStore(ABC):
     ) -> List[dict]: ...
 
 
-class UserConfigStore(ABC):
+class UserConfig(ABC):
     @abstractmethod
     async def get_user_config(self, user_id: str) -> Optional[dict]: ...
     @abstractmethod
@@ -152,7 +152,7 @@ class UserConfigStore(ABC):
     async def get_all_users(self) -> List[dict]: ...
 
 
-class ImageStore(ABC):
+class Image(ABC):
     @abstractmethod
     async def store_image(self, image_metadata: "ImageMetadata") -> int: ...
     @abstractmethod

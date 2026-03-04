@@ -304,9 +304,9 @@ class ToolRegistry:
             from composer.server import server  # pylint: disable=unused-import
 
             # Get all previously generated dynamic tools for this user
-            dynamic_tools, _ = await server.get_service(
-                server.dynamic_tool
-            ).list_tools_by_user(user_id=self.user_id, limit=100, offset=0)
+            dynamic_tools, _ = await server.dynamic_tool.list_tools_by_user(
+                user_id=self.user_id, limit=100, offset=0
+            )
 
             # Convert DynamicTool instances to executable tools for reuse
             for dt in dynamic_tools:
@@ -375,16 +375,14 @@ class ToolRegistry:
                 )
             )
 
-            from composer.server import storage  # pylint: disable=import-outside-toplevel
+            from composer.server import server  # pylint: disable=import-outside-toplevel
 
             # Convert specs to executable tools and store
             new_executable_tools = []
             for dt_spec in dynamic_tool_specs:
                 # Store in database if storage is available
                 dt_spec.user_id = self.user_id
-                created_tool = await storage.get_service(
-                    storage.dynamic_tool
-                ).create_tool(dt_spec)
+                created_tool = await server.dynamic_tool.create_tool(dt_spec)
                 if created_tool:
                     dt_spec = created_tool
 

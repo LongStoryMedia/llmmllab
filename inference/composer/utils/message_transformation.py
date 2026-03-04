@@ -9,14 +9,14 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from composer.models import Message, MessageContent, MessageContentType, Document
-from utils.data_uri_utils import (
+from composer.utils.data_uri_utils import (
     is_data_uri,
     extract_base64_from_data_uri,
     extract_mime_type_from_data_uri,
     get_decoded_data,
 )
-from utils.text_extraction import extract_text_content
-from utils.logging import llmmllogger
+from composer.utils.text_extraction import extract_text_content
+from composer.utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="message_transformation")
 

@@ -73,11 +73,9 @@ class ComposerService:
         """
         try:
             # 1. Get user configuration from shared data layer
-            from composer.server import storage  # pylint: disable=import-outside-toplevel
+            from composer.server import server  # pylint: disable=import-outside-toplevel
 
-            user_config = await storage.get_service(
-                storage.user_config
-            ).get_user_config(user_id)
+            user_config = await server.user_config.get_user_config(user_id)
 
             # 2. Use per-user cache if enabled (cache based on user_id only now)
             user_cache = None

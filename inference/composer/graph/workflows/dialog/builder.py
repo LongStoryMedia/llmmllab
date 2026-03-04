@@ -49,16 +49,16 @@ from composer.tools.registry import registry_manager
 from composer.graph.state import WorkflowState, assemble_context_messages
 
 if TYPE_CHECKING:
-    from composer.server import Storage
-    from composer.server.userconfig_storage import UserConfigStorage
-    from composer.server.conversation_storage import ConversationStorage
-    from composer.server.message_storage import MessageStorage
-    from composer.server.model_profile_storage import ModelProfileStorage
-    from composer.server.memory_storage import MemoryStorage
-    from composer.server.summary_storage import SummaryStorage
-    from composer.server.search_storage import SearchStorage
-    from composer.server.dynamic_tool_storage import DynamicToolStorage
-    from composer.server.checkpoint_storage import CheckpointStorage
+    from composer.server import Server
+    from composer.server.userconfig import UserConfig
+    from composer.server.conversation import Conversation
+    from composer.server.message import Message
+    from composer.server.model_profile import ModelProfile
+    from composer.server.memory import Memory
+    from composer.server.summary import Summary
+    from composer.server.search import Search
+    from composer.server.dynamic_tool import DynamicTool
+    from composer.server.checkpoint import Checkpoint
 
 
 class DialogGraphBuilder(GraphBuilder):
@@ -81,40 +81,30 @@ class DialogGraphBuilder(GraphBuilder):
 
     def __init__(
         self,
-        storage: "Storage",
+        server: "Server",
         user_config: UserConfig,
     ):
         """
         Initialize GraphBuilder with dependency injection.
 
         Args:
-            storage: Storage instance for dependency injection
-            pipeline_factory: PipelineFactory
+            server: Server instance for database access
+            user_config: UserConfig object (passed from server layer)
         """
         # Core dependencies
         self.user_config = user_config
         self.logger = llmmllogger.logger.bind(component="GraphBuilder")
 
-        # Use storage.get_service for type safety and linter warnings avoidance
-        self.user_config_storage: "UserConfigStorage" = storage.get_service(
-            storage.user_config
-        )
-        self.conversation_storage: "ConversationStorage" = storage.get_service(
-            storage.conversation
-        )
-        self.message_storage: "MessageStorage" = storage.get_service(storage.message)
-        self.model_profile_storage: "ModelProfileStorage" = storage.get_service(
-            storage.model_profile
-        )
-        self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
-        self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
-        self.search_storage: "SearchStorage" = storage.get_service(storage.search)
-        self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
-            storage.dynamic_tool
-        )
-        self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
-            storage.checkpoint
-        )
+        # Use server services for database access
+        self.user_config_service = server.user_config
+        self.conversation_service = server.conversation
+        self.message_service = server.message
+        self.model_profile_service = server.model_profile
+        self.memory_service = server.memory
+        self.summary_service = server.summary
+        self.search_service = server.search
+        self.dynamic_tool_service = server.dynamic_tool
+        self.checkpoint_service = server.checkpoint
 
     async def build_workflow(
         self,
@@ -164,7 +154,7 @@ class DialogGraphBuilder(GraphBuilder):
             engineering_agent = EngineeringAgent(
                 model=cast(BaseChatModel, primary_model),
                 profile=engineering_profile,
-                tool_storage=self.dynamic_tool_storage,
+                tool_storage=self.dynamic_tool_service,
             )
             embedding_agent = EmbeddingAgent(
                 model=cast(Embeddings, embedding_model),
@@ -184,9 +174,9 @@ class DialogGraphBuilder(GraphBuilder):
             )
             memory_search_node = MemorySearchNode(
                 embedding_agent,
-                self.memory_storage,
+                self.memory_service,
             )
-            memory_storage_node = MemoryStorageNode(self.memory_storage)
+            memory_storage_node = MemoryStorageNode(self.memory_service)
 
             # create tool registry
             tool_registry = await registry_manager.get_user_registry(
@@ -243,7 +233,7 @@ class DialogGraphBuilder(GraphBuilder):
                         state.title = title
 
                         # Persist to database
-                        await self.conversation_storage.update_conversation_title(
+                        await self.conversation_service.update_conversation_title(
                             title=title,
                             conversation_id=state.conversation_id,
                             user_id=state.user_id,
@@ -336,24 +326,20 @@ class DialogGraphBuilder(GraphBuilder):
 
         # Get data from db if not provided
         if user_config is None or messages is None or conversation is None or summaries is None:
-            from composer.server import storage  # pylint: disable=import-outside-toplevel
-
             if user_config is None:
-                user_config = await storage.get_service(storage.user_config).get_user_config(
+                user_config = await self.user_config_service.get_user_config(
                     user_id
                 )
             if messages is None:
-                messages = await storage.get_service(storage.message).get_conversation_history(
+                messages = await self.message_service.get_conversation_history(
                     conversation_id
                 )
             if conversation is None:
-                conversation = await storage.get_service(storage.conversation).get_conversation(
+                conversation = await self.conversation_service.get_conversation(
                     conversation_id
                 )
             if summaries is None:
-                summaries = await storage.get_service(
-                    storage.summary
-                ).get_summaries_for_conversation(conversation_id)
+                summaries = await self.summary_service.get_summaries_for_conversation(conversation_id)
 
         # WorkflowState expects Message objects, not BaseMessage objects
         # So we use the messages directly without LangChain conversion

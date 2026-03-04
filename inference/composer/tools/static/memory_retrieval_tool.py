@@ -27,7 +27,7 @@ from langchain.tools import ToolRuntime
 
 from composer.graph.state import WorkflowState
 from composer.runner import pipeline_factory
-from composer.server import storage
+from composer.server import server
 from composer.models import ModelProfileType
 from composer.models.default_configs import DEFAULT_MEMORY_CONFIG
 from composer.utils.model_profile import get_model_profile
@@ -85,8 +85,8 @@ async def memory_retrieval(
             logger.error("Memory retrieval state debug", **error_details)
             return error_message
 
-        # Initialize storage if not done
-        if not storage.pool:
+        # Initialize server if not done
+        if not server.pool:
             error_message = "❌ Memory retrieval failed: Database not initialized"
             return error_message
 
@@ -118,7 +118,7 @@ async def memory_retrieval(
             query_embeddings = [[0.1] * 768]  # Fallback mock embedding
 
         # Retrieve similar memories from storage using configuration
-        memory_service = storage.get_service(storage.memory)
+        memory_service = server.memory
 
         # Configure user and conversation filtering based on memory config
         user_filter = None if memory_config.enable_cross_user else state["user_id"]

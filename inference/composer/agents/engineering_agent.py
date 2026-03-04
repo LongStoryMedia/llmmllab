@@ -27,7 +27,7 @@ from composer.utils.message_conversion import extract_text_from_message
 from composer.utils.logging import llmmllogger
 
 if TYPE_CHECKING:
-    from composer.server import DynamicToolStorage
+    from composer.server import DynamicTool
 
 
 NON_TOOL_NAME = "__NON_TOOL__"
@@ -46,7 +46,7 @@ class EngineeringAgent(BaseAgent):
         self,
         model: BaseChatModel,
         profile: ModelProfile,
-        tool_storage: "DynamicToolStorage",
+        tool_service: "DynamicTool",
     ):
         """
         Initialize engineering agent with required dependencies.
@@ -60,7 +60,7 @@ class EngineeringAgent(BaseAgent):
             model=model, profile=profile, component_name="EngineeringAgent"
         )
         self.logger = llmmllogger.bind(component="EngineeringAgent")
-        self.tool_storage = tool_storage
+        self.tool_service = tool_service
 
     async def generate_technical_response(
         self,
@@ -179,7 +179,7 @@ class EngineeringAgent(BaseAgent):
                 dynamic_tools.append(dt)
 
                 # Persist the dynamic tool
-                await self.tool_storage.create_tool(dt)
+                await self.tool_service.create_tool(dt)
 
                 self.logger.info(
                     "Dynamic tool specification generated successfully",

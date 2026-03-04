@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 from datetime import datetime
 import uuid
 
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 from .file_extensions import ALL_TEXT_EXTENSIONS, get_file_extension as get_ext_from_filename
 
 logger = llmmllogger.bind(component="file_handler")

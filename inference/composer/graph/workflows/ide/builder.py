@@ -51,16 +51,10 @@ from composer.graph.nodes.agent import AgentNode
 from composer.graph.state import WorkflowState
 
 if TYPE_CHECKING:
-    from composer.server import Storage
-    from composer.server.userconfig_storage import UserConfigStorage
-    from composer.server.conversation_storage import ConversationStorage
-    from composer.server.message_storage import MessageStorage
-    from composer.server.model_profile_storage import ModelProfileStorage
-    from composer.server.memory_storage import MemoryStorage
-    from composer.server.summary_storage import SummaryStorage
-    from composer.server.search_storage import SearchStorage
-    from composer.server.dynamic_tool_storage import DynamicToolStorage
-    from composer.server.checkpoint_storage import CheckpointStorage
+    from composer.server import Server
+    from composer.server.userconfig import UserConfig
+    from composer.server.message import Message
+    from composer.server.model_profile import ModelProfile
 
 
 IDE_PRIMARY_SYSTEM_PROMPT = """You are a helpful AI coding assistant.
@@ -262,31 +256,21 @@ class IdeGraphBuilder(GraphBuilder):
 
     def __init__(
         self,
-        storage: "Storage",
+        server: "Server",
         user_config: UserConfig,
     ):
         self.user_config = user_config
         self.logger = llmmllogger.logger.bind(component="IdeGraphBuilder")
 
-        self.user_config_storage: "UserConfigStorage" = storage.get_service(
-            storage.user_config
-        )
-        self.conversation_storage: "ConversationStorage" = storage.get_service(
-            storage.conversation
-        )
-        self.message_storage: "MessageStorage" = storage.get_service(storage.message)
-        self.model_profile_storage: "ModelProfileStorage" = storage.get_service(
-            storage.model_profile
-        )
-        self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
-        self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
-        self.search_storage: "SearchStorage" = storage.get_service(storage.search)
-        self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
-            storage.dynamic_tool
-        )
-        self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
-            storage.checkpoint
-        )
+        self.user_config_service = server.user_config
+        self.conversation_service = server.conversation
+        self.message_service = server.message
+        self.model_profile_service = server.model_profile
+        self.memory_service = server.memory
+        self.summary_service = server.summary
+        self.search_service = server.search
+        self.dynamic_tool_service = server.dynamic_tool
+        self.checkpoint_service = server.checkpoint
 
     async def build_workflow(
         self,

@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
-from utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 from composer.models import (
     Message,
