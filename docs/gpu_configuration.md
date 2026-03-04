@@ -340,3 +340,35 @@ gpu_config:
 ```
 
 This configuration system provides comprehensive control over GPU resource allocation while maintaining ease of use for common scenarios.
+
+## Troubleshooting
+
+### GPU Falls Off PCIe Bus (Xid 79 / "Unknown Error")
+
+**Symptoms:**
+- `nvidia-smi` reports `Unable to determine the device handle for GPU<N>: Unknown Error` for one GPU while others appear normal.
+- PyTorch reports `CUDA unknown error` during initialization and sets available devices to **zero** — one bad GPU poisons the entire CUDA runtime.
+- The application logs `No GPU detected, running in CPU mode` despite other GPUs being physically present.
+
+**Observed:** 2026-03-03, RTX 3090 (GPU 0, bus `0000:05:00.0`) went unresponsive during sustained inference workload (Qwen3-Coder 19K+ token prompts). GPUs 1 (RTX 3060) and 2 (RTX 2060) were unaffected at the driver level but PyTorch's `cudaGetDeviceCount()` returned 0 for all.
+
+**Root Cause:** PCIe link training failure — the GPU stops responding on the PCI Express bus. Common triggers on consumer hardware:
+- Thermal protection cutoff under sustained high-power inference loads (3090 draws up to 350W)
+- PSU rail voltage sag under combined multi-GPU load
+- PCIe riser cable or slot contact degradation from thermal cycling
+- Driver edge cases with mixed GPU architectures (Ampere + Turing)
+
+**Resolution:**
+1. `nvidia-smi -r -i <GPU_INDEX>` (GPU reset) — usually fails if the device handle is lost.
+2. PCIe device remove + rescan from the host: `echo 1 > /sys/bus/pci/devices/<BUS_ID>/remove && sleep 2 && echo 1 > /sys/bus/pci/rescan`
+3. **Node reboot** — most reliable fix. After reboot, restart the gpu-operator pods before the application pod.
+
+**Post-recovery checklist:**
+- Verify with `nvidia-smi` that all GPUs show valid handles and memory info.
+- Check `dmesg | grep -i -E "xid|nvidia|pcie|AER"` on the host for the specific Xid error code.
+- Monitor GPU temps with `nvidia-smi -l 5` or Prometheus/DCGM exporter to catch thermal issues early.
+
+**Prevention:**
+- Enable GPU persistence mode: `nvidia-smi -pm 1` (keeps the driver loaded, reduces init latency, may improve stability).
+- Ensure adequate PSU headroom for combined GPU TDP.
+- If the issue recurs on the same GPU: reseat the card physically, check power cable connections, and inspect PCIe slot/riser.

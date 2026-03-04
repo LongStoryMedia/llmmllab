@@ -35,6 +35,11 @@ class MemoryConfig:
     critical_threshold: float = 0.95
     context_reset_cooldown: int = 30
 
+    # Thermal / power management
+    gpu_power_cap_pct: float = float(os.getenv("GPU_POWER_CAP_PCT", "85"))
+    thermal_warning_c: float = 78.0   # Log warning above this
+    thermal_critical_c: float = 88.0  # Considered critical — risk of PCIe drop
+
 
 class CUDAContextManager:
     """Handles CUDA context operations."""
@@ -431,6 +436,106 @@ class EnhancedHardwareManager:
             "expandable_segments:True,max_split_size_mb:64"
         )
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
+        # Apply power management settings to reduce thermal stress
+        self._apply_gpu_power_management()
+
+    # ------------------------------------------------------------------
+    # GPU thermal / power management
+    # ------------------------------------------------------------------
+
+    def _apply_gpu_power_management(self) -> None:
+        """Apply persistence mode and power cap to all GPUs on startup.
+
+        Power-capping consumer GPUs (especially the RTX 3090 at 350 W TDP)
+        significantly reduces peak junction temperature with only a minor
+        throughput impact on inference workloads which are memory-bandwidth
+        bound, not compute bound.
+
+        See docs/gpu_configuration.md § Troubleshooting for background.
+        """
+        cap_pct = self.config.gpu_power_cap_pct
+        if cap_pct <= 0 or cap_pct > 100:
+            self.logger.info("GPU power cap disabled (GPU_POWER_CAP_PCT=0 or >100)")
+            return
+
+        for i in range(self.gpu_count):
+            try:
+                # Enable persistence mode (keeps driver loaded, avoids init spikes)
+                subprocess.run(
+                    ["nvidia-smi", "-i", str(i), "-pm", "1"],
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+
+                # Query default power limit
+                result = subprocess.run(
+                    [
+                        "nvidia-smi", "-i", str(i),
+                        "--query-gpu=power.default_limit",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+
+                if result.returncode != 0 or not result.stdout.strip():
+                    self.logger.debug(f"GPU {i}: could not query default power limit")
+                    continue
+
+                default_watts = float(result.stdout.strip())
+                target_watts = int(default_watts * cap_pct / 100)
+
+                set_result = subprocess.run(
+                    ["nvidia-smi", "-i", str(i), "-pl", str(target_watts)],
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+
+                if set_result.returncode == 0:
+                    self.logger.info(
+                        f"GPU {i}: power cap set to {target_watts}W "
+                        f"({cap_pct:.0f}% of {default_watts:.0f}W default)"
+                    )
+                else:
+                    # Non-fatal: insufficient permissions or unsupported GPU
+                    self.logger.debug(
+                        f"GPU {i}: could not set power cap — "
+                        f"{set_result.stderr.strip()}"
+                    )
+            except Exception as e:
+                self.logger.debug(f"GPU {i}: power management setup failed: {e}")
+
+    def check_gpu_thermals(self) -> Dict[int, float]:
+        """Check GPU temperatures and log warnings for hot devices.
+
+        Returns dict mapping device index → temperature in Celsius.
+        Can be called periodically (e.g. from a maintenance loop).
+        """
+        temps: Dict[int, float] = {}
+        if not self.has_gpu:
+            return temps
+
+        try:
+            self.update_all_memory_stats()
+            for dev_id, stats in self.memory_stats.items():
+                if not dev_id.isdigit():
+                    continue
+                idx = int(dev_id)
+                temp = stats.temperature or 0.0
+                temps[idx] = temp
+
+                if temp >= self.config.thermal_critical_c:
+                    self.logger.error(
+                        f"🔥 GPU {idx} ({stats.name}) CRITICAL temperature: "
+                        f"{temp}°C — risk of PCIe bus drop! "
+                        f"Consider reducing workload or improving cooling."
+                    )
+                elif temp >= self.config.thermal_warning_c:
+                    self.logger.warning(
+                        f"🌡️ GPU {idx} ({stats.name}) high temperature: {temp}°C"
+                    )
+        except Exception as e:
+            self.logger.debug(f"Thermal check failed: {e}")
+
+        return temps
 
     def reinitialize_cuda(self, device_idx: int):
         """

@@ -63,15 +63,15 @@ def messages_from_anthropic(
         else:
             # List of TextContentBlock
             system_text = "\n".join(
-                block.text
-                for block in system
-                if hasattr(block, "text") and block.text
+                block.text for block in system if hasattr(block, "text") and block.text
             )
         if system_text:
             messages.append(
                 Message(
                     role=MessageRole.SYSTEM,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=system_text)],
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text=system_text)
+                    ],
                 )
             )
 
@@ -84,7 +84,9 @@ def messages_from_anthropic(
             messages.append(
                 Message(
                     role=role,
-                    content=[MessageContent(type=MessageContentType.TEXT, text=content)],
+                    content=[
+                        MessageContent(type=MessageContentType.TEXT, text=content)
+                    ],
                 )
             )
             continue
@@ -127,7 +129,10 @@ def messages_from_anthropic(
                 other_text = [
                     b.text
                     for b in content
-                    if hasattr(b, "type") and b.type == "text" and hasattr(b, "text") and b.text
+                    if hasattr(b, "type")
+                    and b.type == "text"
+                    and hasattr(b, "text")
+                    and b.text
                 ]
                 if other_text:
                     messages.append(
@@ -542,7 +547,9 @@ async def countTokens(
             text = ""
             if msg.content:
                 text = " ".join(
-                    c.text for c in msg.content if c.type == MessageContentType.TEXT and c.text
+                    c.text
+                    for c in msg.content
+                    if c.type == MessageContentType.TEXT and c.text
                 )
             parts.append(f"<|{role_tag}|>\n{text}")
 
@@ -561,7 +568,10 @@ async def countTokens(
             with cache._lock:
                 for entry in cache._cache.values():
                     pipeline = entry.pipeline
-                    if isinstance(pipeline, ChatLlamaCppPipeline) and pipeline.server_manager:
+                    if (
+                        isinstance(pipeline, ChatLlamaCppPipeline)
+                        and pipeline.server_manager
+                    ):
                         server_url = pipeline.server_manager.server_url
                         break
                 else:

@@ -332,7 +332,11 @@ class DynamicFlagParser:
         # Choice patterns like {none,layer,row} or [on|off|auto] - treat as string
         if value_type and (
             (value_type.startswith("{") and value_type.endswith("}"))
-            or (value_type.startswith("[") and value_type.endswith("]") and "|" in value_type)
+            or (
+                value_type.startswith("[")
+                and value_type.endswith("]")
+                and "|" in value_type
+            )
         ):
             return {"type": str, "action": "store"}
 

@@ -880,6 +880,12 @@ class LocalPipelineCacheManager:
                 if self._stop_event.is_set():
                     break
                 self.clear_expired()
+
+                # Periodic GPU thermal check
+                try:
+                    hardware_manager.check_gpu_thermals()
+                except Exception:
+                    pass
             except Exception:
                 pass
 
