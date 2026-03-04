@@ -142,8 +142,18 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         if gcfg.tensor_split:
             config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
 
-        # Split mode: use layer split to avoid GGML_ASSERT with GQA models on row split
-        config["split_mode"] = "layer"
+        # Split mode configuration
+        if hasattr(gcfg, "split_mode") and gcfg.split_mode:
+            # Pass string split modes directly to llama.cpp
+            if isinstance(gcfg.split_mode, str):
+                config["split_mode"] = gcfg.split_mode.lower()
+            else:
+                # Convert legacy integer values to strings
+                split_mode_mapping = {
+                    1: "layer",  # LLAMA_SPLIT_MODE_LAYER
+                    2: "row",  # LLAMA_SPLIT_MODE_ROW
+                }
+                config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
 
         # MoE (Mixture of Experts) configuration
         config["n_cpu_moe"] = params.n_cpu_moe
