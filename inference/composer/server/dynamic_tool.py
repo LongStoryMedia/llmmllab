@@ -11,12 +11,12 @@ from composer.models.dynamic_tool import DynamicTool
 from composer.models.pagination import PaginationSchema
 from composer.server.db_utils import typed_pool
 from .serialization import serialize_to_json
-from .memory_storage import MemoryStorage
+from .memory import Memory
 
 logger = logging.getLogger(__name__)
 
 
-class DynamicToolStorage:
+class DynamicTool:
     def __init__(self, pool: asyncpg.Pool, get_query):
         self.pool = pool
         self.typed_pool = typed_pool(pool)

@@ -27,28 +27,28 @@ from composer.models.default_configs import (
 )
 
 
-from composer.server.cache_storage import cache_storage
+from composer.server.cache import cache
 from composer.server.db_utils import typed_pool
 from composer.server.connection_recovery import execute_with_recovery
 from composer.utils.logging import llmmllogger
 from .serialization import serialize_to_json
 
-logger = llmmllogger.bind(component="userconfig_storage")
+logger = llmmllogger.bind(component="userconfig")
 
 
-class UserConfigStorage:
+class UserConfig:
     def __init__(self, pool: asyncpg.Pool, get_query):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
 
         # Multi-tier cache will be initialized lazily to avoid circular dependency
-        self.multi_tier_cache = None
+        self._multi_tier_cache = None
 
         # Initialize in-memory cache
         self._memory_cache = None
 
-        logger.info("UserConfigStorage initialized")
+        logger.info("UserConfig initialized")
 
     def _create_memory_cache(self):
         """Create a simple in-memory cache for user configs."""
@@ -166,7 +166,7 @@ class UserConfigStorage:
             return config
 
         # Tier 2: Redis cache
-        config = cache_storage.get_user_config_from_cache(user_id)
+        config = cache.get_user_config_from_cache(user_id)
         if config:
             # Cache in memory for faster future access
             self._memory_cache_set(user_id, config)
@@ -179,7 +179,7 @@ class UserConfigStorage:
             # Cache in both tiers for future access
             self._memory_cache_set(user_id, config)
             try:
-                cache_storage.cache_user_config(user_id, config)
+                cache.cache_user_config(user_id, config)
             except Exception as e:
                 logger.warning(
                     f"Failed to cache user config in Redis for {user_id}: {e}"
@@ -447,7 +447,7 @@ class UserConfigStorage:
         """Get comprehensive cache statistics for monitoring."""
         memory_stats = self._memory_cache_stats()
 
-        redis_enabled = cache_storage.is_storage_cache_enabled()
+        redis_enabled = cache.is_storage_cache_enabled()
 
         return {
             "memory_cache": memory_stats,
@@ -463,7 +463,7 @@ class UserConfigStorage:
         # Invalidate Redis cache
         redis_invalidated = False
         try:
-            cache_storage.invalidate_user_config_cache(user_id)
+            cache.invalidate_user_config_cache(user_id)
             redis_invalidated = True
         except Exception as e:
             logger.warning(f"Failed to invalidate Redis cache for {user_id}: {e}")

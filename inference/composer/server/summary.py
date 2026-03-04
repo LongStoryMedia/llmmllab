@@ -7,13 +7,13 @@ import logging
 from typing import List, Optional
 import asyncpg
 from composer.server.db_utils import typed_pool
-from composer.server.cache_storage import cache_storage
+from composer.server.cache import cache
 from composer.models.summary import Summary
 
 logger = logging.getLogger(__name__)
 
 
-class SummaryStorage:
+class Summary:
     def __init__(self, pool: asyncpg.Pool, get_query):
         self.pool = pool
         self.typed_pool = typed_pool(pool)

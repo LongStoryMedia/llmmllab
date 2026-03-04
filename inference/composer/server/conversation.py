@@ -6,26 +6,26 @@ from typing import Callable, List, Optional
 from datetime import datetime
 import asyncpg
 from composer.models.conversation import Conversation
-from composer.server.cache_storage import cache_storage
+from composer.server.cache import cache
 from composer.server.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from composer.server.db_utils import typed_pool
 from composer.utils.logging import llmmllogger
-from .userconfig_storage import UserConfigStorage
+from .userconfig import UserConfig
 
-logger = llmmllogger.bind(component="conversation_storage")
+logger = llmmllogger.bind(component="conversation")
 
 
-class ConversationStorage:
+class Conversation:
     def __init__(
         self,
         pool: asyncpg.Pool,
         get_query: Callable[[str], str],
-        user_config_storage: UserConfigStorage,
+        user_config: UserConfig,
     ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
-        self.user_config_storage = user_config_storage  # Will be set by Storage class
+        self.user_config = user_config
 
         # Initialize connection recovery manager
         self.recovery_manager = (
@@ -35,8 +35,8 @@ class ConversationStorage:
     async def create_conversation(self, conversation: Conversation) -> Optional[int]:
         async with self.typed_pool.acquire() as conn:
             # Ensure the user exists with proper default config before creating the conversation
-            if self.user_config_storage:
-                await self.user_config_storage.ensure_user_exists(conversation.user_id)
+            if self.user_config:
+                await self.user_config.ensure_user_exists(conversation.user_id)
             else:
                 # Fallback to old method if UserConfigStorage not available with recovery
                 async def _ensure_user():
@@ -63,16 +63,16 @@ class ConversationStorage:
             if conversation_id:
                 row_dict = dict(row)
                 conversation = Conversation(**row_dict)
-                cache_storage.cache_conversation(conversation)
+                cache.cache_conversation(conversation)
 
                 # Also invalidate the user's conversations list cache to force a refresh next time
-                cache_storage.invalidate_user_conversations_cache(conversation.user_id)
+                cache.invalidate_user_conversations_cache(conversation.user_id)
 
             return conversation_id
 
     async def get_user_conversations(self, user_id: str) -> List[Conversation]:
         # First try to get from cache
-        cached_conversations = cache_storage.get_conversations_by_user_id_from_cache(
+        cached_conversations = cache.get_conversations_by_user_id_from_cache(
             user_id
         )
         if cached_conversations is not None:
@@ -93,7 +93,7 @@ class ConversationStorage:
 
     async def get_conversation(self, conversation_id: int) -> Optional[Conversation]:
         # First try to get from cache
-        cached_conversation = cache_storage.get_conversation_from_cache(conversation_id)
+        cached_conversation = cache.get_conversation_from_cache(conversation_id)
         if cached_conversation:
             return cached_conversation
 
@@ -113,7 +113,7 @@ class ConversationStorage:
 
             # Cache the result for future use
             try:
-                cache_storage.cache_conversation(conversation)
+                cache.cache_conversation(conversation)
             except Exception as e:
                 logger.warning(f"Failed to cache conversation {conversation_id}: {e}")
 
@@ -137,23 +137,23 @@ class ConversationStorage:
             await self.recovery_manager.execute_with_recovery(_update_title)
 
         # Update the cache - first get the cached conversation to update
-        cached_conversation = cache_storage.get_conversation_from_cache(conversation_id)
+        cached_conversation = cache.get_conversation_from_cache(conversation_id)
         if cached_conversation:
             # Update the cached conversation and re-cache it
             cached_conversation.title = title
             cached_conversation.updated_at = datetime.now()
-            cache_storage.cache_conversation(cached_conversation)
+            cache.cache_conversation(cached_conversation)
         else:
             # If not in cache, just invalidate cache to force refresh next time
-            cache_storage.invalidate_conversation_cache(conversation_id)
+            cache.invalidate_conversation_cache(conversation_id)
 
         # Also invalidate the user's conversations list cache
         if user_id:
-            cache_storage.invalidate_user_conversations_cache(user_id)
+            cache.invalidate_user_conversations_cache(user_id)
 
     async def delete_conversation(self, conversation_id: int) -> None:
         # Get user ID before deleting for cache invalidation
-        conversation = cache_storage.get_conversation_from_cache(conversation_id)
+        conversation = cache.get_conversation_from_cache(conversation_id)
         user_id = conversation.user_id if conversation else None
 
         async with self.typed_pool.acquire() as conn:
@@ -166,10 +166,10 @@ class ConversationStorage:
             await self.recovery_manager.execute_with_recovery(_delete_conversation)
 
         # Invalidate all related cache entries
-        cache_storage.invalidate_conversation_cache(conversation_id)
-        cache_storage.invalidate_conversation_messages_cache(conversation_id)
-        cache_storage.invalidate_conversation_summaries_cache(conversation_id)
+        cache.invalidate_conversation_cache(conversation_id)
+        cache.invalidate_conversation_messages_cache(conversation_id)
+        cache.invalidate_conversation_summaries_cache(conversation_id)
 
         # Also invalidate the user's conversations list cache
         if user_id:
-            cache_storage.invalidate_user_conversations_cache(user_id)
+            cache.invalidate_user_conversations_cache(user_id)

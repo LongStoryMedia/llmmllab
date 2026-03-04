@@ -10,26 +10,26 @@ from typing import Optional, Protocol, Any, Callable, cast
 from asyncpg import Pool
 
 from composer.utils.logging import llmmllogger
-from .cache_storage import cache_storage
-from .userconfig_storage import UserConfig
+from .cache import cache
+from .userconfig import UserConfig
 from .connection_recovery import init_recovery_manager
-from .conversation_storage import Conversation
-from .message_storage import Message
-from .image_storage import Image
-from .model_profile_storage import ModelProfile
-from .model_storage import Model
-from .summary_storage import Summary
-from .memory_storage import Memory
-from .search_storage import Search
-from .dynamic_tool_storage import DynamicTool
-from .thought_storage import Thought
-from .analysis_storage import Analysis
-from .tool_call_storage import ToolCall
-from .message_content_storage import MessageContent
-from .document_storage import Document
-from .todo_storage import Todo
-from .checkpoint_storage import Checkpoint
-from .api_key_storage import ApiKey
+from .conversation import Conversation
+from .message import Message
+from .image import Image
+from .model_profile import ModelProfile
+from .model import Model
+from .summary import Summary
+from .memory import Memory
+from .search import Search
+from .dynamic_tool import DynamicTool
+from .thought import Thought
+from .analysis import Analysis
+from .tool_call import ToolCall
+from .message_content import MessageContent
+from .document import Document
+from .todo import Todo
+from .checkpoint import Checkpoint
+from .api_key import ApiKey
 from .queries import get_query
 from .init_db import initialize_database
 from .maintenance import maintenance_service
@@ -43,7 +43,7 @@ class ServerInterface(Protocol):
     pool: Pool
     get_query: Callable[[str], str]
 
-    def __init__(self, pool: Pool, get_query: Callable[[str], str]) -> None: ...
+    def __init__(self, pool: Pool, get_query: Callable[[str], str]) -> None:
 
 
 class Server:
@@ -188,7 +188,7 @@ class Server:
                 await c.execute("DISCARD ALL;")
                 await c.reload_schema_state()
 
-            logger.info("✅ Stale connection state cleared successfully")
+            logger.info(" Stale connection state cleared successfully")
 
         except Exception as e:
             logger.warning(
@@ -209,4 +209,4 @@ class Server:
 # Create a singleton instance
 server = Server()
 
-__all__ = ["server", "cache_storage"]
+__all__ = ["server", "cache"]

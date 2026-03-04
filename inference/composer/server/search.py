@@ -12,7 +12,7 @@ from composer.models.search_topic_synthesis import SearchTopicSynthesis
 logger = logging.getLogger(__name__)
 
 
-class SearchStorage:
+class Search:
     """
     Class for managing search records in the database.
     """

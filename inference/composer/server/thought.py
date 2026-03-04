@@ -10,10 +10,10 @@ from composer.models.thought import Thought
 from composer.server.db_utils import TypedConnection, typed_pool
 from composer.utils.logging import llmmllogger
 
-logger = llmmllogger.bind(component="thought_storage")
+logger = llmmllogger.bind(component="thought")
 
 
-class ThoughtStorage:
+class Thought:
     """Storage service for thought entities with CRUD operations."""
 
     def __init__(self, pool: asyncpg.Pool, get_query):

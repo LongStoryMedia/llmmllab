@@ -21,41 +21,41 @@ from composer.models.response_format import ResponseFormat
 from composer.models.technical_domain import TechnicalDomain
 from composer.models.computational_requirement import ComputationalRequirement
 from composer.models.document import Document
-from composer.server.cache_storage import cache_storage
+from composer.server.cache import cache
 from composer.server.db_utils import TypedConnection, typed_pool
-from composer.server.thought_storage import ThoughtStorage
-from composer.server.tool_call_storage import ToolCallStorage
-from composer.server.message_content_storage import MessageContentStorage
-from composer.server.analysis_storage import AnalysisStorage
-from composer.server.document_storage import DocumentStorage
+from composer.server.thought import Thought
+from composer.server.tool_call import ToolCall
+from composer.server.message_content import MessageContent
+from composer.server.analysis import Analysis
+from composer.server.document import Document
 from composer.server.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from composer.utils.logging import llmmllogger
 
-logger = llmmllogger.bind(component="message_storage")
+logger = llmmllogger.bind(component="message")
 
 
-class MessageStorage:
+class Message:
     def __init__(
         self,
         pool: asyncpg.Pool,
         get_query: Callable[[str], str],
-        thought_storage: ThoughtStorage,
-        tool_call_storage: ToolCallStorage,
-        message_content_storage: MessageContentStorage,
-        analysis_storage: AnalysisStorage,
-        document_storage: DocumentStorage,
+        thought: Thought,
+        tool_call: ToolCall,
+        message_content: MessageContent,
+        analysis: Analysis,
+        document: Document,
     ):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
         self.get_query = get_query
-        self.logger = llmmllogger.bind(component="message_storage_instance")
+        self.logger = llmmllogger.bind(component="message_instance")
 
         # Storage service dependencies (will be set after initialization)
-        self.thought_storage = thought_storage
-        self.tool_call_storage = tool_call_storage
-        self.message_content_storage = message_content_storage
-        self.analysis_storage = analysis_storage
-        self.document_storage = document_storage
+        self.thought = thought
+        self.tool_call = tool_call
+        self.message_content = message_content
+        self.analysis = analysis
+        self.document = document
 
         # Initialize connection recovery manager
         self.recovery_manager = (
@@ -143,8 +143,8 @@ class MessageStorage:
         # This ensures cache consistency regardless of transaction state
         if message.conversation_id is not None:
             try:
-                cache_storage.cache_message(message)
-                cache_storage.invalidate_conversation_messages_cache(
+                cache.cache_message(message)
+                cache.invalidate_conversation_messages_cache(
                     message.conversation_id
                 )
             except Exception as e:
@@ -236,8 +236,8 @@ class MessageStorage:
             # Update cache
             if message.conversation_id is not None:
                 try:
-                    cache_storage.cache_message(message)
-                    cache_storage.invalidate_conversation_messages_cache(
+                    cache.cache_message(message)
+                    cache.invalidate_conversation_messages_cache(
                         message.conversation_id
                     )
                 except Exception as e:
@@ -267,7 +267,7 @@ class MessageStorage:
             conn: Optional existing connection for transaction support
         """
         # Try cache first - safe even in transactions for read operations
-        cached_message = cache_storage.get_message_from_cache(message_id)
+        cached_message = cache.get_message_from_cache(message_id)
         if cached_message:
             return cached_message
 
@@ -373,7 +373,7 @@ class MessageStorage:
         # Cache the result if requested
         if cache_result:
             try:
-                cache_storage.cache_message(message)
+                cache.cache_message(message)
             except Exception as e:
                 self.logger.warning(f"Failed to cache message {message_id}: {e}")
 
@@ -552,7 +552,7 @@ class MessageStorage:
             conn: Optional existing connection for transaction support
         """
         # Try cache first - safe even in transactions for read operations
-        cached_messages = cache_storage.get_conversation_messages(conversation_id)
+        cached_messages = cache.get_conversation_messages(conversation_id)
         if cached_messages:
             return self._validate_cached_messages(cached_messages)
 
@@ -592,7 +592,7 @@ class MessageStorage:
         # Cache the results - safe to cache read results even in transactions
         if len(messages) > 0:
             try:
-                cache_storage.cache_conversation_messages(conversation_id, messages)
+                cache.cache_conversation_messages(conversation_id, messages)
             except Exception as e:
                 self.logger.warning(f"Failed to cache conversation messages: {e}")
 
@@ -615,7 +615,7 @@ class MessageStorage:
             conn: Optional existing connection for transaction support
         """
         # Check cache first - safe even in transactions for read operations
-        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
+        cached_messages = cache.get_messages_by_conversation_id_from_cache(
             conversation_id
         )
         if cached_messages:
@@ -660,7 +660,7 @@ class MessageStorage:
         # Cache results - safe to cache read results even in transactions
         if messages:
             try:
-                cache_storage.cache_messages_by_conversation_id(
+                cache.cache_messages_by_conversation_id(
                     conversation_id, messages
                 )
             except Exception as e:
@@ -694,9 +694,9 @@ class MessageStorage:
 
         # Invalidate caches
         try:
-            cache_storage.invalidate_message_cache(message_id)
+            cache.invalidate_message_cache(message_id)
             if message.conversation_id:
-                cache_storage.invalidate_conversation_messages_cache(
+                cache.invalidate_conversation_messages_cache(
                     message.conversation_id
                 )
         except Exception as e:
@@ -752,7 +752,7 @@ class MessageStorage:
         )
 
         # Invalidate conversation messages list cache
-        cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
+        cache.invalidate_conversation_messages_cache(message.conversation_id)
 
         return deleted_count
 

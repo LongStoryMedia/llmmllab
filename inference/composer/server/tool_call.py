@@ -10,10 +10,10 @@ from composer.models.tool_call import ToolCall
 from composer.server.db_utils import TypedConnection, typed_pool
 from composer.utils.logging import llmmllogger
 
-logger = llmmllogger.bind(component="tool_call_storage")
+logger = llmmllogger.bind(component="tool_call")
 
 
-class ToolCallStorage:
+class ToolCall:
     """Storage service for tool call entities with CRUD operations."""
 
     def __init__(self, pool: asyncpg.Pool, get_query):

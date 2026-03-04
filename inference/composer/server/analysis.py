@@ -11,10 +11,10 @@ from composer.models.intent_analysis import IntentAnalysis
 from composer.server.db_utils import typed_pool, TypedConnection
 from composer.utils.logging import llmmllogger
 
-logger = llmmllogger.bind(component="analysis_storage")
+logger = llmmllogger.bind(component="analysis")
 
 
-class AnalysisStorage:
+class Analysis:
     """Storage service for analysis entities with CRUD operations."""
 
     def __init__(self, pool: asyncpg.Pool, get_query):

@@ -15,7 +15,7 @@ from composer.models.memory_source import MemorySource
 logger = logging.getLogger(__name__)
 
 
-class MemoryStorage:
+class Memory:
     def __init__(self, pool: asyncpg.Pool, get_query):
         self.pool = pool
         self.typed_pool = typed_pool(pool)

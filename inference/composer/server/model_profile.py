@@ -17,7 +17,7 @@ from .serialization import serialize_to_json
 logger = logging.getLogger(__name__)
 
 
-class ModelProfileStorage:
+class ModelProfile:
     def __init__(self, pool: asyncpg.Pool, get_query: Callable[[str], str]):
         self.pool = pool
         self.typed_pool = typed_pool(pool)
