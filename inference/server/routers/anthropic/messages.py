@@ -37,6 +37,65 @@ logger = llmmllogger.bind(component="anthropic_messages_router")
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
 
+async def _count_input_tokens(
+    messages: list[Message],
+    tools: list | None = None,
+) -> int:
+    """Count input tokens by calling llama-server /tokenize, with char-estimate fallback.
+
+    Builds a plain-text representation of the conversation and tool definitions,
+    then tokenizes via the running llama-server. Falls back to len // 4 estimate.
+    """
+    parts: list[str] = []
+    for msg in messages:
+        role_tag = msg.role.value if msg.role else "user"
+        text = ""
+        if msg.content:
+            text = " ".join(
+                c.text
+                for c in msg.content
+                if c.type == MessageContentType.TEXT and c.text
+            )
+        parts.append(f"<|{role_tag}|>\n{text}")
+
+    if tools:
+        for tool in tools:
+            if isinstance(tool, dict):
+                parts.append(json.dumps(tool))
+            else:
+                parts.append(json.dumps(tool.model_dump(exclude_none=True)))
+
+    combined_text = "\n".join(parts)
+
+    try:
+        cache = pipeline_factory.local_cache
+        with cache._lock:
+            server_url = None
+            for entry in cache._cache.values():
+                pipeline = entry.pipeline
+                if (
+                    isinstance(pipeline, ChatLlamaCppPipeline)
+                    and pipeline.server_manager
+                ):
+                    server_url = pipeline.server_manager.server_url
+                    break
+
+        if server_url:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{server_url}/tokenize",
+                    json={"content": combined_text},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    tokens = data.get("tokens", [])
+                    return len(tokens)
+    except Exception as e:
+        logger.debug(f"llama-server tokenize unavailable, using estimate: {e}")
+
+    return max(1, len(combined_text) // 4)
+
+
 def _sse(event_type: str, data: dict) -> str:
     """Format a server-sent event with the required Anthropic event/data structure."""
     return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
@@ -272,6 +331,9 @@ async def stream_message(
 
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 
+    # Pre-compute input tokens so message_start reports accurate context usage
+    input_tokens = await _count_input_tokens(messages, client_tools)
+
     yield _sse(
         "message_start",
         {
@@ -284,7 +346,7 @@ async def stream_message(
                 "content": [],
                 "stop_reason": None,
                 "stop_sequence": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "usage": {"input_tokens": input_tokens, "output_tokens": 0},
             },
         },
     )
@@ -296,7 +358,6 @@ async def stream_message(
     has_tool_calls = False
     final_tool_calls: list[ToolCall] = []
     final_content: str = ""
-    input_tokens = 0
     output_tokens = 0
 
     async for event in execute_workflow(initial_state, workflow):
@@ -536,64 +597,8 @@ async def countTokens(
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
     try:
-        # Convert Anthropic messages to internal format
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
-
-        # Build a plain-text representation of the conversation for tokenization.
-        # This mirrors what the chat template will produce (approximately).
-        parts: list[str] = []
-        for msg in internal_messages:
-            role_tag = msg.role.value if msg.role else "user"
-            text = ""
-            if msg.content:
-                text = " ".join(
-                    c.text
-                    for c in msg.content
-                    if c.type == MessageContentType.TEXT and c.text
-                )
-            parts.append(f"<|{role_tag}|>\n{text}")
-
-        # Include tool definitions if present — they contribute to token count
-        if body.tools:
-            for tool in body.tools:
-                parts.append(json.dumps(tool.model_dump(exclude_none=True)))
-
-        combined_text = "\n".join(parts)
-
-        # Try to reach the running llama-server's /tokenize endpoint
-        # via the cached pipeline's server_manager for accurate counts.
-        token_count: int | None = None
-        try:
-            cache = pipeline_factory.local_cache
-            with cache._lock:
-                for entry in cache._cache.values():
-                    pipeline = entry.pipeline
-                    if (
-                        isinstance(pipeline, ChatLlamaCppPipeline)
-                        and pipeline.server_manager
-                    ):
-                        server_url = pipeline.server_manager.server_url
-                        break
-                else:
-                    server_url = None
-
-            if server_url:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.post(
-                        f"{server_url}/tokenize",
-                        json={"content": combined_text},
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        tokens = data.get("tokens", [])
-                        token_count = len(tokens)
-        except Exception as e:
-            logger.debug(f"llama-server tokenize unavailable, using estimate: {e}")
-
-        # Fallback: rough estimate (~4 chars per token, common for BPE tokenizers)
-        if token_count is None:
-            token_count = max(1, len(combined_text) // 4)
-
+        token_count = await _count_input_tokens(internal_messages, body.tools)
         return CountTokensResponse(input_tokens=token_count)
 
     except Exception as e:
