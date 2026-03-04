@@ -418,7 +418,7 @@ class IdeGraphBuilder(GraphBuilder):
                 circuit_breaker=IDE_CIRCUIT_BREAKER_CONFIG,
                 gpu_config=IDE_GPU_CONFIG,
                 workflow=IDE_WORKFLOW_CONFIG,
-                tool=IDE_GPU_CONFIG,
+                tool=IDE_TOOL_CONFIG,
                 parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
             ),
             conversation_id=conversation_id,
