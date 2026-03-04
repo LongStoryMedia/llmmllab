@@ -205,7 +205,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="glm-4.7-flash",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=100000,
+        num_ctx=200000,
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
@@ -229,7 +229,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Prompt processing batch size - process multiple prompts in parallel
         batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=1024,
+        micro_batch_size=768,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
@@ -238,7 +238,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         think=False,
         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower)
         kv_on_cpu=True,
-        n_cpu_moe=20,
+        # n_cpu_moe=25,
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
     parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
