@@ -36,6 +36,37 @@ from utils.logging import llmmllogger
 logger = llmmllogger.bind(component="anthropic_messages_router")
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
+# Claude Code determines the context window from the model name and triggers
+# auto-compaction at ~83.5% of that limit. All current Claude models have a
+# 200K context window. Since we proxy to a local model with a smaller context,
+# we scale reported token counts so that X% of our actual num_ctx appears as
+# X% of 200K — making compaction fire at the right time.
+_CLAUDE_ASSUMED_CONTEXT = 200_000
+
+
+def _get_num_ctx() -> int:
+    """Get num_ctx from the active pipeline's model profile."""
+    try:
+        cache = pipeline_factory.local_cache
+        with cache._lock:
+            for entry in cache._cache.values():
+                pipeline = entry.pipeline
+                if isinstance(pipeline, ChatLlamaCppPipeline) and hasattr(pipeline, "profile"):
+                    num_ctx = pipeline.profile.parameters.num_ctx
+                    if num_ctx:
+                        return num_ctx
+    except Exception:
+        pass
+    return 131_072  # safe default matching primary profile
+
+
+def _scale_tokens(actual: int) -> int:
+    """Scale actual token count to Claude's assumed 200K context window."""
+    num_ctx = _get_num_ctx()
+    if num_ctx >= _CLAUDE_ASSUMED_CONTEXT:
+        return actual
+    return int(actual * _CLAUDE_ASSUMED_CONTEXT / num_ctx)
+
 
 async def _count_input_tokens(
     messages: list[Message],
@@ -280,7 +311,7 @@ def anthropic_response_from_chat_response(
             )
 
     usage = Usage(
-        input_tokens=int(chat_response.prompt_eval_count or 0),
+        input_tokens=_scale_tokens(int(chat_response.prompt_eval_count or 0)),
         output_tokens=int(chat_response.eval_count or 0),
     )
 
@@ -331,8 +362,11 @@ async def stream_message(
 
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 
-    # Pre-compute input tokens so message_start reports accurate context usage
-    input_tokens = await _count_input_tokens(messages, client_tools)
+    # Pre-compute input tokens so message_start reports accurate context usage.
+    # Scale to Claude's 200K window so Claude Code triggers compaction at the
+    # right percentage of our actual num_ctx.
+    raw_input_tokens = await _count_input_tokens(messages, client_tools)
+    input_tokens = _scale_tokens(raw_input_tokens)
 
     yield _sse(
         "message_start",
@@ -375,7 +409,7 @@ async def stream_message(
                 ]
                 final_content = "".join(parts)
             if event.prompt_eval_count:
-                input_tokens = int(event.prompt_eval_count)
+                input_tokens = _scale_tokens(int(event.prompt_eval_count))
             if event.eval_count:
                 output_tokens = int(event.eval_count)
             continue
@@ -597,8 +631,8 @@ async def countTokens(
 
     try:
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
-        token_count = await _count_input_tokens(internal_messages, body.tools)
-        return CountTokensResponse(input_tokens=token_count)
+        raw_count = await _count_input_tokens(internal_messages, body.tools)
+        return CountTokensResponse(input_tokens=_scale_tokens(raw_count))
 
     except Exception as e:
         logger.error(f"Error in countTokens: {e}")
