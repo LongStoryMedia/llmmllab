@@ -205,7 +205,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="qwen3-coder-next-iq4-xs",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=100000,
+        num_ctx=110000,
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)

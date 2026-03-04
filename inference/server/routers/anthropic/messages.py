@@ -51,7 +51,9 @@ def _get_num_ctx() -> int:
         with cache._lock:
             for entry in cache._cache.values():
                 pipeline = entry.pipeline
-                if isinstance(pipeline, ChatLlamaCppPipeline) and hasattr(pipeline, "profile"):
+                if isinstance(pipeline, ChatLlamaCppPipeline) and hasattr(
+                    pipeline, "profile"
+                ):
                     num_ctx = pipeline.profile.parameters.num_ctx
                     if num_ctx:
                         return num_ctx
@@ -65,7 +67,10 @@ def _scale_tokens(actual: int) -> int:
     num_ctx = _get_num_ctx()
     if num_ctx >= _CLAUDE_ASSUMED_CONTEXT:
         return actual
-    return int(actual * _CLAUDE_ASSUMED_CONTEXT / num_ctx)
+    tok = int(actual * _CLAUDE_ASSUMED_CONTEXT / num_ctx)
+    return int(
+        tok - (tok * 0.165)
+    )  # apply 16.5% reduction to trigger compaction at ~83.5% usage
 
 
 async def _count_input_tokens(
