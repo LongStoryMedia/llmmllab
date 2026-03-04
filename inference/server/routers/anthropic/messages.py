@@ -490,8 +490,7 @@ async def createMessage(
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
-    # TODO: figure out how to set this or map from claude code
-    req_body["model"] = "qwen3-coder-next-iq4-xs"
+    # models are customized in ~/.claude/settings.json
 
     try:
         body = CreateMessageRequest.model_validate(req_body)
