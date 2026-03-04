@@ -15,7 +15,7 @@ from composer.graph.state import WorkflowState
 from composer.graph.middleware.summarization_middleware import SummarizationMiddleware
 from composer.constants import AGENT_NODE_NAME, STRUCTURED_AGENT_RUNNABLE_NAME
 
-from models import NodeMetadata, Message, MessageRole
+from composer.models import NodeMetadata, Message, MessageRole
 from utils.logging import llmmllogger
 
 

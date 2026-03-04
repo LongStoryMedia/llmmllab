@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from composer.core.errors import NodeExecutionError
 from composer.agents.base import BaseAgent
-from models import (
+from composer.models import (
     MessageRole,
     Message,
     SearchResult,

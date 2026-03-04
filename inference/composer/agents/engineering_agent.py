@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from langchain.tools import BaseTool
 from langchain.chat_models import BaseChatModel
 
-from models import (
+from composer.models import (
     ChatResponse,
     Message,
     ModelProfile,

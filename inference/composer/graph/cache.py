@@ -10,7 +10,7 @@ import time
 from typing import Coroutine, Dict, Any, Optional, Callable, List
 from langgraph.graph.state import CompiledStateGraph
 
-from server.models import Tool, WorkflowType
+from composer.models import Tool, WorkflowType
 from composer.utils.logging import llmmllogger
 
 
@@ -52,10 +52,10 @@ class WorkflowCache:
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
     async def _get_user_config(self, user_id: str):
-        """Get user configuration from shared data layer via server."""
+        """Get user configuration from shared data layer."""
         try:
             # This will be replaced with server API call in future
-            from server.db import storage  # pylint: disable=import-outside-toplevel
+            from db import storage  # pylint: disable=import-outside-toplevel
 
             # Initialize storage if not done
             if not storage.pool:

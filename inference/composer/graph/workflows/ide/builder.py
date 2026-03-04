@@ -6,6 +6,7 @@ Supports two tool modes:
   - Server-side mode: server_tools are added with a ToolNode and feedback loop.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union, cast
 
 import uuid
@@ -21,7 +22,7 @@ from composer.constants import (
     TOOL_NODE_NAME,
 )
 
-from models import (
+from composer.models import (
     ModelProfileType,
     UserConfig,
     NodeMetadata,
@@ -141,9 +142,9 @@ IDE_GPU_CONFIG = GPUConfig(
     gpu_layers=-1,  # Use all GPU layers by default
     main_gpu=0,
     main_gpu_device_id=None,
-    tensor_split=None,
+    # tensor_split=[0.45, 0.28, 0.27],  # Example split for 3 GPUs (adjust as needed)
     tensor_split_devices=None,
-    split_mode="layer",
+    split_mode="row",
     offload_kqv=True,
 )
 
@@ -205,7 +206,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="glm-4.7-flash",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=100000,
+        num_ctx=200000,
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
@@ -229,7 +230,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Prompt processing batch size - process multiple prompts in parallel
         batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=1024,
+        micro_batch_size=512,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
@@ -238,7 +239,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         think=False,
         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower)
         kv_on_cpu=True,
-        n_cpu_moe=20,
+        # n_cpu_moe=25,
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
     parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
@@ -350,10 +351,10 @@ class IdeGraphBuilder(GraphBuilder):
             chat_node = AgentNode(
                 agent=primary_agent,
                 node_metadata=NodeMetadata(
-                    node_name=AGENT_NODE_NAME,
+                    component=AGENT_NODE_NAME,
                     node_id=uuid.uuid4().hex,
                     node_type=ModelProfileType(primary_agent.profile.type).name,
-                    user_id=user_id,
+                    timestamp=datetime.now(),
                 ),
                 grammar=response_format,
             )
@@ -411,10 +412,6 @@ class IdeGraphBuilder(GraphBuilder):
             user_id=user_id,
             user_config=UserConfig(
                 user_id=user_id,
-                memory=None,
-                summarization=None,
-                image_generation=None,
-                model_profiles=None,
                 circuit_breaker=IDE_CIRCUIT_BREAKER_CONFIG,
                 gpu_config=IDE_GPU_CONFIG,
                 workflow=IDE_WORKFLOW_CONFIG,

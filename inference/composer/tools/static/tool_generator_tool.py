@@ -1,7 +1,7 @@
 from typing import Optional, List
 from langchain_core.tools import tool
 
-from models import DynamicTool, Tool
+from composer.models import DynamicTool, Tool
 from db import DynamicToolStorage, storage
 from composer.tools.dynamic.security import ToolSecurityValidator
 from composer.tools.dynamic.generator import DynamicToolRunner

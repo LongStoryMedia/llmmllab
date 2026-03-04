@@ -6,37 +6,29 @@ from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
-
-
-class PerformanceParameter(BaseModel):
-    """Performance parameter for optimization"""
-    parameter_name: Annotated[str, Field(..., description="Name of the parameter to optimize")]
-    """Name of the parameter to optimize"""
-    priority: Annotated[int, Field(..., description="Priority of this parameter (lower is higher priority)")]
-    """Priority of this parameter (lower is higher priority)"""
-    tuning_strategy: Annotated[str, Field(..., description="Tuning strategy for this parameter")]
-    """Tuning strategy for this parameter"""
-    max_search_attempts: Annotated[int, Field(default=15, description="Maximum search attempts")]
-    """Maximum search attempts"""
-    floor: Annotated[int, Field(default=65536, description="Minimum value for search")]
-    """Minimum value for search"""
-    operator: Annotated[str, Field(default="*", description="Operator for parameter scaling")]
-    """Operator for parameter scaling"""
-    modifier: Annotated[int, Field(default=2, description="Modifier for parameter scaling")]
-    """Modifier for parameter scaling"""
-    max_value: Annotated[int, Field(default=262144, description="Maximum value for search")]
-    """Maximum value for search"""
-
-    model_config = ConfigDict(extra="ignore")
+from .crash_prevention import CrashPrevention
+from .performance_parameter import PerformanceParameter
 
 
 class ParameterOptimizationConfig(BaseModel):
     """Configuration for parameter optimization"""
-    enabled: Annotated[bool, Field(default=False, description="Enable parameter optimization")]
+
+    enabled: Annotated[
+        bool, Field(default=False, description="Enable parameter optimization")
+    ]
     """Enable parameter optimization"""
-    parameters: Annotated[List[PerformanceParameter], Field(default_factory=list, description="List of parameters to optimize")]
+    parameters: Annotated[
+        List[PerformanceParameter],
+        Field(default_factory=list, description="List of parameters to optimize"),
+    ]
     """List of parameters to optimize"""
-    crash_prevention: Annotated[CrashPrevention, Field(default_factory=CrashPrevention, description="Crash prevention configuration")]
+    crash_prevention: Annotated[
+        CrashPrevention,
+        Field(
+            default_factory=CrashPrevention,
+            description="Crash prevention configuration",
+        ),
+    ]
     """Crash prevention configuration"""
 
     model_config = ConfigDict(extra="ignore")

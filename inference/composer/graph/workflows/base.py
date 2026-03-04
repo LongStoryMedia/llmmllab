@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 
-from models import Message
+from composer.models import Message
 
 from ..state import WorkflowState
 

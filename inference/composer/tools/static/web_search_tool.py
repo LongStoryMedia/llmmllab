@@ -35,7 +35,7 @@ from typing import Annotated, List, Literal, Optional
 
 from langchain_core.tools import tool
 from utils.logging import llmmllogger
-from models import SearchResult, SearchResultContent, WebSearchConfig
+from composer.models import SearchResult, SearchResultContent, WebSearchConfig
 
 # Import from langchain_community (preferred) then fallback to langchain_classic
 try:  # pragma: no cover - import resolution
@@ -254,7 +254,7 @@ async def web_search(
     Returns:
         Search results with titles, URLs, content snippets, and relevance scores
     """
-    from models.default_configs import (  # pylint: disable=import-outside-toplevel
+    from composer.models.default_configs import (  # pylint: disable=import-outside-toplevel
         DEFAULT_WEB_SEARCH_CONFIG,
     )
 

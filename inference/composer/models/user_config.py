@@ -20,15 +20,17 @@ from .workflow_config import WorkflowConfig
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
-
 class UserConfig(BaseModel):
     """User-specific configuration"""
+
     user_id: Annotated[str, Field(..., description="User ID")]
     """User ID"""
-    summarization: Annotated[SummarizationConfig, Field(...)]
-    memory: Annotated[MemoryConfig, Field(...)]
-    model_profiles: Annotated[ModelProfileConfig, Field(...)]
-    image_generation: Annotated[ImageGenerationConfig, Field(...)]
+    summarization: Annotated[Optional[SummarizationConfig], Field(default=None)] = None
+    memory: Annotated[Optional[MemoryConfig], Field(default=None)] = None
+    model_profiles: Annotated[Optional[ModelProfileConfig], Field(default=None)] = None
+    image_generation: Annotated[
+        Optional[ImageGenerationConfig], Field(default=None)
+    ] = None
     circuit_breaker: Annotated[CircuitBreakerConfig, Field(...)]
     gpu_config: Annotated[GPUConfig, Field(...)]
     parameter_optimization: Annotated[ParameterOptimizationConfig, Field(...)]

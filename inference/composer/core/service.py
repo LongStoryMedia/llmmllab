@@ -16,7 +16,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
 from transformers import ModelCard
 
-from server.models import (
+from composer.models import (
     Message,
     MessageRole,
     MessageContent,
@@ -27,7 +27,7 @@ from composer.graph.workflows.base import GraphBuilder
 from composer.graph.state import WorkflowState
 from composer.graph.cache import WorkflowCache
 from composer.graph.executor import WorkflowExecutor
-from server.utils.logging import llmmllogger
+from composer.utils.logging import llmmllogger
 
 
 class ComposerService:
@@ -74,7 +74,7 @@ class ComposerService:
         try:
             # 1. Get user configuration from shared data layer
             # This will be replaced with server API call in future
-            from server.db import storage  # pylint: disable=import-outside-toplevel
+            from db import storage  # pylint: disable=import-outside-toplevel
 
             user_config = await storage.get_service(
                 storage.user_config

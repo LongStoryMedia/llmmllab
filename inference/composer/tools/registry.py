@@ -7,12 +7,11 @@ Centralized tool management with sophisticated static/dynamic tool merging.
 import asyncio
 from typing import Dict, List, Optional, Any, Sequence
 
+from langchain.tools import BaseTool
 from structlog.typing import FilteringBoundLogger
 
-from langchain.tools import BaseTool
-
-from server.models import Tool, UserConfig
 from composer.utils.logging import llmmllogger
+from composer.models import Tool, UserConfig
 from composer.tools.static import (
     web_search,
     read_web_content,

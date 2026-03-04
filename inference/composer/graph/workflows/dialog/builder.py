@@ -21,7 +21,7 @@ from composer.constants import (
     TITLE_GENERATION_NODE_NAME,
     TOOL_NODE_NAME,
 )
-from models import (
+from composer.models import (
     ModelProfileType,
     UserConfig,
     NodeMetadata,

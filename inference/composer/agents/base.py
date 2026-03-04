@@ -18,7 +18,7 @@ from langchain.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage, AIMessage
 
-from models import (
+from composer.models import (
     MessageContent,
     MessageContentType,
     MessageRole,

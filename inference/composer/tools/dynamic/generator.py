@@ -9,7 +9,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from langchain_core.tools import BaseTool, tool
 from pydantic import Field
 
-from models import DynamicTool
+from composer.models import DynamicTool
 from utils.logging import llmmllogger
 
 from .security import ToolSecurityValidator

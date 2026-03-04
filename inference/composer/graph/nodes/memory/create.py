@@ -7,7 +7,7 @@ import asyncio
 from typing import List, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 
-from models import (
+from composer.models import (
     Memory,
     MemoryFragment,
     NodeMetadata,

@@ -5,7 +5,7 @@ Stores messages as memories with their embeddings.
 
 from typing import List, TYPE_CHECKING
 from composer.graph.state import WorkflowState
-from models import Memory
+from composer.models import Memory
 from utils.logging import llmmllogger
 
 if TYPE_CHECKING:

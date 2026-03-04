@@ -22,8 +22,8 @@ Architectural Role:
 
 from typing import AsyncIterator, List, Optional, Type
 from pydantic import BaseModel
-from server.models import ChatResponse, Message
-from server.utils.logging import llmmllogger
+from composer.models import ChatResponse, Message
+from composer.utils.logging import llmmllogger
 from .core.service import CompiledStateGraph, ComposerService
 from .core.errors import ComposerError
 from .graph.executor import stream_workflow

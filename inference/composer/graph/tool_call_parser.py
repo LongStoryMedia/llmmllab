@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from pydantic import BaseModel
 
-from models import ToolCall
+from composer.models import ToolCall
 
 
 # Detect raw tool-call XML that the model sometimes emits inline in content
