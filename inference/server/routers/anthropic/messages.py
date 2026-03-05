@@ -63,14 +63,17 @@ def _get_num_ctx() -> int:
 
 
 def _scale_tokens(actual: int) -> int:
-    """Scale actual token count to Claude's assumed 200K context window."""
+    """Scale actual token count to Claude's assumed 200K context window.
+
+    We treat the effective context as 90% of num_ctx so that Claude Code's
+    83.5% compaction threshold fires at ~75% of our real context limit
+    (0.835 * 0.9 ≈ 0.75), leaving headroom for tool-heavy turns.
+    """
     num_ctx = _get_num_ctx()
-    if num_ctx >= _CLAUDE_ASSUMED_CONTEXT:
+    effective_ctx = int(num_ctx * 0.90)
+    if effective_ctx >= _CLAUDE_ASSUMED_CONTEXT:
         return actual
-    tok = int(actual * _CLAUDE_ASSUMED_CONTEXT / num_ctx)
-    return int(
-        tok - (tok * 0.165)
-    )  # apply 16.5% reduction to trigger compaction at ~83.5% usage
+    return int(actual * _CLAUDE_ASSUMED_CONTEXT / effective_ctx)
 
 
 async def _count_input_tokens(
