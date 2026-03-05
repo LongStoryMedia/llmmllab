@@ -1,0 +1,21 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+title: PreferencesConfig
+description: User preferences configuration
+type: object
+properties:
+  theme:
+    type: string
+    description: UI theme preference
+    default: "light"
+  language:
+    type: string
+    description: Preferred language
+    default: "en"
+  notifications_on:
+    type: boolean
+    description: Enable notifications
+    default: true
+  font_size:
+    type: integer
+    description: Font size preference
+    default: 14
