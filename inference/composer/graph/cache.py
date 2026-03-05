@@ -7,11 +7,14 @@ import asyncio
 import hashlib
 import json
 import time
-from typing import Coroutine, Dict, Any, Optional, Callable, List
+from typing import Coroutine, Dict, Any, Optional, Callable, List, TYPE_CHECKING
 from langgraph.graph.state import CompiledStateGraph
 
 from composer.models import Tool, WorkflowType
 from composer.utils.logging import llmmllogger
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 
 
 class CacheEntry:
@@ -42,26 +45,29 @@ class WorkflowCache:
     Caches compiled LangGraph workflows by (user_config, workflow_type, tools) signature.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: Optional[int] = None):
+    def __init__(
+        self,
+        max_size: int = 1000,
+        default_ttl: Optional[int] = None,
+        server: Optional["ServerInterface"] = None,
+    ):
         self.max_size = max_size
         self.default_ttl = default_ttl or 300  # 5 minutes default TTL
         self.cache: Dict[str, CacheEntry] = {}
         self._lock = asyncio.Lock()
+        self.server = server
 
         # Start background cleanup task
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
     async def _get_user_config(self, user_id: str):
-        """Get user configuration from shared data layer."""
+        """Get user configuration from server interface."""
+        if self.server is None:
+            llmmllogger.logger.warning("Server not available for WorkflowCache")
+            return None
+
         try:
-            from composer.server import server  # pylint: disable=import-outside-toplevel
-
-            # Initialize server if not done
-            if not server.pool:
-                llmmllogger.logger.warning("Database not initialized for WorkflowCache")
-                return None
-
-            user_config = await server.user_config.get_user_config(user_id)
+            user_config = await self.server.user_config.get_user_config(user_id)
             if not user_config:
                 llmmllogger.logger.warning(
                     f"No user config found for {user_id} in WorkflowCache"
@@ -79,12 +85,12 @@ class WorkflowCache:
     ) -> str:
         """
         Generate cache key from user_id, workflow type, and tools.
-        Configuration is retrieved from shared data layer using user_id.
+        Configuration is retrieved from server interface using user_id.
 
         The cache key uniquely identifies a workflow configuration to enable
         safe reuse across requests with identical parameters.
         """
-        # Get user configuration from shared data layer
+        # Get user configuration from server interface
         user_config = await self._get_user_config(user_id)
 
         # Create deterministic representation

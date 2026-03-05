@@ -61,6 +61,7 @@ from models.tool_call import ToolCall
 from models.chat_response import ChatResponse
 from utils.logging import llmmllogger
 
+from composer.server.interface import ServerAdapter
 import composer
 
 OAIFinishReason: TypeAlias = Literal[
@@ -334,7 +335,11 @@ async def stream_chat_completion(
     tool_choice: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream composer events as OpenAI SSE chat completion chunks."""
-    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
+    # Get user config from storage layer
+    from db import storage
+    user_config = await storage.user_config.get_user_config(user_id)
+    # Get builder with user_config
+    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id, user_config)
     workflow = await composer.compose_workflow(
         user_id=user_id,
         builder=builder,
@@ -555,7 +560,9 @@ async def createChatCompletion(
         )
 
     # Non-streaming response
-    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
+    from db import storage
+    user_config = await storage.user_config.get_user_config(user_id)
+    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id, user_config)
     workflow = await composer.compose_workflow(
         user_id=user_id,
         builder=builder,

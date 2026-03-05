@@ -83,5 +83,6 @@ class GraphBuilder(ABC):
         user_id: str,
         conversation_id: int,
         messages: Optional[List[Message]] = None,
+        **kwargs,
     ) -> WorkflowState:
         """Create initial workflow state from messages."""

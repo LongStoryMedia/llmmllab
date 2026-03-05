@@ -23,7 +23,7 @@ from server.utils.message_transformation import transform_file_content_to_docume
 
 # Import composer interface and streaming state management
 import composer
-
+from composer.server.interface import ServerAdapter
 
 logger = llmmllogger.bind(component="chat_router")
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -37,8 +37,10 @@ async def composer_chat_completion(
     response_format: Optional[Type[BaseModel]] = None,
 ) -> AsyncIterator[str]:
     """Handle chat completions by delegating to composer interface."""
+    # Get user config from storage layer
+    user_config = await storage.user_config.get_user_config(user_id)
     # Get Dialog Graph Builder
-    builder = await composer.get_graph_builder(composer.WorkFlowType.DIALOG, user_id)
+    builder = await composer.get_graph_builder(composer.WorkFlowType.DIALOG, user_id, user_config)
 
     # Compose workflow for user
     workflow = await composer.compose_workflow(

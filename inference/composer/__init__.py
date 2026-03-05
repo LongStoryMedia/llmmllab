@@ -120,18 +120,22 @@ async def compose_workflow(
     )
 
 
-async def clear_workflow_cache(user_id: str) -> None:
+async def clear_workflow_cache(user_id: str, server=None) -> None:
     """
     Clear the workflow cache for a specific user.
 
     Args:
         user_id: User ID whose workflow cache should be cleared
+        server: Optional ServerInterface for configuration retrieval
     """
     try:
         svc = await _manager.get_or_init_service()
         cache = svc.workflow_caches.get(user_id, None)
         if cache:
             await cache.close()
+        # Remove the cache entry so it will be recreated on next use
+        if user_id in svc.workflow_caches:
+            del svc.workflow_caches[user_id]
     except ComposerError as e:
         llmmllogger.logger.error(
             f"Error clearing workflow cache for user {user_id}: {e}"

@@ -43,6 +43,7 @@ from composer.models import (
 )
 from composer.runner import pipeline_factory
 
+from composer.utils.model_profile import get_model_profile_for_task
 from composer.utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from composer.server.userconfig import UserConfig
     from composer.server.message import Message
     from composer.server.model_profile import ModelProfile
+    from composer.server.interface import ServerInterface
 
 
 IDE_PRIMARY_SYSTEM_PROMPT = """You are a helpful AI coding assistant.
@@ -258,9 +260,11 @@ class IdeGraphBuilder(GraphBuilder):
         self,
         server: "Server",
         user_config: UserConfig,
+        server_interface: Optional["ServerInterface"] = None,
     ):
         self.user_config = user_config
         self.logger = llmmllogger.logger.bind(component="IdeGraphBuilder")
+        self.server_interface = server_interface
 
         self.user_config_service = server.user_config
         self.conversation_service = server.conversation
@@ -297,22 +301,20 @@ class IdeGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            prof = IDE_PRIMARY_PROFILE
-            if model_name:
-                prof = ModelProfile(
-                    **{
-                        **prof.model_dump(),
-                        "model_name": model_name,
-                    }
-                )
+            # Get primary profile using server interface
+            primary_profile = await get_model_profile_for_task(
+                self.server_interface,
+                self.user_config.model_profiles,
+                ModelProfileType.Primary,
+                self.user_config.user_id,
+            )
+            primary_pipeline = pipeline_factory.get_pipeline(profile=primary_profile)
 
             self.logger.debug(
                 "Building workflow",
                 user_id=user_id,
-                model=prof.model_name,
-                model_arg=model_name,
+                model=primary_profile.model_name,
             )
-            primary_pipeline = pipeline_factory.get_pipeline(profile=prof)
             # Keep a strong reference to the original pipeline throughout build_workflow
             # so GC cannot collect it when bind_tools returns a RunnableBinding wrapper
             primary_model = primary_pipeline
@@ -326,7 +328,7 @@ class IdeGraphBuilder(GraphBuilder):
 
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
-                profile=prof,
+                profile=primary_profile,
                 component_name="PrimaryCodingAgent",
             )
 

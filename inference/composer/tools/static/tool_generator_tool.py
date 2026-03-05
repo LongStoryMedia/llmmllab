@@ -1,27 +1,53 @@
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from langchain_core.tools import tool
+from langchain.tools import ToolRuntime
 
 from composer.models import DynamicTool, Tool
-from composer.server import server
 from composer.tools.dynamic.security import ToolSecurityValidator
 from composer.tools.dynamic.generator import DynamicToolRunner
 from composer.utils.logging import llmmllogger
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 
 logger = llmmllogger.bind(component="ToolGeneratorTool")
 
 
 @tool
-async def tool_generator(task_description: str, user_id: str) -> str:
+async def tool_generator(task_description: str, runtime: ToolRuntime) -> str:
     """
     Generates a new dynamic tool to perform a specific task.
     Provide a detailed description of what the tool should do.
+
+    Args:
+        task_description: Description of what the tool should do
+        runtime: ToolRuntime with state containing server and user_id
+
+    Returns:
+        Success or error message
     """
-    logger.info(
-        "Starting dynamic tool generation process",
-        task=task_description,
-        user_id=user_id,
-    )
+    logger.info("Starting dynamic tool generation process", task=task_description)
+
     try:
+        # Access state through runtime
+        state = runtime.state
+
+        # Get server from state
+        server: "ServerInterface" = state.get("server")
+        if server is None:
+            return "Error: Server not available in state"
+
+        # Get user_id from state
+        user_id = state.get("user_id")
+        if not user_id:
+            return "Error: user_id not provided in state"
+
+        logger.info(
+            "Starting dynamic tool generation process",
+            task=task_description,
+            user_id=user_id,
+        )
+
         # Import the singleton registry manager
         from composer.tools.registry import (  # pylint: disable=import-outside-toplevel
             registry_manager,
@@ -35,7 +61,7 @@ async def tool_generator(task_description: str, user_id: str) -> str:
             )
             return "Error: User registry not found. Please ensure the system is properly initialized for this user."
 
-        tool_service: Optional[DynamicTool] = server.dynamic_tool
+        tool_service = server.dynamic_tool
         if not tool_service:
             return "Error: DynamicTool service is not available."
 

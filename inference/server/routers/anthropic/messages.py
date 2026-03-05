@@ -21,6 +21,7 @@ from models.anthropic.usage import Usage
 from models.message import Message, MessageRole, MessageContent, MessageContentType
 from models.tool_call import ToolCall
 from models.chat_response import ChatResponse
+from composer.server.interface import ServerAdapter
 from composer import (
     compose_workflow,
     create_initial_state,
@@ -260,7 +261,11 @@ async def stream_message(
       message_start → ping → content_block_start → content_block_delta(s)
       → content_block_stop → message_delta → message_stop
     """
-    builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+    # Get user config from storage layer
+    from db import storage
+    user_config = await storage.user_config.get_user_config(user_id)
+    # Get builder with user_config
+    builder = await get_graph_builder(WorkFlowType.IDE, user_id, user_config)
     workflow = await compose_workflow(
         user_id=user_id,
         builder=builder,

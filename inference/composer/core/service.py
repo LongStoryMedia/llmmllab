@@ -10,7 +10,7 @@ Configuration Management:
 - No configuration merging logic should exist in service layer components
 """
 
-from typing import Dict, Optional, Type
+from typing import Dict, Optional, Type, TYPE_CHECKING
 
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel
@@ -29,6 +29,9 @@ from composer.graph.cache import WorkflowCache
 from composer.graph.executor import WorkflowExecutor
 from composer.utils.logging import llmmllogger
 
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
+
 
 class ComposerService:
     """
@@ -44,13 +47,12 @@ class ComposerService:
     - Multi-agent orchestration
     """
 
-    def __init__(self, builder: GraphBuilder):
+    def __init__(self, builder: GraphBuilder, server: Optional["ServerInterface"] = None):
         self.logger = llmmllogger.bind(component="ComposerService")
         self.graph_builder = builder
+        self.server = server
         # Workflow cache is now created per-user during workflow composition
         self.workflow_caches: Dict[str, WorkflowCache] = {}
-        # Generic workflow executor for streaming
-        self.executor = WorkflowExecutor()
 
     async def compose_workflow(
         self,
@@ -72,16 +74,20 @@ class ComposerService:
             CompiledStateGraph: Master workflow with intelligent routing
         """
         try:
-            # 1. Get user configuration from shared data layer
-            from composer.server import server  # pylint: disable=import-outside-toplevel
-
-            user_config = await server.user_config.get_user_config(user_id)
+            # 1. Get user configuration from server interface
+            user_config = None
+            if self.server:
+                user_config = await self.server.user_config.get_user_config(user_id)
+            else:
+                # Fallback to server singleton for backward compatibility
+                from composer.server import server  # pylint: disable=import-outside-toplevel
+                user_config = await server.user_config.get_user_config(user_id)
 
             # 2. Use per-user cache if enabled (cache based on user_id only now)
             user_cache = None
-            if user_config.workflow.enable_workflow_caching:
+            if user_config and user_config.workflow.enable_workflow_caching:
                 if user_id not in self.workflow_caches:
-                    self.workflow_caches[user_id] = WorkflowCache()
+                    self.workflow_caches[user_id] = WorkflowCache(server=self.server)
                 user_cache = self.workflow_caches[user_id]
 
                 # Simplified cache key - master workflow is the same for all users

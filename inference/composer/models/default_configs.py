@@ -22,8 +22,11 @@ from composer.models.tool_config import ToolConfig
 from composer.models.parameter_optimization_config import (
     ParameterOptimizationConfig,
     PerformanceParameter,
-    ParameterTuningStrategy,
 )
+from composer.models.model_profile_type import ModelProfileType
+
+# ParameterTuningStrategy is a string enum defined in schemas/parameter_tuning_strategy.yaml
+# Values: binary_search, exponential_backoff, conservative_increment
 from composer.models.crash_prevention import CrashPrevention
 from composer.models.context_window_config import (
     ContextWindowConfig,
@@ -198,7 +201,7 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
         PerformanceParameter(
             parameter_name="n_ctx",
             priority=1,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            tuning_strategy="binary_search",
             max_search_attempts=15,
             floor=65536,  # Start with current profile setting and push higher
             operator="*",
@@ -208,7 +211,7 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
         PerformanceParameter(
             parameter_name="n_gpu_layers",
             priority=2,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            tuning_strategy="binary_search",
             max_search_attempts=10,
             floor=1,  # Start low and find the maximum that works
             operator="+",
@@ -218,7 +221,7 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
         PerformanceParameter(
             parameter_name="n_batch",
             priority=3,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            tuning_strategy="binary_search",
             max_search_attempts=15,
             floor=128,  # Start with profile setting and push higher
             operator="*",
@@ -228,7 +231,7 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
         PerformanceParameter(
             parameter_name="n_ubatch",
             priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
+            tuning_strategy="binary_search",
             max_search_attempts=15,
             floor=128,  # Start with profile setting and push higher
             operator="*",
@@ -245,28 +248,27 @@ DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
 )
 
 # Default model profile configuration (inline to avoid circular import)
+# Note: UUID fields are stored as strings per schema definition
 DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
-    primary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-    summarization_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
-    master_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000003"),
-    brief_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000004"),
-    key_points_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000005"),
-    improvement_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000007"),
-    memory_retrieval_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000008"),
-    self_critique_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000006"),
-    analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000009"),
-    research_task_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000010"),
-    research_plan_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000011"),
-    research_consolidation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000012"),
-    research_analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000013"),
-    embedding_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000014"),
-    formatting_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000015"),
-    image_generation_prompt_profile_id=uuid.UUID(
-        "00000000-0000-0000-0000-000000000016"
-    ),
-    image_generation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000017"),
-    engineering_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000018"),
-    reranking_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000019"),
+    primary_profile_id="00000000-0000-0000-0000-000000000001",
+    summarization_profile_id="00000000-0000-0000-0000-000000000002",
+    master_summary_profile_id="00000000-0000-0000-0000-000000000003",
+    brief_summary_profile_id="00000000-0000-0000-0000-000000000004",
+    key_points_profile_id="00000000-0000-0000-0000-000000000005",
+    improvement_profile_id="00000000-0000-0000-0000-000000000007",
+    memory_retrieval_profile_id="00000000-0000-0000-0000-000000000008",
+    self_critique_profile_id="00000000-0000-0000-0000-000000000006",
+    analysis_profile_id="00000000-0000-0000-0000-000000000009",
+    research_task_profile_id="00000000-0000-0000-0000-000000000010",
+    research_plan_profile_id="00000000-0000-0000-0000-000000000011",
+    research_consolidation_profile_id="00000000-0000-0000-0000-000000000012",
+    research_analysis_profile_id="00000000-0000-0000-0000-000000000013",
+    embedding_profile_id="00000000-0000-0000-0000-000000000014",
+    formatting_profile_id="00000000-0000-0000-0000-000000000015",
+    image_generation_prompt_profile_id="00000000-0000-0000-0000-000000000016",
+    image_generation_profile_id="00000000-0000-0000-0000-000000000017",
+    engineering_profile_id="00000000-0000-0000-0000-000000000018",
+    reranking_profile_id="00000000-0000-0000-0000-000000000019",
 )
 
 

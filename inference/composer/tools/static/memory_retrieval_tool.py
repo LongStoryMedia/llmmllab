@@ -22,16 +22,19 @@ Usage in LangGraph workflows:
     # LangGraph handles injection of tool_call_id and WorkflowState
 """
 
+from typing import TYPE_CHECKING
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
 
 from composer.graph.state import WorkflowState
 from composer.runner import pipeline_factory
-from composer.server import server
 from composer.models import ModelProfileType
 from composer.models.default_configs import DEFAULT_MEMORY_CONFIG
 from composer.utils.model_profile import get_model_profile
 from composer.utils.logging import llmmllogger
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 
 
 # Single memory retrieval tool using ToolRuntime pattern with strong typing
@@ -59,6 +62,13 @@ async def memory_retrieval(
         # Access state and tool_call_id through runtime
         state = runtime.state
 
+        # Get server from tool runtime state (passed by GraphBuilder)
+        server: "ServerInterface" = state.get("server")
+        if server is None:
+            error_message = "❌ Memory retrieval failed: Server not available in state"
+            logger.error("Server not in state", state_keys=list(state.keys()))
+            return error_message
+
         # Get user_config from tool runtime state
         if state.get("user_config") and hasattr(state["user_config"], "memory"):
             memory_config = state["user_config"].memory
@@ -85,17 +95,12 @@ async def memory_retrieval(
             logger.error("Memory retrieval state debug", **error_details)
             return error_message
 
-        # Initialize server if not done
-        if not server.pool:
-            error_message = "❌ Memory retrieval failed: Database not initialized"
-            return error_message
-
         # Generate embeddings for the query with fallback handling
         query_embeddings = None
 
         # Try to get embedding model profile and generate embeddings
         embedding_profile = await get_model_profile(
-            user_id=state["user_id"], task=ModelProfileType.Embedding
+            server=server, user_id=state["user_id"], task=ModelProfileType.Embedding
         )
 
         # Get embedding pipeline from factory

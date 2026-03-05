@@ -5,7 +5,7 @@ Centralized tool management with sophisticated static/dynamic tool merging.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any, Sequence
+from typing import Dict, List, Optional, Any, Sequence, TYPE_CHECKING
 
 from structlog.typing import FilteringBoundLogger
 
@@ -20,6 +20,9 @@ from composer.tools.static import (
     write_todos,
 )
 from composer.agents.engineering_agent import EngineeringAgent
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 
 
 class ToolRegistryManager:
@@ -295,13 +298,20 @@ class ToolRegistry:
 
         return langchain_tools
 
-    async def load_previous_dynamic_tools(self) -> None:
+    async def load_previous_dynamic_tools(
+        self, server: Optional["ServerInterface"] = None
+    ) -> None:
         """
         Load previously generated dynamic tools from storage and make them available.
         This replaces the functionality of StaticToolLoadingNode.
+
+        Args:
+            server: Optional server interface for data access. If None, uses singleton.
         """
         try:
-            from composer.server import server  # pylint: disable=unused-import
+            # Get server - either injected or singleton fallback
+            if server is None:
+                from composer.server import server  # pylint: disable=import-outside-toplevel
 
             # Get all previously generated dynamic tools for this user
             dynamic_tools, _ = await server.dynamic_tool.list_tools_by_user(
@@ -344,11 +354,22 @@ class ToolRegistry:
             self.logger.error(f"Failed to load previous dynamic tools: {e}")
 
     async def generate_new_dynamic_tools(
-        self, user_query: str, user_config: UserConfig
+        self,
+        user_query: str,
+        user_config: UserConfig,
+        server: Optional["ServerInterface"] = None,
     ) -> List[BaseTool]:
         """
         Generate new dynamic tools based on user query and configuration.
         This replaces the functionality of ToolCollectionNode.
+
+        Args:
+            user_query: User's request to generate tools for
+            user_config: User configuration
+            server: Optional server interface for data access. If None, uses singleton.
+
+        Returns:
+            List of executable dynamic tools
         """
         try:
             if not user_config.tool.enable_tool_generation:
@@ -375,7 +396,9 @@ class ToolRegistry:
                 )
             )
 
-            from composer.server import server  # pylint: disable=import-outside-toplevel
+            # Get server - either injected or singleton fallback
+            if server is None:
+                from composer.server import server  # pylint: disable=import-outside-toplevel
 
             # Convert specs to executable tools and store
             new_executable_tools = []
@@ -447,7 +470,10 @@ class ToolRegistry:
         return False
 
     async def get_all_tools_for_execution(
-        self, user_query: Optional[str] = None, user_config: Optional[UserConfig] = None
+        self,
+        user_query: Optional[str] = None,
+        user_config: Optional[UserConfig] = None,
+        server: Optional["ServerInterface"] = None,
     ) -> List[BaseTool]:
         """
         Comprehensive tool collection method that replaces all the individual tool nodes.
@@ -459,6 +485,11 @@ class ToolRegistry:
         3. Generates new dynamic tools if needed
         4. Deduplicates by name
         5. Returns executable tools ready for use
+
+        Args:
+            user_query: Optional user query to generate tools for
+            user_config: Optional user configuration
+            server: Optional server interface for data access
         """
         async with self._lock:
             all_tools = []
@@ -479,7 +510,7 @@ class ToolRegistry:
             # 3. Generate new dynamic tools if requested and config allows
             if user_query and user_config:
                 new_dynamic_tools = await self.generate_new_dynamic_tools(
-                    user_query, user_config
+                    user_query, user_config, server
                 )
                 for tool in new_dynamic_tools:
                     if tool.name not in seen_names:
@@ -497,18 +528,28 @@ class ToolRegistry:
             return all_tools
 
     async def initialize_for_workflow(
-        self, user_query: str, user_config: UserConfig
+        self,
+        user_query: str,
+        user_config: UserConfig,
+        server: Optional["ServerInterface"] = None,
     ) -> None:
         """
         Initialize the registry with all necessary tools for workflow execution.
         This method replaces the need for separate tool loading/collection/composition nodes.
+
+        Args:
+            user_query: User query to initialize tools for
+            user_config: User configuration
+            server: Optional server interface for data access
         """
         try:
             # Load previous dynamic tools from storage
-            await self.load_previous_dynamic_tools()
+            await self.load_previous_dynamic_tools(server)
 
             # Generate new dynamic tools if needed
-            new_tools = await self.generate_new_dynamic_tools(user_query, user_config)
+            new_tools = await self.generate_new_dynamic_tools(
+                user_query, user_config, server
+            )
 
             self.logger.info(
                 "ToolRegistry initialized for workflow execution",

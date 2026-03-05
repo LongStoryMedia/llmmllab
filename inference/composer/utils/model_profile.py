@@ -5,10 +5,13 @@ This module provides utilities to retrieve model profiles based on task types
 and user configurations.
 """
 
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 import uuid
 
 from composer.models import ModelProfileConfig, ModelProfileType, ModelProfile
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 
 # Database import moved to function level to avoid circular dependencies
 
@@ -37,11 +40,14 @@ PROFILE_TYPE_TO_CONFIG_FIELD: Dict[ModelProfileType, str] = {
 }
 
 
-async def get_model_profile(user_id: str, task: ModelProfileType) -> ModelProfile:
+async def get_model_profile(
+    server: "ServerInterface", user_id: str, task: ModelProfileType
+) -> ModelProfile:
     """
     Get the appropriate model profile for a specific task.
 
     Args:
+        server: The server interface for data access
         user_id: The user ID for profile lookup
         task: The type of task requiring a model profile
 
@@ -51,22 +57,24 @@ async def get_model_profile(user_id: str, task: ModelProfileType) -> ModelProfil
     Raises:
         ValueError: If the task type is not supported or profile not found
     """
-    from composer.server import server  # pylint: disable=import-outside-toplevel
-
     config = await server.user_config.get_user_config(user_id)
     if not config:
         raise ValueError(f"User config not found for user {user_id}")
 
-    return await get_model_profile_for_task(config.model_profiles, task, user_id)
+    return await get_model_profile_for_task(server, config.model_profiles, task, user_id)
 
 
 async def get_model_profile_for_task(
-    config: ModelProfileConfig, task: ModelProfileType, user_id: str
+    server: "ServerInterface",
+    config: ModelProfileConfig,
+    task: ModelProfileType,
+    user_id: str,
 ) -> ModelProfile:
     """
     Get the appropriate model profile for a specific task.
 
     Args:
+        server: The server interface for data access
         config: The user's model profile configuration
         task: The type of task requiring a model profile
         user_id: The user ID for profile lookup
@@ -82,8 +90,6 @@ async def get_model_profile_for_task(
     profile_id: uuid.UUID = get_profile_id_for_task(config, task)
 
     # Retrieve the model profile from storage
-    from composer.server import server  # pylint: disable=import-outside-toplevel
-
     mp = await server.model_profile.get_model_profile_by_id(profile_id, user_id)
 
     assert mp, f"No profile for {task} (ID: {profile_id}, User: {user_id})"

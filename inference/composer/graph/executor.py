@@ -30,7 +30,7 @@ from composer.models import (
     ToolCall,
     GenerationState,
 )
-from composer.runner import ReasoningAwareAIMessageChunk
+from runner import ReasoningAwareAIMessageChunk
 from composer.utils.logging import llmmllogger
 
 from .content_parser import parse_content, strip_think_tags

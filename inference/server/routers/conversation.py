@@ -19,6 +19,7 @@ from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from runner import local_pipeline_cache
 from composer import clear_workflow_cache
+from composer.server.interface import ServerAdapter
 from db import storage  # Import database storage
 from .chat import router, composer_chat_completion
 
@@ -192,7 +193,7 @@ async def cancel_conversation(request: Request):
             user_id
         )
         logger.info(f"Cancelling conversation for user {user_id}")
-        await clear_workflow_cache(user_id)
+        await clear_workflow_cache(user_id, server=ServerAdapter())
         local_pipeline_cache.cleanup_for_user(user_config)
     except HTTPException as e:
         raise e

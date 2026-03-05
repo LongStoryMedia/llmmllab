@@ -71,6 +71,7 @@ from server.cleanup_service import cleanup_service
 from server.db.maintenance import maintenance_service
 from server.utils.logging import llmmllogger
 from composer import shutdown_composer
+from composer.server.interface import ServerAdapter
 from runner import local_pipeline_cache
 
 

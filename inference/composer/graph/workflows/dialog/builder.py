@@ -33,6 +33,9 @@ from composer.models import (
 from composer.runner import pipeline_factory
 
 from composer.utils.model_profile import get_model_profile_for_task
+
+if TYPE_CHECKING:
+    from composer.server.interface import ServerInterface
 from composer.utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
@@ -59,6 +62,7 @@ if TYPE_CHECKING:
     from composer.server.search import Search
     from composer.server.dynamic_tool import DynamicTool
     from composer.server.checkpoint import Checkpoint
+    from composer.server.interface import ServerInterface
 
 
 class DialogGraphBuilder(GraphBuilder):
@@ -110,6 +114,7 @@ class DialogGraphBuilder(GraphBuilder):
         self,
         user_id: str,
         response_format: Optional[Type[BaseModel]] = None,
+        server: Optional["ServerInterface"] = None,
         **kwargs,
     ) -> CompiledStateGraph:
         """
@@ -120,6 +125,7 @@ class DialogGraphBuilder(GraphBuilder):
         Args:
             workflow_type: Type of workflow to build
             user_id: User identifier
+            server: Server interface for model profile retrieval
             use_cache: Whether to use caching
             **kwargs: Additional workflow parameters
 
@@ -128,19 +134,13 @@ class DialogGraphBuilder(GraphBuilder):
         """
         try:
             primary_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Primary,
-                self.user_config.user_id,
+                server, self.user_config.model_profiles, ModelProfileType.Primary, self.user_config.user_id
             )
             engineering_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Engineering,
-                self.user_config.user_id,
+                server, self.user_config.model_profiles, ModelProfileType.Engineering, self.user_config.user_id
             )
             embedding_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Embedding,
-                self.user_config.user_id,
+                server, self.user_config.model_profiles, ModelProfileType.Embedding, self.user_config.user_id
             )
 
             primary_model = pipeline_factory.get_pipeline(profile=primary_profile)
