@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: TextContentBlock
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - text
+  text:
+    type: string
+  cache_control:
+    $ref: cache_control.yaml
+required:
+  - type
+  - text
+additionalProperties: false

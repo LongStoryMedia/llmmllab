@@ -1,0 +1,16 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ImageContentBlock
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - image
+  source:
+    $ref: image_source.yaml
+  cache_control:
+    $ref: cache_control.yaml
+required:
+  - type
+  - source
+additionalProperties: false

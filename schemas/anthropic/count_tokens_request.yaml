@@ -1,0 +1,22 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CountTokensRequest
+type: object
+properties:
+  model:
+    type: string
+  messages:
+    type: array
+    items:
+      $ref: input_message.yaml
+  system:
+    $ref: system_prompt.yaml
+  tools:
+    type: array
+    items:
+      $ref: tool.yaml
+  thinking:
+    $ref: thinking_config.yaml
+required:
+  - model
+  - messages
+additionalProperties: false

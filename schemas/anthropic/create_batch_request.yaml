@@ -1,0 +1,12 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateBatchRequest
+type: object
+properties:
+  requests:
+    type: array
+    items:
+      $ref: batch_request.yaml
+    description: Up to 100,000 requests per batch.
+required:
+  - requests
+additionalProperties: false

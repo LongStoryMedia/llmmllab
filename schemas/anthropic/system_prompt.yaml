@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: SystemPrompt
+description: System prompt as a string or array of text content blocks
+oneOf:
+  - type: string
+  - type: array
+    items:
+      $ref: text_content_block.yaml

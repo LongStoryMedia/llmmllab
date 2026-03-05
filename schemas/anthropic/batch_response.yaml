@@ -1,0 +1,42 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: BatchResponse
+type: object
+properties:
+  id:
+    type: string
+    description: "Batch identifier (`msgbatch_…`)."
+  type:
+    type: string
+    enum:
+      - message_batch
+  processing_status:
+    type: string
+    enum:
+      - in_progress
+      - canceling
+      - ended
+  request_counts:
+    $ref: batch_request_count.yaml
+  ended_at:
+    type: string
+    format: date-time
+  created_at:
+    type: string
+    format: date-time
+  expires_at:
+    type: string
+    format: date-time
+  cancel_initiated_at:
+    type: string
+    format: date-time
+  results_url:
+    type: string
+    description: URL to download JSONL results when processing is complete.
+required:
+  - id
+  - type
+  - processing_status
+  - request_counts
+  - created_at
+  - expires_at
+additionalProperties: false

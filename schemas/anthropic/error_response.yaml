@@ -1,0 +1,14 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ErrorResponse
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - error
+  error:
+    $ref: error_detail.yaml
+required:
+  - type
+  - error
+additionalProperties: false

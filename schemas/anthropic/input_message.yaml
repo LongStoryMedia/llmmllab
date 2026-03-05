@@ -1,0 +1,19 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: InputMessage
+type: object
+properties:
+  role:
+    type: string
+    enum:
+      - user
+      - assistant
+  content:
+    oneOf:
+      - type: string
+      - type: array
+        items:
+          $ref: input_content_block.yaml
+required:
+  - role
+  - content
+additionalProperties: false

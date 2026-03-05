@@ -1,0 +1,24 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolUseContentBlock
+description: A tool invocation block in an assistant message.
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - tool_use
+  id:
+    type: string
+    description: Unique identifier for this tool use.
+  name:
+    type: string
+  input:
+    type: object
+    additionalProperties: true
+    description: Tool input as a JSON object.
+required:
+  - type
+  - id
+  - name
+  - input
+additionalProperties: false

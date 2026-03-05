@@ -1,0 +1,7 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ServerToolUse
+type: object
+properties:
+  web_search_requests:
+    type: integer
+additionalProperties: false

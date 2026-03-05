@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: DocumentSource
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - base64
+      - url
+      - file
+      - text
+      - content
+  media_type:
+    type: string
+    enum:
+      - application/pdf
+      - text/plain
+  data:
+    type: string
+  url:
+    type: string
+    format: uri
+  file_id:
+    type: string
+  text:
+    type: string
+    description: "Plain text content when type is `text`."
+  content:
+    type: array
+    items:
+      $ref: text_content_block.yaml
+    description: "Custom content blocks when type is `content`."
+required:
+  - type
+additionalProperties: false

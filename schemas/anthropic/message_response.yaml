@@ -1,0 +1,43 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: MessageResponse
+type: object
+properties:
+  id:
+    type: string
+    description: "Unique message identifier (`msg_…`)."
+  type:
+    type: string
+    enum:
+      - message
+  role:
+    type: string
+    enum:
+      - assistant
+  content:
+    type: array
+    items:
+      $ref: output_content_block.yaml
+  model:
+    type: string
+  stop_reason:
+    type: string
+    enum:
+      - end_turn
+      - max_tokens
+      - stop_sequence
+      - tool_use
+      - pause_turn
+  stop_sequence:
+    type: string
+    description: "Which stop sequence triggered the stop (if `stop_reason` is `stop_sequence`)."
+  usage:
+    $ref: usage.yaml
+required:
+  - id
+  - type
+  - role
+  - content
+  - model
+  - stop_reason
+  - usage
+additionalProperties: false

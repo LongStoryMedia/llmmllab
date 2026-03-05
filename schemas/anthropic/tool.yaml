@@ -1,0 +1,6 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Tool
+description: Union of client-side and server-side tool definitions
+oneOf:
+  - $ref: client_tool.yaml
+  - $ref: server_tool.yaml

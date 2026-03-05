@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: BatchRequestCount
+type: object
+properties:
+  processing:
+    type: integer
+  succeeded:
+    type: integer
+  errored:
+    type: integer
+  canceled:
+    type: integer
+  expired:
+    type: integer
+additionalProperties: false

@@ -1,0 +1,13 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: BatchRequest
+type: object
+properties:
+  custom_id:
+    type: string
+    description: Developer-assigned identifier for this request (opaque, no PII).
+  params:
+    $ref: create_message_request.yaml
+required:
+  - custom_id
+  - params
+additionalProperties: false

@@ -1,0 +1,29 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolResultContentBlock
+description: Result of a tool call, sent by the user in a subsequent message.
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - tool_result
+  tool_use_id:
+    type: string
+    description: "The `id` from the corresponding `tool_use` block."
+  content:
+    oneOf:
+      - type: string
+      - type: array
+        items:
+          oneOf:
+            - $ref: text_content_block.yaml
+            - $ref: image_content_block.yaml
+  is_error:
+    type: boolean
+    description: Whether this result represents an error.
+  cache_control:
+    $ref: cache_control.yaml
+required:
+  - type
+  - tool_use_id
+additionalProperties: false

@@ -1,0 +1,8 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: OutputContentBlock
+description: Union of content block types that can appear in output messages
+oneOf:
+  - $ref: text_content_block.yaml
+  - $ref: tool_use_content_block.yaml
+  - $ref: thinking_content_block.yaml
+  - $ref: redacted_thinking_content_block.yaml

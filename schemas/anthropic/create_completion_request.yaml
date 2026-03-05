@@ -1,0 +1,35 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateCompletionRequest
+type: object
+properties:
+  model:
+    type: string
+  prompt:
+    type: string
+    description: "Alternating `\\n\\nHuman:` / `\\n\\nAssistant:` formatted prompt."
+  max_tokens_to_sample:
+    type: integer
+    minimum: 1
+  stop_sequences:
+    type: array
+    items:
+      type: string
+  temperature:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    default: 1.0
+  top_p:
+    type: number
+  top_k:
+    type: integer
+  stream:
+    type: boolean
+    default: false
+  metadata:
+    $ref: metadata.yaml
+required:
+  - model
+  - prompt
+  - max_tokens_to_sample
+additionalProperties: false

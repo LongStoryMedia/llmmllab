@@ -1,0 +1,66 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CreateMessageRequest
+type: object
+properties:
+  model:
+    type: string
+    description: "The model to use. Specify the full version string. Examples: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`."
+  messages:
+    type: array
+    items:
+      $ref: input_message.yaml
+    description: Prior conversational turns. Consecutive turns of the same role are merged.
+  max_tokens:
+    type: integer
+    minimum: 1
+    description: Maximum number of tokens to generate (absolute ceiling).
+  system:
+    $ref: system_prompt.yaml
+  tools:
+    type: array
+    items:
+      $ref: tool.yaml
+  tool_choice:
+    $ref: tool_choice.yaml
+  thinking:
+    $ref: thinking_config.yaml
+  temperature:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    default: 1.0
+    description: Randomness (0 = deterministic, 1 = creative). Default 1.0. Must be 1.0 when thinking is enabled.
+  top_p:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+    description: Nucleus sampling threshold.
+  top_k:
+    type: integer
+    minimum: 0
+    description: Top-k sampling. Only sample from the top K options for each subsequent token.
+  stop_sequences:
+    type: array
+    items:
+      type: string
+    description: Custom stop sequences. Model stops generating when it encounters any of these.
+  stream:
+    type: boolean
+    default: false
+    description: If true, stream the response using server-sent events.
+  metadata:
+    $ref: metadata.yaml
+  service_tier:
+    type: string
+    enum:
+      - auto
+      - standard_only
+    description: Determines whether to use priority or standard capacity.
+  inference_geo:
+    type: string
+    description: Data residency control – specify where model inference runs.
+required:
+  - model
+  - messages
+  - max_tokens
+additionalProperties: false

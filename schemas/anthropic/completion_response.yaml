@@ -1,0 +1,28 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: CompletionResponse
+type: object
+properties:
+  id:
+    type: string
+  type:
+    type: string
+    enum:
+      - completion
+  completion:
+    type: string
+  model:
+    type: string
+  stop_reason:
+    type: string
+    enum:
+      - stop_sequence
+      - max_tokens
+  stop:
+    type: string
+required:
+  - id
+  - type
+  - completion
+  - model
+  - stop_reason
+additionalProperties: false

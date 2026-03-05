@@ -1,0 +1,21 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Model
+type: object
+properties:
+  id:
+    type: string
+  type:
+    type: string
+    enum:
+      - model
+  display_name:
+    type: string
+  created_at:
+    type: string
+    format: date-time
+required:
+  - id
+  - type
+  - display_name
+  - created_at
+additionalProperties: false

@@ -1,0 +1,15 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: Usage
+type: object
+properties:
+  input_tokens:
+    type: integer
+  output_tokens:
+    type: integer
+  cache_creation_input_tokens:
+    type: integer
+  cache_read_input_tokens:
+    type: integer
+  server_tool_use:
+    $ref: server_tool_use.yaml
+additionalProperties: false
