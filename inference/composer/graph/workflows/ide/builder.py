@@ -229,7 +229,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Prompt processing batch size - process multiple prompts in parallel
         batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=512,
+        micro_batch_size=1024,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
