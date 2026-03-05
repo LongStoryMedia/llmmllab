@@ -15,6 +15,8 @@ from models.anthropic.count_tokens_request import CountTokensRequest
 from models.anthropic.count_tokens_response import CountTokensResponse
 from models.anthropic.output_content_block import OutputContentBlock
 from models.anthropic.text_content_block import TextContentBlock
+from models.anthropic.tool_reference_content_block import ToolReferenceContentBlock
+from models.anthropic.tool_result_content_block import ToolResultContentBlock
 from models.anthropic.tool_use_content_block import ToolUseContentBlock
 from models.anthropic.thinking_content_block import ThinkingContentBlock
 from models.anthropic.usage import Usage
@@ -201,11 +203,15 @@ def messages_from_anthropic(
                     if isinstance(block.content, str):
                         result_text = block.content
                     elif isinstance(block.content, list):
-                        result_text = "\n".join(
-                            b.text
-                            for b in block.content
-                            if hasattr(b, "text") and b.text
-                        )
+                        # Handle mixed content: text, tool_reference, etc.
+                        parts = []
+                        for item in block.content:
+                            if hasattr(item, "text") and item.text:
+                                parts.append(item.text)
+                            elif isinstance(item, ToolReferenceContentBlock):
+                                # Format tool reference as readable text
+                                parts.append(f"[Tool: {item.tool_name}]")
+                        result_text = "\n".join(parts)
                     messages.append(
                         Message(
                             role=MessageRole.TOOL,

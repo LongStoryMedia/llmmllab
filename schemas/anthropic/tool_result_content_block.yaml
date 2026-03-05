@@ -18,6 +18,7 @@ properties:
           oneOf:
             - $ref: text_content_block.yaml
             - $ref: image_content_block.yaml
+            - $ref: tool_reference_content_block.yaml
   is_error:
     type: boolean
     description: Whether this result represents an error.

@@ -1,0 +1,17 @@
+$schema: http://json-schema.org/draft-07/schema#
+title: ToolReferenceContentBlock
+description: Tool reference block that can be included in tool_result content.
+type: object
+properties:
+  type:
+    type: string
+    enum:
+      - tool_reference
+  tool_name:
+    type: string
+  cache_control:
+    $ref: cache_control.yaml
+required:
+  - type
+  - tool_name
+additionalProperties: false
