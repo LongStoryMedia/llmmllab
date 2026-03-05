@@ -205,7 +205,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="qwen3-coder-next-iq4-xs",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=110000,
+        num_ctx=131072,
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
@@ -227,9 +227,9 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Tensor parallel parts (-1 = auto)
         n_parts=-1,
         # Prompt processing batch size - process multiple prompts in parallel
-        batch_size=4096,
+        batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=1024,
+        micro_batch_size=512,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
