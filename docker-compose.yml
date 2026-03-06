@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  composer:
+    build:
+      context: .
+      dockerfile: composer/k8s/Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_PORT=50051
+      - DB_HOST=host.docker.internal
+      - DB_PORT=32345
+      - REDIS_HOST=host.docker.internal
+      - REDIS_PORT=32346
+    volumes:
+      - ./composer:/app/composer
+      - ./schemas:/app/schemas
+    networks:
+      - llmmll-network
+
+  runner:
+    build:
+      context: .
+      dockerfile: runner/k8s/Dockerfile
+    ports:
+      - "50052:50052"
+    environment:
+      - GRPC_PORT=50052
+      - DB_HOST=host.docker.internal
+      - DB_PORT=32345
+      - REDIS_HOST=host.docker.internal
+      - REDIS_PORT=32346
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./runner:/app/runner
+      - ./schemas:/app/schemas
+      - ./models:/models
+    networks:
+      - llmmll-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  server:
+    build:
+      context: .
+      dockerfile: server/k8s/Dockerfile
+    ports:
+      - "8000:8000"
+      - "50051:50051"
+    environment:
+      - PORT=8000
+      - GRPC_PORT=50051
+      - DB_HOST=host.docker.internal
+      - DB_PORT=32345
+      - REDIS_HOST=host.docker.internal
+      - REDIS_PORT=32346
+    volumes:
+      - ./server:/app/server
+      - ./schemas:/app/schemas
+    networks:
+      - llmmll-network
+
+networks:
+  llmmll-network:
+    driver: bridge
