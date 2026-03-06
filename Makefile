@@ -104,15 +104,12 @@ sync-submodules:
 	fi
 	@echo "Submodules synced successfully."
 
-.PHONY: sync-submodules
 
-push-all:
+push-all: sync-submodules
 	@echo "Pushing all changes..."
 	@TIMESTAMP=$$(date +%s); \
-	git add -A; \
+	git add .; \
 	git commit -m "Update: $$TIMESTAMP" || true; \
-	git push origin $$(git rev-parse --abbrev-ref HEAD); \
-	$(MAKE) sync-submodules
+	git push origin $$(git rev-parse --abbrev-ref HEAD);
 	@echo "All changes pushed successfully."
 
-.PHONY: push-all
