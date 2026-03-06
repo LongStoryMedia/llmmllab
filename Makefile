@@ -69,7 +69,7 @@ clean:
 	rm -rf ./inference/models/
 	@echo "Artifacts cleaned."
 
-.PHONY: inference maistro ui validate test clean
+.PHONY: inference maistro ui validate test clean sync-submodules
 
 e2e-%:
 	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
@@ -79,3 +79,40 @@ clear-debug:
 	rm ./inference/debug/out/*.json
 	rm ./inference/debug/out/*.md
 	./inference/sync-code.sh -R
+
+sync-submodules:
+	@echo "Syncing submodules..."
+	@for submodule in composer runner schemas server ui; do \
+		echo "Processing $$submodule..."; \
+		branch=$$(git -C $$submodule rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main"); \
+		echo "  Branch: $$branch"; \
+		git -C $$submodule pull origin $$branch --ff-only 2>/dev/null || true; \
+		git -C $$submodule add -A 2>/dev/null || true; \
+		if [ -n "$$(git -C $$submodule status --porcelain 2>/dev/null)" ]; then \
+			git -C $$submodule commit -m "Update from root repository"; \
+			git -C $$submodule push origin $$branch 2>/dev/null || true; \
+		else \
+			echo "  No changes to commit"; \
+		fi; \
+	done; \
+	git add composer runner schemas server ui; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		git commit -m "Update submodules"; \
+		git push origin $$(git rev-parse --abbrev-ref HEAD) 2>/dev/null || true; \
+	else \
+		echo "Root repo: No changes to commit"; \
+	fi
+	@echo "Submodules synced successfully."
+
+.PHONY: sync-submodules
+
+push-all:
+	@echo "Pushing all changes..."
+	@TIMESTAMP=$$(date +%s); \
+	git add -A; \
+	git commit -m "Update: $$TIMESTAMP" || true; \
+	git push origin $$(git rev-parse --abbrev-ref HEAD); \
+	$(MAKE) sync-submodules
+	@echo "All changes pushed successfully."
+
+.PHONY: push-all
