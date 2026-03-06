@@ -6,29 +6,38 @@ A comprehensive platform for language model inference, evaluation, and deploymen
 
 LLM ML Lab is a full-featured platform for deploying, serving, and evaluating large language models. The platform consists of multiple components that work together to provide a complete solution for language model infrastructure:
 
-1. **Inference Service** - Python-based service for model execution and API endpoints
-2. **UI** - React-based user interface for interacting with the services
+1. **Server** - Python-based gRPC/HTTP service for orchestration and API routing
+2. **Composer** - Python-based LangGraph agent orchestration and tool generation
+3. **Runner** - Python-based model execution service (GPU-enabled, runs on lsnode-3)
+4. **UI** - React-based user interface for interacting with the services
 
 ## Project Structure
 
 ```text
 /llmmllab
-├── inference/                # Python-based inference services
-│   ├── evaluation/           # Model benchmarking and evaluation tools
-│   ├── server/               # REST and gRPC API services
-│   └── runner/               # Model execution and pipeline management
+├── server/                   # Python-based orchestration service (gRPC/HTTP)
+│   └── k8s/                  # Kubernetes manifests and build scripts
+├── composer/                 # Python-based LangGraph agent orchestration
+│   └── k8s/                  # Kubernetes manifests and build scripts
+├── runner/                   # Python-based model execution (GPU-enabled)
+│   └── k8s/                  # Kubernetes manifests and build scripts
+├── inference/                # Legacy Python inference service (deprecated)
 ├── ui/                       # React-based frontend
 │   ├── public/               # Static assets
 │   └── src/                  # React components and application logic
 ├── proto/                    # Protocol buffer definitions
 ├── docs/                     # Documentation
-└── schemas/                  # Common schema definitions
+├── schemas/                  # Common schema definitions
+├── build.sh                  # Code generation script
+├── regenerate_models.sh      # Model regeneration script
+├── build-image.sh            # Multi-arch build helper
+└── Makefile                  # Build and deployment commands
 ```
 
 ## Key Features
 
 - **Multi-Modal Support**: Text generation, image generation, and embeddings
-- **Multiple API Interfaces**: REST and gRPC endpoints
+- **Multiple API Interfaces**: OpenAI-compatible REST endpoints, gRPC for internal communication
 - **Model Management**: Add, configure, and switch between models
 - **Memory Optimization**: Automatic memory management and resource allocation
 - **Performance Monitoring**: Logging and metrics collection
@@ -38,6 +47,30 @@ LLM ML Lab is a full-featured platform for deploying, serving, and evaluating la
 - **RabbitMQ Integration**: Message queuing for asynchronous processing
 - **Context Extension**: Sophisticated system to extend LLM context windows
 - **Schema Validation**: YAML schemas for type-safety and consistency
+
+## Architecture
+
+The system follows a microservice architecture where components communicate through well-defined APIs:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│     UI      │────>│   Server    │────>│   Composer    │
+└─────────────┘     └─────────────┘     └─────────────┘
+                                            │
+                                            ▼
+                                    ┌─────────────┐
+                                    │    Runner     │
+                                    │   (GPU)       │
+                                    └─────────────┘
+```
+
+- **Server** - Entry point for all API requests, routes to appropriate services
+- **Composer** - LangGraph-based agent orchestration, tool calling, intent analysis
+- **Runner** - GPU-accelerated model execution (llama.cpp, Flux, Qwen3-VL)
+- **WebSockets** - Real-time communication for streaming responses
+- **RabbitMQ** - Message queuing for async tasks
+- **PostgreSQL** - Persistent storage for users, conversations, configurations
+- **Redis** - Caching layer for improved performance
 
 ## Configuration Architecture
 
@@ -59,13 +92,14 @@ See [Configuration Architecture](docs/configuration_architecture.md) for detaile
 
 Each component has its own detailed README with specific instructions:
 
-- [Inference Services](inference/README.md) - API services and model execution
+- [Server](server/README.md) - Orchestration service and API routing
+- [Composer](composer/README.md) - LangGraph agent orchestration and tool generation
+- [Runner](runner/README.md) - Model execution and pipeline management
 - [UI Application](ui/README.md) - User interface for interacting with the services
 - [YAML Schemas](schemas/README.md) - Data structure definitions
 - [Context Extension Architecture](docs/context_extension.md) - LLM context window extension system
 - [Dynamic Tool Generation](inference/server/tools/README.md) - Tool generation for model execution
 - [Configuration Architecture](docs/configuration_architecture.md) - Hierarchical configuration system
-- [Composer Configuration Architecture](docs/composer_configuration_architecture.md) - Configuration management rules for composer components
 - [Multi-Tier User Config Caching](docs/multi_tier_user_config_caching.md) - In-memory → Redis → Database caching system
 
 ## Pipeline Documentation
@@ -83,71 +117,149 @@ The pipeline system supports all major AI workflows including text generation, e
 
 ### Prerequisites
 
-- Python 3.12+ (for inference services)
+- Python 3.12+ (for server, composer, runner)
 - Node.js 18+ (for UI)
-- Docker and Docker Compose (optional for containerized deployment)
-- CUDA-compatible GPU (recommended for performance)
+- Docker and Docker Compose (for local development)
+- Kubernetes cluster (for production deployment)
+- CUDA-compatible GPU (for runner - lsnode-3 only)
 
-### Quick Start with Docker Compose
+### Quick Start (Local Development)
 
-The simplest way to get started is using Docker Compose:
+For local development without Kubernetes:
 
 ```bash
 # Clone the repository
 git clone https://github.com/LongStoryMedia/llmmllab.git
 cd llmmllab
 
+# Install UI dependencies
+cd ui && npm install && cd ..
+
 # Start all services
-docker-compose up -d
+make start
 ```
 
-This will start all the necessary services and make them available on their respective ports.
+### Development Mode
 
-### Manual Setup
+Run individual components locally:
 
-For development or custom deployments, you can set up each component separately:
+```bash
+# Start server locally (without k8s)
+make dev-server
 
-1. **Set up inference services**:
+# Start composer locally
+make dev-composer
 
-   ```bash
-   cd inference
-   ./setup_environments.sh
-   ```
+# Start runner locally
+make dev-runner
 
-2. **Set up UI application**:
+# Start UI
+make start-ui
+```
 
-   ```bash
-   cd ui
-   npm install
-   npm run dev
-   ```
+### Code Generation
 
-See the individual component READMEs for more detailed instructions.
+The platform uses YAML schemas to define data contracts and automatically generate Python models and TypeScript types.
 
-## Development
+```bash
+# Generate all models (Python + TypeScript)
+make gen
+
+# Generate only Python models
+make gen-python
+
+# Generate only TypeScript types
+make gen-typescript
+```
+
+### Kubernetes Deployment
+
+For production deployment on Kubernetes:
+
+```bash
+# Deploy all services
+make deploy
+
+# Deploy individual services
+make deploy-server      # Server service (multi-arch)
+make deploy-composer    # Composer service (multi-arch)
+make deploy-runner      # Runner service (GPU, lsnode-3)
+
+# Deploy legacy inference service
+make inference
+
+# Deploy UI
+make ui
+```
+
+## Makefile Commands
+
+### Development Servers
+| Command | Description |
+|---------|-------------|
+| `make start` | Start all development servers (inference + UI) |
+| `make start-inference` | Start inference service in dev mode (syncs to k8s) |
+| `make start-ui` | Start UI development server |
+| `make start-maistro` | Start maistro service |
+
+### Code Generation
+| Command | Description |
+|---------|-------------|
+| `make gen` | Generate all models (Python + TypeScript) |
+| `make gen-python` | Generate Python models only |
+| `make gen-typescript` | Generate TypeScript types only |
+
+### Kubernetes Deployment
+| Command | Description |
+|---------|-------------|
+| `make deploy` | Deploy all services (server, composer, runner) |
+| `make deploy-server` | Deploy server service (multi-arch) |
+| `make deploy-composer` | Deploy composer service (multi-arch) |
+| `make deploy-runner` | Deploy runner service (GPU-enabled, lsnode-3) |
+
+### Local Development
+| Command | Description |
+|---------|-------------|
+| `make dev-server` | Run server locally (without k8s) |
+| `make dev-composer` | Run composer locally (without k8s) |
+| `make dev-runner` | Run runner locally (without k8s) |
+
+### Validation & Testing
+| Command | Description |
+|---------|-------------|
+| `make validate` | Run TypeScript and Python validation |
+| `make test` | Run all tests (inference + UI) |
+| `make test-inference` | Run inference tests only |
+| `make test-ui` | Run UI tests only |
+
+### Cleanup
+| Command | Description |
+|---------|-------------|
+| `make clean` | Remove build artifacts |
+| `make clean-py` | Remove Python cache files |
+
+### Submodule Management
+| Command | Description |
+|---------|-------------|
+| `make sync-submodules` | Sync all submodules and push changes |
+| `make push-all` | Sync submodules and push all changes |
+
+### Help
+| Command | Description |
+|---------|-------------|
+| `make help` | Show all available commands |
+
+## Development Workflow
 
 ### Schema-Driven Development
 
 The platform uses YAML schemas to define data contracts and automatically generate Python models and TypeScript types.
 
-#### Regenerating All Models
-
-```bash
-# Generate Python and TypeScript models from YAML schemas
-./regenerate_models.sh
-
-# Language-specific generation
-./regenerate_models.sh python     # Generate only Python models
-./regenerate_models.sh typescript # Generate only TypeScript models
-```
-
 #### Creating New Schemas
 
 1. Create new YAML schema in `schemas/[name].yaml`
-2. Generate Python model: `schema2code schemas/[name].yaml -l python -o inference/models/[name].py`
-3. Generate TypeScript types: `schema2code schemas/[name].yaml -l typescript -o ui/src/types/[name].ts`
-
-The `schema2code` tool automatically updates `__init__.py` with exports and maintains type consistency across the platform.
+2. Generate code: `make gen` or `make gen-all`
+3. Use the generated models in your code
 
 #### Schema Development Workflow
 
@@ -163,48 +275,13 @@ When modifying APIs or data structures:
 - **Avoid Duplication**: If an enum or structure is used in multiple schemas, extract it to a separate schema file
 - **Use $ref**: Reference shared schemas using `$ref: "shared_schema.yaml"` instead of copying definitions
 - **Single Source of Truth**: Each data structure should be defined exactly once
-- **Example**: Instead of duplicating computational requirements enum, create `computational_requirement.yaml` and reference it
 
-For more details on the schema architecture, see [Intent Analysis Architecture](docs/intent_analysis_architecture.md).
+### Multi-Platform Build
 
-## Architecture
+The build system uses Docker Buildx for multi-arch images:
 
-The system follows a microservice architecture where components communicate through well-defined APIs:
-
-- The **UI** makes direct requests to the **Inference Services**
-- **WebSockets** provide real-time communication for chat, image generation, and status updates
-- **RabbitMQ** handles asynchronous processing for computationally intensive tasks
-- **PostgreSQL** provides persistent storage for user data, conversations, and configurations
-
-### RabbitMQ Integration
-
-The platform uses RabbitMQ as a message broker for:
-
-- **Task Queuing**: Managing computationally intensive tasks like image generation
-- **Load Balancing**: Distributing tasks across multiple worker instances
-- **Priority Processing**: Handling high-priority requests ahead of others
-- **Failure Recovery**: Ensuring tasks are not lost if a worker fails
-
-Configuration is defined in `schemas/rabbitmq_config.yaml`.
-
-### WebSocket Communication
-
-Real-time communication is handled through WebSocket connections for:
-
-- **Chat Streaming**: Streaming token-by-token responses for chat completions
-- **Image Generation Status**: Real-time updates on image generation progress
-- **System Status**: Updates on model loading, resource availability, and errors
-
-WebSocket schemas are defined in `schemas/web_socket_connection.yaml` and related files.
-
-### Context Extension System
-
-The platform includes a sophisticated Context Extension System (documented in [context_extension.md](docs/context_extension.md)) that:
-
-- **Extends LLM Context Windows**: Overcomes token limitations of models
-- **Semantic Memory**: Retrieves relevant conversation history
-- **External Search**: Incorporates real-time web knowledge
-- **Hierarchical Summarization**: Compresses conversation context intelligently
+- **Server & Composer**: Build for both `linux/amd64` and `linux/arm64`
+- **Runner**: Build directly on lsnode-3 (AMD64) for GPU compatibility
 
 ## Release Notes
 

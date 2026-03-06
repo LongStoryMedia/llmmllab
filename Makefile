@@ -3,6 +3,89 @@ export HELM_KUBECONTEXT=lsnet
 
 .SILENT:
 
+# =============================================================================
+# DEVELOPMENT SERVERS
+# =============================================================================
+
+start:
+	@echo "Starting all development servers..."
+	$(MAKE) -j2 start-inference start-ui
+
+start-inference:
+	@echo "Starting inference service in development mode..."
+	chmod +x ./inference/sync-code.sh
+	kubectl logs -f -n llmmll deployment/llmmll & ./inference/sync-code.sh -w
+
+start-ui:
+	@echo "Starting UI development server..."
+	@export LOCAL=true && cd ui && npm run dev
+
+start-maistro:
+	@echo "Starting maistro..."
+	@export LOCAL=true && cd maistro && air
+
+# =============================================================================
+# CODE GENERATION
+# =============================================================================
+
+gen:
+	@echo "Generating models from schemas..."
+	chmod +x ./build.sh
+	./build.sh
+
+gen-python:
+	@echo "Generating Python models from schemas..."
+	chmod +x ./regenerate_models.sh
+	./regenerate_models.sh python
+
+gen-typescript:
+	@echo "Generating TypeScript types from schemas..."
+	chmod +x ./regenerate_models.sh
+	./regenerate_models.sh typescript
+
+gen-all:
+	@echo "Generating all models (Python + TypeScript)..."
+	chmod +x ./build.sh
+	./build.sh
+
+# =============================================================================
+# BUILD & DEPLOYMENT - KUBERNETES
+# =============================================================================
+
+deploy: deploy-server deploy-composer deploy-runner
+	@echo "All services deployed successfully."
+
+deploy-server:
+	@echo "Deploying server service (multi-arch)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	chmod +x ./server/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-server -n llmmll
+
+deploy-composer:
+	@echo "Deploying composer service (multi-arch)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	chmod +x ./composer/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-composer -n llmmll
+
+deploy-runner:
+	@echo "Deploying runner service (GPU-enabled)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	chmod +x ./runner/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./runner/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./runner/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-runner -n llmmll
+
+# =============================================================================
+# BUILD & DEPLOYMENT - INFERENCE (legacy)
+# =============================================================================
+
 inference:
 	@echo "Deploying inference service..."
 	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
@@ -18,37 +101,32 @@ ui:
 	chmod +x ./ui/deploy.sh
 	./ui/deploy.sh
 
-deploy: inference maistro ui
-	@echo "All services deployed successfully."
+# =============================================================================
+# LOCAL DEVELOPMENT
+# =============================================================================
 
-start:
-	@echo "Starting all services..."
-	$(MAKE) -j2 inference-dev start-ui
+dev-server:
+	@echo "Starting server in development mode..."
+	@export LOCAL=true && cd server && python -m server.grpc.server
 
-start-maistro:
-	@echo "Starting maistro..."
-	@export LOCAL=true && cd maistro && air
+dev-composer:
+	@echo "Starting composer in development mode..."
+	@export LOCAL=true && cd composer && python -m composer.grpc.server
 
-start-ui:
-	@echo "Starting UI..."
-	@export LOCAL=true && cd ui && npm run dev
+dev-runner:
+	@echo "Starting runner in development mode..."
+	@export LOCAL=true && cd runner && python -m runner.server
 
-inference-dev:
-	@echo "Starting inference service in development mode..."
-	chmod +x ./inference/sync-code.sh
-	kubectl logs -f -n llmmll deployment/llmmll & ./inference/sync-code.sh -w
-
-gen:
-	@echo "generating models..."
-	chmod +x ./build.sh
-	./build.sh
+# =============================================================================
+# VALIDATION & TESTING
+# =============================================================================
 
 validate:
 	@echo "Validating TypeScript in UI project..."
 	@cd ui && npx tsc --noEmit
 	@echo "Validating Python syntax in inference project..."
 	@python -m compileall -q -x '(venv|\.venv)' ./inference
-	@echo "Checking for Python type errors using Pyright (VSCode's Pylance engine)..."
+	@echo "Checking for Python type errors using Pyright..."
 	@if command -v pyright >/dev/null 2>&1; then \
 		pyright -p ./pyrightconfig.json; \
 	else \
@@ -62,6 +140,18 @@ test:
 	cd inference && pytest test/
 	cd ui && npm run test
 
+test-inference:
+	@echo "Running inference tests..."
+	cd inference && pytest test/
+
+test-ui:
+	@echo "Running UI tests..."
+	cd ui && npm run test
+
+# =============================================================================
+# CLEANUP
+# =============================================================================
+
 clean:
 	@echo "Cleaning artifacts..."
 	rm -rf ./inference/debug/out/
@@ -69,47 +159,21 @@ clean:
 	rm -rf ./inference/models/
 	@echo "Artifacts cleaned."
 
-.PHONY: inference maistro ui validate test clean sync-submodules server runner
+clean-py:
+	@echo "Cleaning Python artifacts..."
+	rm -rf ./inference/__pycache__/
+	rm -rf ./inference/*/__pycache__/
+	rm -rf ./inference/*/*/__pycache__/
+	rm -rf ./inference/*/*/*/__pycache__/
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@echo "Python artifacts cleaned."
 
-# Service-specific deployment targets
-# runner builds on lsnode-3 (AMD) since it requires GPU access
-# server and composer use multi-arch builds for ARM64/AMD64 compatibility
+clean-pycache:
+	$(MAKE) clean-py
 
-runner:
-	@echo "Deploying runner service (GPU-enabled)..."
-	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
-	@echo "Using branch: $(BRANCH_NAME) for image tag"
-	ssh root@lsnode-3.local "cd /data/code-base/runner && docker build -t 192.168.0.71:31500/runner:$(BRANCH_NAME) -f k8s/Dockerfile . --push"
-	chmod +x ./runner/k8s/apply.sh
-	DOCKER_TAG=$(BRANCH_NAME) ./runner/k8s/apply.sh
-	kubectl rollout restart deployment llmmll-runner -n llmmll
-
-server:
-	@echo "Deploying server service (multi-arch)..."
-	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
-	@echo "Using branch: $(BRANCH_NAME) for image tag"
-	chmod +x ./server/k8s/build.sh
-	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/build.sh
-	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/apply.sh
-	kubectl rollout restart deployment llmmll-server -n llmmll
-
-composer:
-	@echo "Deploying composer service (multi-arch)..."
-	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
-	@echo "Using branch: $(BRANCH_NAME) for image tag"
-	chmod +x ./composer/k8s/build.sh
-	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/build.sh
-	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/apply.sh
-	kubectl rollout restart deployment llmmll-composer -n llmmll
-
-e2e-%:
-	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
-
-clear-debug:
-	rm ./inference/debug/out/*.txt
-	rm ./inference/debug/out/*.json
-	rm ./inference/debug/out/*.md
-	./inference/sync-code.sh -R
+# =============================================================================
+# SUBMODULE MANAGEMENT
+# =============================================================================
 
 sync-submodules:
 	@echo "Syncing submodules..."
@@ -126,7 +190,7 @@ sync-submodules:
 			echo "  No changes to commit"; \
 		fi; \
 	done; \
-	git submodule update --remote \
+	git submodule update --remote; \
 	git add composer runner schemas server ui; \
 	if [ -n "$$(git status --porcelain)" ]; then \
 		git commit -m "Update submodules"; \
@@ -136,7 +200,6 @@ sync-submodules:
 	fi
 	@echo "Submodules synced successfully."
 
-
 push-all: sync-submodules
 	@echo "Pushing all changes..."
 	@TIMESTAMP=$$(date +%s); \
@@ -145,3 +208,60 @@ push-all: sync-submodules
 	git push origin $$(git rev-parse --abbrev-ref HEAD);
 	@echo "All changes pushed successfully."
 
+# =============================================================================
+# HELP
+# =============================================================================
+
+help:
+	@echo "LLM ML Lab - Makefile Commands"
+	@echo ""
+	@echo "DEVELOPMENT SERVERS"
+	@echo "  start              - Start all development servers (inference + UI)"
+	@echo "  start-inference    - Start inference service in dev mode (syncs to k8s)"
+	@echo "  start-ui           - Start UI development server"
+	@echo "  start-maistro      - Start maistro service"
+	@echo ""
+	@echo "CODE GENERATION"
+	@echo "  gen                - Generate all models (Python + TypeScript)"
+	@echo "  gen-python         - Generate Python models only"
+	@echo "  gen-typescript     - Generate TypeScript types only"
+	@echo "  gen-all            - Alias for gen"
+	@echo ""
+	@echo "KUBERNETES DEPLOYMENT"
+	@echo "  deploy             - Deploy all services (server, composer, runner)"
+	@echo "  deploy-server      - Deploy server service (multi-arch)"
+	@echo "  deploy-composer    - Deploy composer service (multi-arch)"
+	@echo "  deploy-runner      - Deploy runner service (GPU-enabled, lsnode-3)"
+	@echo "  inference          - Deploy legacy inference service"
+	@echo "  ui                 - Deploy UI service"
+	@echo ""
+	@echo "LOCAL DEVELOPMENT"
+	@echo "  dev-server         - Run server locally (without k8s)"
+	@echo "  dev-composer       - Run composer locally (without k8s)"
+	@echo "  dev-runner         - Run runner locally (without k8s)"
+	@echo ""
+	@echo "VALIDATION & TESTING"
+	@echo "  validate           - Run TypeScript and Python validation"
+	@echo "  test               - Run all tests (inference + UI)"
+	@echo "  test-inference     - Run inference tests only"
+	@echo "  test-ui            - Run UI tests only"
+	@echo ""
+	@echo "CLEANUP"
+	@echo "  clean              - Remove build artifacts"
+	@echo "  clean-py           - Remove Python cache files"
+	@echo "  clean-pycache      - Alias for clean-py"
+	@echo ""
+	@echo "SUBMODULE MANAGEMENT"
+	@echo "  sync-submodules    - Sync all submodules and push changes"
+	@echo "  push-all           - Sync submodules and push all changes"
+	@echo ""
+	@echo "For more information, see the README.md"
+
+.PHONY: start start-inference start-ui start-maistro \
+	gen gen-python gen-typescript gen-all \
+	deploy deploy-server deploy-composer deploy-runner \
+	inference ui \
+	dev-server dev-composer dev-runner \
+	validate test test-inference test-ui \
+	clean clean-py clean-pycache \
+	sync-submodules push-all help
