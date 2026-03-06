@@ -95,6 +95,7 @@ sync-submodules:
 			echo "  No changes to commit"; \
 		fi; \
 	done; \
+	git submodule update --remote \
 	git add composer runner schemas server ui; \
 	if [ -n "$$(git status --porcelain)" ]; then \
 		git commit -m "Update submodules"; \
