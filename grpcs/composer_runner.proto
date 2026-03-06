@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package composer_runner;
+
+option go_package = "composer_runner;composer_runner";
+
+// PipelineHandle represents a created pipeline
+message PipelineHandle {
+    string pipeline_id = 1;
+    string model_name = 2;
+    bool is_cached = 3;
+}
+
+// ModelProfile defines model configuration
+message ModelProfile {
+    string model_name = 1;
+    string provider = 2;
+    string task_type = 3;
+    map<string, string> model_config = 4;
+    GPUConfig gpu_config = 5;
+    ParameterOptimizationConfig optimization_config = 6;
+}
+
+// GPUConfig defines GPU-specific settings
+message GPUConfig {
+    int32 gpu_layers = 1;
+    string main_gpu = 2;
+    double gpu_memory_fraction = 3;
+    bool flash_attn = 4;
+}
+
+// ParameterOptimizationConfig defines optimization settings
+message ParameterOptimizationConfig {
+    int32 batch_size = 1;
+    int32 context_size = 2;
+    int32 threads = 3;
+    bool mlock = 4;
+    bool mmap = 5;
+}
+
+// TokenChunk represents a chunk of generated tokens
+message TokenChunk {
+    string token = 1;
+    int32 token_id = 2;
+    double probability = 3;
+    map<string, string> metadata = 4;
+}
+
+// PipelineEvent represents a pipeline execution event (streaming)
+message PipelineEvent {
+    oneof event {
+        TokenChunk token_chunk = 1;
+        PipelineComplete complete = 2;
+        PipelineError error = 3;
+    }
+}
+
+// PipelineComplete marks pipeline completion
+message PipelineComplete {
+    bytes output_data = 1;
+    int64 duration_ms = 2;
+}
+
+// PipelineError represents a pipeline error
+message PipelineError {
+    string message = 1;
+    string error_code = 2;
+}
+
+// GenerateEmbeddingsRequest requests embedding generation
+message GenerateEmbeddingsRequest {
+    repeated string texts = 1;
+    string model_name = 2;
+    int32 dimension = 3;
+}
+
+// Embedding represents a single embedding vector
+message Embedding {
+    repeated float values = 1;
+    int32 index = 2;
+}
+
+// GenerateEmbeddingsResponse returns embeddings
+message GenerateEmbeddingsResponse {
+    repeated Embedding embeddings = 1;
+    int32 model_dimension = 2;
+}
+
+// CacheStats represents pipeline cache statistics
+message CacheStats {
+    int32 total_pipelines = 1;
+    int32 cached_pipelines = 2;
+    int32 active_pipelines = 3;
+    int64 total_memory_bytes = 4;
+    int64 available_memory_bytes = 5;
+    int64 cache_hits = 6;
+    int64 cache_misses = 7;
+    double hit_rate = 8;
+}
+
+// CreatePipelineRequest requests pipeline creation
+message CreatePipelineRequest {
+    ModelProfile profile = 1;
+    string priority = 2;
+    string grammar_type = 3;
+    map<string, string> metadata = 4;
+}
+
+// ExecutePipelineRequest requests pipeline execution
+message ExecutePipelineRequest {
+    string pipeline_id = 1;
+    bytes input_data = 2;
+    bool stream_output = 3;
+}
+
+// GetCacheStatsRequest requests cache statistics
+message GetCacheStatsRequest {
+    string pipeline_type = 1;
+}
+
+// EvictPipelineRequest requests pipeline eviction
+message EvictPipelineRequest {
+    string pipeline_id = 1;
+    bool force = 2;
+}
+
+// EvictPipelineResponse returns eviction results
+message EvictPipelineResponse {
+    bool success = 1;
+    string message = 2;
+    int64 freed_memory_bytes = 3;
+}
+
+// RunnerService provides pipeline management and execution
+service RunnerService {
+    // CreatePipeline creates a new pipeline from profile
+    rpc CreatePipeline(CreatePipelineRequest) returns (PipelineHandle);
+
+    // ExecutePipeline executes a pipeline with streaming output
+    rpc ExecutePipeline(ExecutePipelineRequest) returns (stream PipelineEvent);
+
+    // GenerateEmbeddings generates embeddings for texts
+    rpc GenerateEmbeddings(GenerateEmbeddingsRequest) returns (GenerateEmbeddingsResponse);
+
+    // GetCacheStats returns pipeline cache statistics
+    rpc GetCacheStats(GetCacheStatsRequest) returns (CacheStats);
+
+    // EvictPipeline evicts a pipeline from cache
+    rpc EvictPipeline(EvictPipelineRequest) returns (EvictPipelineResponse);
+}

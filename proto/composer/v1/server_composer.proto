@@ -1,0 +1,190 @@
+syntax = "proto3";
+
+package server_composer.v1;
+
+option go_package = "github.com/llmmllab/proto/composer/v1;composerv1";
+option java_package = "com.llmmllab.composer.v1";
+
+import "common/timestamp.proto";
+
+// WorkflowHandle represents a created workflow
+message WorkflowHandle {
+    string workflow_id = 1;
+    google.protobuf.Timestamp created_at = 2;
+}
+
+// WorkflowState represents the state of a workflow
+message WorkflowState {
+    string user_id = 1;
+    int32 conversation_id = 2;
+    string workflow_type = 3;
+    map<string, string> variables = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+// ComposeWorkflowRequest requests workflow composition from Composer
+message ComposeWorkflowRequest {
+    string user_id = 1;
+    string workflow_type = 2;
+    string model_name = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    map<string, string> user_config = 5;
+}
+
+// ExecuteWorkflowRequest requests workflow execution with streaming
+message ExecuteWorkflowRequest {
+    string workflow_id = 1;
+    WorkflowState initial_state = 2;
+    bool stream_events = 3;
+}
+
+// MessageContent represents a piece of message content
+message MessageContent {
+    string id = 1;
+    int64 message_id = 2;
+    string type = 3;
+    string text = 4;
+    string url = 5;
+    string format = 6;
+    string name = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+// Message represents a chat message
+message Message {
+    string role = 1;
+    repeated MessageContent content = 2;
+    int64 id = 3;
+    google.protobuf.Timestamp created_at = 4;
+    int64 conversation_id = 5;
+    repeated string thoughts = 6;
+    repeated ToolCall tool_calls = 7;
+    map<string, string> analyses = 8;
+    repeated Document documents = 9;
+    map<string, string> structured_output = 10;
+}
+
+// ToolCall represents a tool call
+message ToolCall {
+    string id = 1;
+    string name = 2;
+    string execution_id = 3;
+    map<string, string> args = 4;
+    bool success = 5;
+    string result_data = 6;
+    google.protobuf.Timestamp created_at = 7;
+}
+
+// Document represents an attached document
+message Document {
+    string id = 1;
+    string title = 2;
+    string content = 3;
+    string source = 4;
+    map<string, string> metadata = 5;
+}
+
+// ChatDelta represents a streaming delta response
+message ChatDelta {
+    string message_id = 1;
+    string role = 2;
+    string content = 3;
+    map<string, string> metadata = 4;
+}
+
+// WorkflowComplete marks workflow completion
+message WorkflowComplete {
+    bytes output_data = 1;
+    int64 duration_ms = 2;
+}
+
+// TodoItem represents a todo item
+message TodoItem {
+    string id = 1;
+    string title = 2;
+    bool completed = 3;
+    int64 created_at = 4;
+}
+
+// ChatResponseDelta represents a streaming delta response with metadata
+message ChatResponseDelta {
+    ChatDelta delta = 1;
+    google.protobuf.Timestamp created_at = 2;
+    repeated float context = 3;
+    string finish_reason = 4;
+    double total_duration = 5;
+    double load_duration = 6;
+    double prompt_eval_count = 7;
+    double prompt_eval_duration = 8;
+    double eval_count = 9;
+    double eval_duration = 10;
+    string processing = 11;
+    string state = 12;
+    string prev_state = 13;
+    map<string, string> metadata = 14;
+    repeated string observer_messages = 15;
+    repeated TodoItem todos = 16;
+}
+
+// ChatResponseComplete represents a workflow completion response with metadata
+message ChatResponseComplete {
+    WorkflowComplete complete = 1;
+    google.protobuf.Timestamp created_at = 2;
+    repeated float context = 3;
+    string finish_reason = 4;
+    double total_duration = 5;
+    double load_duration = 6;
+    double prompt_eval_count = 7;
+    double prompt_eval_duration = 8;
+    double eval_count = 9;
+    double eval_duration = 10;
+    string processing = 11;
+    string state = 12;
+    string prev_state = 13;
+    map<string, string> metadata = 14;
+    repeated string observer_messages = 15;
+    repeated TodoItem todos = 16;
+}
+
+// ChatResponse represents a streaming chat response
+// This uses a oneof pattern to support streaming deltas or complete responses
+message ChatResponse {
+    oneof response {
+        ChatResponseDelta delta = 1;
+        ChatResponseComplete complete = 2;
+    }
+}
+
+// CreateInitialStateRequest requests initial workflow state creation
+message CreateInitialStateRequest {
+    string user_id = 1;
+    int32 conversation_id = 2;
+    string workflow_type = 3;
+}
+
+// ClearWorkflowCacheRequest requests workflow cache clearing
+message ClearWorkflowCacheRequest {
+    string user_id = 1;
+}
+
+// ClearWorkflowCacheResponse returns cache clear results
+message ClearWorkflowCacheResponse {
+    bool success = 1;
+    string message = 2;
+    int32 cleared_count = 3;
+}
+
+// ComposerService provides workflow composition and execution
+service ComposerService {
+    // ComposeWorkflow creates a new workflow from requirements
+    rpc ComposeWorkflow(ComposeWorkflowRequest) returns (WorkflowHandle);
+
+    // ExecuteWorkflow executes a workflow with streaming responses
+    rpc ExecuteWorkflow(ExecuteWorkflowRequest) returns (stream ChatResponse);
+
+    // CreateInitialState creates initial state for a workflow
+    rpc CreateInitialState(CreateInitialStateRequest) returns (WorkflowState);
+
+    // ClearWorkflowCache clears cached workflows for a user
+    rpc ClearWorkflowCache(ClearWorkflowCacheRequest) returns (ClearWorkflowCacheResponse);
+}

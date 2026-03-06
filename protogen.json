@@ -1,0 +1,22 @@
+{
+    "proto_dir": "./proto",
+    "output_dir": "./gen/python",
+    "packages": [
+        {
+            "name": "composer",
+            "proto_files": [
+                "composer/v1/server_composer.proto",
+                "common/timestamp.proto"
+            ],
+            "output_package": "composer.v1"
+        },
+        {
+            "name": "runner",
+            "proto_files": [
+                "runner/v1/composer_runner.proto",
+                "common/timestamp.proto"
+            ],
+            "output_package": "runner.v1"
+        }
+    ]
+}
