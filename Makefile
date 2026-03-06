@@ -69,7 +69,38 @@ clean:
 	rm -rf ./inference/models/
 	@echo "Artifacts cleaned."
 
-.PHONY: inference maistro ui validate test clean sync-submodules
+.PHONY: inference maistro ui validate test clean sync-submodules server runner
+
+# Service-specific deployment targets
+# runner builds on lsnode-3 (AMD) since it requires GPU access
+# server and composer use multi-arch builds for ARM64/AMD64 compatibility
+
+runner:
+	@echo "Deploying runner service (GPU-enabled)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	ssh root@lsnode-3.local "cd /data/code-base/runner && docker build -t 192.168.0.71:31500/runner:$(BRANCH_NAME) -f k8s/Dockerfile . --push"
+	chmod +x ./runner/k8s/apply.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./runner/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-runner -n llmmll
+
+server:
+	@echo "Deploying server service (multi-arch)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	chmod +x ./server/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./server/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-server -n llmmll
+
+composer:
+	@echo "Deploying composer service (multi-arch)..."
+	$(eval BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD | tr '/' '.'))
+	@echo "Using branch: $(BRANCH_NAME) for image tag"
+	chmod +x ./composer/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/build.sh
+	DOCKER_TAG=$(BRANCH_NAME) ./composer/k8s/apply.sh
+	kubectl rollout restart deployment llmmll-composer -n llmmll
 
 e2e-%:
 	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
