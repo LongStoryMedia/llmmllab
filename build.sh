@@ -83,32 +83,80 @@ generate_proto_from_schemas() {
     done
 }
 
-# Generate Python gRPC code from proto files
+# Generate Python gRPC code from proto files (service-local)
 generate_grpc_python() {
     log_info "Generating Python gRPC code from proto files..."
 
-    # Create output directories
-    mkdir -p "$GEN_DIR/python/composer/v1"
-    mkdir -p "$GEN_DIR/python/runner/v1"
-    mkdir -p "$GEN_DIR/python/common"
+    # Create service-local output directories
+    mkdir -p "runner/gen/python"
+    mkdir -p "composer/gen/python"
+    mkdir -p "server/gen/python"
 
-    # Generate composer gRPC
-    log_info "Generating composer gRPC..."
+    # Generate common timestamp for all services
+    log_info "Generating common timestamp..."
     python -m grpc_tools.protoc \
         -I "$PROTO_DIR" \
-        --python_out="$GEN_DIR/python" \
-        --grpc_python_out="$GEN_DIR/python" \
-        "$PROTO_DIR/composer/v1/server_composer.proto" \
+        --python_out="server/gen/python" \
+        --grpc_python_out="server/gen/python" \
         "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
 
-    # Generate runner gRPC
+    # Generate for runner (uses composer_runner.v1)
     log_info "Generating runner gRPC..."
     python -m grpc_tools.protoc \
         -I "$PROTO_DIR" \
-        --python_out="$GEN_DIR/python" \
-        --grpc_python_out="$GEN_DIR/python" \
+        --python_out="runner/gen/python" \
+        --grpc_python_out="runner/gen/python" \
         "$PROTO_DIR/runner/v1/composer_runner.proto" \
         "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
+
+    # Generate for composer (uses both composer_runner.v1 and server_composer.v1)
+    log_info "Generating composer gRPC..."
+    python -m grpc_tools.protoc \
+        -I "$PROTO_DIR" \
+        --python_out="composer/gen/python" \
+        --grpc_python_out="composer/gen/python" \
+        "$PROTO_DIR/composer/v1/server_composer.proto" \
+        "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
+    # Generate composer_runner.proto (package composer_runner.v1)
+    # protoc uses package name to determine subdirs, so output goes to composer_runner/v1/
+    python -m grpc_tools.protoc \
+        -I "$PROTO_DIR" \
+        --python_out="composer/gen/python" \
+        --grpc_python_out="composer/gen/python" \
+        "$PROTO_DIR/runner/v1/composer_runner.proto" \
+        "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
+
+    # Generate for server (uses server_composer.v1)
+    # protoc uses package name to determine subdirectory, so it creates composer/v1/
+    # We need to fix the generated code to use server_composer.v1 instead of composer.v1
+    log_info "Generating server gRPC..."
+    mkdir -p "server/gen/python/server_composer/v1/common"
+    # Generate timestamp.proto to common/
+    python -m grpc_tools.protoc \
+        -I "$PROTO_DIR" \
+        --python_out="server/gen/python/server_composer/v1" \
+        --grpc_python_out="server/gen/python/server_composer/v1" \
+        "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
+    # Generate server_composer.proto - package is server_composer.v1
+    # protoc will create composer/v1/ (last part before .v1)
+    python -m grpc_tools.protoc \
+        -I "$PROTO_DIR" \
+        --python_out="server/gen/python" \
+        --grpc_python_out="server/gen/python" \
+        "$PROTO_DIR/composer/v1/server_composer.proto" \
+        "$PROTO_DIR/common/timestamp.proto" 2>&1 || true
+    # Copy generated files from composer/v1/ to server_composer/v1/
+    if [ -d "server/gen/python/composer/v1" ]; then
+        mkdir -p "server/gen/python/server_composer/v1"
+        cp "server/gen/python/composer/v1/"*.py "server/gen/python/server_composer/v1/" 2>/dev/null || true
+        rm -rf "server/gen/python/composer"
+        # Fix imports in the copied files from composer.v1 to server_composer.v1
+        sed -i 's/from composer\.v1 import server_composer_pb2 as composer_dot_v1_dot_server__composer__pb2/from server_composer.v1 import server_composer_pb2 as server_composer_dot_v1_dot_server__composer__pb2/g' "server/gen/python/server_composer/v1/server_composer_pb2_grpc.py"
+        sed -i 's/from composer\.v1 import server_composer_pb2 as composer_dot_v1_dot_server__composer__pb2/from server_composer.v1 import server_composer_pb2 as server_composer_dot_v1_dot_server__composer__pb2/g' "server/gen/python/server_composer/v1/server_composer_pb2.py"
+        # Fix timestamp import to use relative import
+        sed -i 's/from common import timestamp_pb2 as common_dot_timestamp__pb2/from .common import timestamp_pb2 as common_dot_timestamp__pb2/g' "server/gen/python/server_composer/v1/server_composer_pb2.py"
+        log_info "Server gRPC generated to server/gen/python/server_composer/v1/"
+    fi
 
     log_info "Python gRPC generation complete"
 }
@@ -147,7 +195,7 @@ generate_python_models() {
             fi
 
             log_info "Generating $base_name.py"
-            $SCHEMA2CODE_CMD "$schema_file" -l python -o "$output_file" || log_warn "Failed to generate $base_name.py"
+            $SCHEMA2CODE_CMD "$schema_file" -l python -o "$output_file" 2>&1 || log_warn "Failed to generate $base_name.py"
         fi
     done
 
@@ -188,7 +236,7 @@ generate_typescript_models() {
             fi
 
             log_info "Generating $base_name.ts"
-            $SCHEMA2CODE_CMD "$schema_file" -l typescript -o "$output_file" --package types
+            $SCHEMA2CODE_CMD "$schema_file" -l typescript -o "$output_file" --package types 2>&1 || log_warn "Failed to generate $base_name.ts"
         fi
     done
 

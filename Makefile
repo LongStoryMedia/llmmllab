@@ -107,19 +107,46 @@ ui:
 
 dev-server:
 	@echo "Starting server in development mode..."
-	@export LOCAL=true && cd server && python -m server.grpc.server
+	@export LOCAL=true && cd server && python -m uvicorn app:app --host 0.0.0.0 --port 8000
 
 dev-composer:
 	@echo "Starting composer in development mode..."
-	@export LOCAL=true && cd composer && python -m composer.grpc.server
+	@export LOCAL=true && cd composer && python -c "from composer import compose_workflow; print('Composer library loaded successfully')"
 
 dev-runner:
 	@echo "Starting runner in development mode..."
-	@export LOCAL=true && cd runner && python -m runner.server
+	@export LOCAL=true && cd runner && python -m runner.server.grpc
 
 # =============================================================================
 # VALIDATION & TESTING
 # =============================================================================
+
+# Comprehensive pylint scan for all Python apps
+pylint:
+	@echo "Running comprehensive pylint scan..."
+	@echo ""
+	@echo "=== Server ===" && $(MAKE) pylint-server
+	@echo ""
+	@echo "=== Composer ===" && $(MAKE) pylint-composer
+	@echo ""
+	@echo "=== Runner ===" && $(MAKE) pylint-runner
+	@echo ""
+	@echo "=== Pylint scan complete ==="
+
+# Common pylint flags for all services
+PYLINT_FLAGS = --disable=C,R,W0622,W0611,W0613,W0718,W0511 --max-line-length=120 --jobs=4
+
+pylint-server:
+	@echo "Checking server/..."
+	@. server/.venv/bin/activate && pylint server/ $(PYLINT_FLAGS) 2>&1 | grep -E "(ERROR|WARNING|Your code)"
+
+pylint-composer:
+	@echo "Checking composer/..."
+	@. composer/.venv/bin/activate && pylint composer/ $(PYLINT_FLAGS) 2>&1 | grep -E "(ERROR|WARNING|Your code)"
+
+pylint-runner:
+	@echo "Checking runner/..."
+	@. runner/.venv/bin/activate && pylint runner/ $(PYLINT_FLAGS) 2>&1 | grep -E "(ERROR|WARNING|Your code)"
 
 validate:
 	@echo "Validating TypeScript in UI project..."
@@ -245,6 +272,10 @@ help:
 	@echo "  test               - Run all tests (inference + UI)"
 	@echo "  test-inference     - Run inference tests only"
 	@echo "  test-ui            - Run UI tests only"
+	@echo "  pylint             - Run comprehensive pylint on all apps"
+	@echo "  pylint-server      - Run pylint on server"
+	@echo "  pylint-composer    - Run pylint on composer"
+	@echo "  pylint-runner      - Run pylint on runner"
 	@echo ""
 	@echo "CLEANUP"
 	@echo "  clean              - Remove build artifacts"
@@ -263,5 +294,6 @@ help:
 	inference ui \
 	dev-server dev-composer dev-runner \
 	validate test test-inference test-ui \
+	pylint pylint-server pylint-composer pylint-runner \
 	clean clean-py clean-pycache \
 	sync-submodules push-all help
