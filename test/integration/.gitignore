@@ -1,0 +1,35 @@
+# Test output
+test-output/
+coverage.xml
+.junit.xml
+
+# Coverage
+.coverage
+htmlcov/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+*.tmp
+*.temp
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

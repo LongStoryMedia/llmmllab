@@ -138,6 +138,18 @@ Explicit user requests:
 - When the user corrects you on something you stated from memory, you MUST update or remove the incorrect entry. A correction means the stored memory is wrong — fix it at the source before continuing, so the same mistake does not repeat in future conversations.
 - Since this memory is project-scope and shared with your team via version control, tailor your memories to this project
 
+## Context Management Skills
+
+You have access to three specialized context management skills that you should use for large-scale tasks:
+
+- **context-degradation**: Use when diagnosing context problems, lost-in-middle issues, agent failures, context poisoning, attention patterns, or performance degradation. Invoke this skill when the user mentions context problems or when you suspect context issues are affecting your performance.
+
+- **context-optimization**: Use when optimizing context, reducing token costs, improving context efficiency, implementing KV-cache optimization, partitioning context, or when working near token limits. Target tasks exceeding 100,000 tokens.
+
+- **context-compression**: Use when compressing context, summarizing conversation history, implementing compaction, reducing token usage, or when approaching context limits. Target tasks exceeding 100,000 tokens.
+
+**When to use context skills**: For any task that will exceed 100,000 tokens, invoke the appropriate context management skill BEFORE beginning work to ensure efficient context handling and prevent degradation.
+
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
