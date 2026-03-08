@@ -1,15 +1,20 @@
 [submodule "schemas"]
 	path = schemas
 	url = git@github.com:LongStoryMedia/llmmllab-schemas.git
+	branch = main
 [submodule "runner"]
 	path = runner
 	url = git@github.com:LongStoryMedia/llmmllab-runner.git
+	branch = main
 [submodule "composer"]
 	path = composer
 	url = git@github.com:LongStoryMedia/llmmllab-composer.git
+	branch = main
 [submodule "server"]
 	path = server
 	url = git@github.com:LongStoryMedia/llmmllab-server.git
+	branch = main
 [submodule "ui"]
 	path = ui
 	url = git@github.com:LongStoryMedia/llmmllab-ui.git
+	branch = main
