@@ -4,7 +4,9 @@
 SCHEMAS_DIR="./schemas"
 MAISTRO_MODELS_DIR="./maistro/models"
 UI_MODELS_DIR="./ui/src/types"
-INFERENCE_MODELS_DIR="./inference/models"
+COMPOSER_MODELS_DIR="./composer/models"
+RUNNER_MODELS_DIR="./runner/models"
+SERVER_MODELS_DIR="./server/models"
 PROTO_DIR="./proto"
 
 # Create a log file
@@ -70,7 +72,7 @@ regen_ts() {
         if [ -f "$schema_file" ]; then
             echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
             
-            tsgen "$schema_file" &   
+            tsgen "$schema_file" &
         else
             echo "Skipping $base_name (ts): No corresponding schema file found at $schema_file" | tee -a "$LOG_FILE"
         fi
@@ -79,20 +81,79 @@ regen_ts() {
 
 pygen() {
     schema_file=$1
+    output_dir=$2
+    base_name=$3
     
     # Run schema2code to regenerate the Python file
-    schema2code "$schema_file" -l python -o "$INFERENCE_MODELS_DIR/${base_name}.py"
+    schema2code "$schema_file" -l python -o "${output_dir}/${base_name}.py"
     
     # Check if the command was successful
     if [ $? -eq 0 ]; then
-        echo "Successfully regenerated $schema_file in python" | tee -a "$LOG_FILE"
+        echo "Successfully regenerated ${base_name}.py in ${output_dir}" | tee -a "$LOG_FILE"
     else
-        echo "Error regenerating $schema_file in python" | tee -a "$LOG_FILE"
+        echo "Error regenerating ${base_name}.py" | tee -a "$LOG_FILE"
     fi
 }
 
-# Helper function for Python
-regen_py() {
+# Helper function for Python - Composer models
+regen_py_composer() {
+    for py_file in "$COMPOSER_MODELS_DIR"/*.py; do
+        # Extract the base name without extension
+        base_name=$(basename "$py_file" .py)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name (composer): Found schema file $schema_file" | tee -a "$LOG_FILE"
+            pygen "$schema_file" "$COMPOSER_MODELS_DIR" "$base_name" &
+        else
+            echo "Skipping $base_name (composer): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+}
+
+# Helper function for Python - Runner models
+regen_py_runner() {
+    for py_file in "$RUNNER_MODELS_DIR"/*.py; do
+        # Extract the base name without extension
+        base_name=$(basename "$py_file" .py)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name (runner): Found schema file $schema_file" | tee -a "$LOG_FILE"
+            pygen "$schema_file" "$RUNNER_MODELS_DIR" "$base_name" &
+        else
+            echo "Skipping $base_name (runner): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+}
+
+# Helper function for Python - Server models
+regen_py_server() {
+    for py_file in "$SERVER_MODELS_DIR"/*.py; do
+        # Extract the base name without extension
+        base_name=$(basename "$py_file" .py)
+        
+        # Construct the path to the corresponding schema file
+        schema_file="$SCHEMAS_DIR/${base_name}.yaml"
+        
+        # Check if schema file exists
+        if [ -f "$schema_file" ]; then
+            echo "Processing $base_name (server): Found schema file $schema_file" | tee -a "$LOG_FILE"
+            pygen "$schema_file" "$SERVER_MODELS_DIR" "$base_name" &
+        else
+            echo "Skipping $base_name (server): No corresponding schema file found" | tee -a "$LOG_FILE"
+        fi
+    done
+}
+
+# Helper function for Python - Legacy inference models (for backward compatibility)
+regen_py_inference() {
     for py_file in "$INFERENCE_MODELS_DIR"/*.py; do
         # Extract the base name without extension
         base_name=$(basename "$py_file" .py)
@@ -102,12 +163,10 @@ regen_py() {
         
         # Check if schema file exists
         if [ -f "$schema_file" ]; then
-            echo "Processing $base_name: Found schema file $schema_file" | tee -a "$LOG_FILE"
-
-            pygen "$schema_file" &
-
+            echo "Processing $base_name (inference): Found schema file $schema_file" | tee -a "$LOG_FILE"
+            pygen "$schema_file" "$INFERENCE_MODELS_DIR" "$base_name" &
         else
-            echo "Skipping $base_name (py): No corresponding schema file found" | tee -a "$LOG_FILE"
+            echo "Skipping $base_name (inference): No corresponding schema file found" | tee -a "$LOG_FILE"
         fi
     done
 }
@@ -158,7 +217,10 @@ regen_proto() {
 
 # Then regenerate models for each language
 regen_ts
-regen_py
+regen_py_composer
+regen_py_runner
+regen_py_server
+# regen_py_inference
 
 wait
 

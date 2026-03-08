@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package common.v1;
+
+// VersionInfo represents the version of a service
+message VersionInfo {
+    string version = 1;
+    string commit = 2;
+    string build_time = 3;
+}
+
+// HealthCheckRequest for service health checks
+message HealthCheckRequest {
+    string service = 1;
+}
+
+// HealthCheckResponse for service health checks
+message HealthCheckResponse {
+    bool healthy = 1;
+    string message = 2;
+    VersionInfo version = 3;
+}

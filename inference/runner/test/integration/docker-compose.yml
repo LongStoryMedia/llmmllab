@@ -1,0 +1,149 @@
+# Docker Compose for Runner Integration Testing
+# Tests the Runner component with Composer integration
+
+services:
+  # PostgreSQL with TimescaleDB and pgvector extensions
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: runner-integration-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llmmll_test
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llmmll_test"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - runner-integration-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: runner-integration-redis
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    networks:
+      - runner-integration-network
+
+  # Runner service (gRPC)
+  runner:
+    build:
+      context: ../../..
+      dockerfile: inference/runner/test/integration/Dockerfile.runner
+    container_name: runner-integration-runner
+    ports:
+      - "50052:50052"
+    environment:
+      # Database configuration
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: llmmll_test
+      DB_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/llmmll_test?sslmode=disable
+
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
+
+      # gRPC configuration
+      GRPC_PORT: "50052"
+
+      # Model configuration
+      VLLM_MODEL: "microsoft/DialoGPT-medium"
+      VLLM_TENSOR_PARALLEL_SIZE: "1"
+      VLLM_GPU_MEMORY_UTILIZATION: "0.5"
+
+      # Test mode
+      TEST_MODE: "true"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+
+      # GPU configuration
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - runner-integration-network
+    volumes:
+      - runner_cache:/tmp/huggingface
+
+  # Test runner container
+  test-runner:
+    build:
+      context: ../../..
+      dockerfile: inference/runner/test/integration/Dockerfile.test
+    container_name: runner-integration-test-runner
+    environment:
+      # Runner configuration
+      RUNNER_HOST: runner
+      RUNNER_PORT: "50052"
+
+      # Test configuration
+      TEST_TIMEOUT: "300"
+      TEST_PARALLEL: "1"
+      PYTEST_ADDOPTS: "-v --tb=short"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+
+      # Test coverage
+      COVERAGE_ENABLED: "true"
+      COVERAGE_FILE: "/app/.coverage"
+
+      # Output directories
+      TEST_OUTPUT_DIR: "/app/test-output"
+      JUNIT_XML_FILE: "/app/test-output/junit.xml"
+      COVERAGE_XML_FILE: "/app/test-output/coverage.xml"
+    depends_on:
+      runner:
+        condition: service_started
+    volumes:
+      - ..:/app:cached
+      - test_output:/app/test-output
+      - test_cache:/tmp/huggingface
+    command: pytest test/integration -v --junitxml=/app/test-output/junit.xml --cov=runner --cov-report=xml:/app/test-output/coverage.xml --cov-report=term
+    networks:
+      - runner-integration-network
+
+networks:
+  runner-integration-network:
+    name: runner-integration-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: runner-integration-postgres-data
+  runner_cache:
+    name: runner-integration-runner-cache
+  test_output:
+    name: runner-integration-test-output
+  test_cache:
+    name: runner-integration-test-cache

@@ -1,0 +1,169 @@
+# Docker Compose for Server Integration Testing
+# Tests the Server component in isolation with database and Redis
+
+services:
+  # PostgreSQL with TimescaleDB and pgvector extensions
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: server-integration-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llmmll_test
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./healthchecks:/docker-entrypoint-initdb.d/healthchecks
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llmmll_test"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - server-integration-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: server-integration-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    networks:
+      - server-integration-network
+
+  # Server (FastAPI) - the main test target
+  server:
+    build:
+      context: ../../..
+      dockerfile: inference/server/test/integration/Dockerfile.server
+    container_name: server-integration-server
+    ports:
+      - "8000:8000"
+    environment:
+      # Database configuration
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: llmmll_test
+      DB_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/llmmll_test?sslmode=disable
+
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
+
+      # Test mode
+      TEST_MODE: "true"
+      DISABLE_AUTH: "true"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+
+      # Image storage
+      IMAGE_DIR: "/tmp/images"
+      CONFIG_DIR: "/tmp/config"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 60s
+    networks:
+      - server-integration-network
+    volumes:
+      - server_logs:/app/logs
+      - server_cache:/tmp/huggingface
+
+  # Test runner container
+  test-runner:
+    build:
+      context: ../../..
+      dockerfile: inference/server/test/integration/Dockerfile.test
+    container_name: server-integration-test-runner
+    environment:
+      # Database configuration
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: llmmll_test
+      DB_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/llmmll_test?sslmode=disable
+
+      # Server configuration
+      SERVER_URL: "http://server:8000"
+      SERVER_API_KEY: "test-api-key"
+
+      # Test configuration
+      TEST_TIMEOUT: "300"
+      TEST_PARALLEL: "1"
+      PYTEST_ADDOPTS: "-v --tb=short"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Test user
+      TEST_USER_ID: "test-user-id-12345"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+      # Test coverage
+      COVERAGE_ENABLED: "true"
+      COVERAGE_FILE: "/app/.coverage"
+
+      # Output directories
+      TEST_OUTPUT_DIR: "/app/test-output"
+      JUNIT_XML_FILE: "/app/test-output/junit.xml"
+      COVERAGE_XML_FILE: "/app/test-output/coverage.xml"
+    depends_on:
+      db:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    volumes:
+      - ..:/app:cached
+      - test_output:/app/test-output
+      - test_cache:/tmp/huggingface
+    command: pytest test/integration -v --junitxml=/app/test-output/junit.xml --cov=server --cov-report=xml:/app/test-output/coverage.xml --cov-report=term
+    networks:
+      - server-integration-network
+
+networks:
+  server-integration-network:
+    name: server-integration-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: server-integration-postgres-data
+  server_logs:
+    name: server-integration-server-logs
+  server_cache:
+    name: server-integration-server-cache
+  test_output:
+    name: server-integration-test-output
+  test_cache:
+    name: server-integration-test-cache

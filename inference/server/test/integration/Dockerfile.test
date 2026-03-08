@@ -1,0 +1,72 @@
+# Dockerfile for Server Integration Test Runner
+# Contains test dependencies and pytest configuration
+
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app \
+    TEST_MODE=true
+
+# Create a non-root user
+RUN useradd -m -u 1000 testuser
+
+# Install Python dependencies
+# Copy requirements first for better layer caching
+COPY --chown=testuser:testuser server/requirements.txt /tmp/requirements/server/
+COPY --chown=testuser:testuser composer/requirements.txt /tmp/requirements/composer/
+COPY --chown=testuser:testuser runner/requirements.txt /tmp/requirements/runner/
+
+# Install all dependencies
+RUN pip install --no-cache-dir \
+    -r /tmp/requirements/server/requirements.txt \
+    -r /tmp/requirements/composer/requirements.txt \
+    -r /tmp/requirements/runner/requirements.txt
+
+# Install test-specific dependencies
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-asyncio \
+    pytest-cov \
+    pytest-mock \
+    pytest-randomly \
+    httpx \
+    pytest-httpx
+
+# Create output directory for test results
+RUN mkdir -p /app/test-output && chown -R testuser:testuser /app/test-output
+
+# Copy test files
+COPY --chown=testuser:testuser inference/server/test/integration/ /app/test/integration/
+COPY --chown=testuser:testuser server/ /app/server/
+COPY --chown=testuser:testuser composer/ /app/composer/
+COPY --chown=testuser:testuser runner/ /app/runner/
+COPY --chown=testuser:testuser schemas/ /app/schemas/
+
+# Install packages in editable mode
+RUN pip install --no-cache-dir -e /app/server \
+    && pip install --no-cache-dir -e /app/composer \
+    && pip install --no-cache-dir -e /app/runner
+
+USER testuser
+
+# Set working directory
+WORKDIR /app
+
+# Default command - run integration tests
+CMD ["pytest", "test/integration", "-v", "--tb=short"]

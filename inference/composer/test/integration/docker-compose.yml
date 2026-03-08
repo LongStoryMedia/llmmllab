@@ -1,0 +1,175 @@
+# Docker Compose for Composer Integration Testing
+# Tests the Composer component with Runner integration
+
+services:
+  # PostgreSQL with TimescaleDB and pgvector extensions
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: composer-integration-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llmmll_test
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llmmll_test"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - composer-integration-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: composer-integration-redis
+    ports:
+      - "6382:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    networks:
+      - composer-integration-network
+
+  # Runner service (gRPC)
+  runner:
+    build:
+      context: ../../..
+      dockerfile: inference/runner/test/integration/Dockerfile.runner
+    container_name: composer-integration-runner
+    ports:
+      - "50053:50052"
+    environment:
+      # Database configuration
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: llmmll_test
+      DB_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/llmmll_test?sslmode=disable
+
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
+
+      # gRPC configuration
+      GRPC_PORT: "50052"
+
+      # Model configuration
+      VLLM_MODEL: "microsoft/DialoGPT-medium"
+      VLLM_TENSOR_PARALLEL_SIZE: "1"
+      VLLM_GPU_MEMORY_UTILIZATION: "0.5"
+
+      # Test mode
+      TEST_MODE: "true"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - composer-integration-network
+
+  # Composer service (gRPC)
+  composer:
+    build:
+      context: ../../..
+      dockerfile: inference/composer/test/integration/Dockerfile.composer
+    container_name: composer-integration-composer
+    ports:
+      - "50051:50051"
+    environment:
+      # Runner configuration
+      RUNNER_HOST: runner
+      RUNNER_PORT: "50052"
+
+      # gRPC configuration
+      GRPC_PORT: "50051"
+
+      # Test mode
+      TEST_MODE: "true"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+    depends_on:
+      runner:
+        condition: service_started
+    networks:
+      - composer-integration-network
+
+  # Test runner container
+  test-runner:
+    build:
+      context: ../../..
+      dockerfile: inference/composer/test/integration/Dockerfile.test
+    container_name: composer-integration-test-runner
+    environment:
+      # Composer configuration
+      COMPOSER_HOST: composer
+      COMPOSER_PORT: "50051"
+
+      # Runner configuration
+      RUNNER_HOST: runner
+      RUNNER_PORT: "50052"
+
+      # Test configuration
+      TEST_TIMEOUT: "300"
+      TEST_PARALLEL: "1"
+      PYTEST_ADDOPTS: "-v --tb=short"
+
+      # Logging
+      LOG_LEVEL: "debug"
+
+      # Hugging Face cache
+      HF_HOME: "/tmp/huggingface"
+
+      # Test coverage
+      COVERAGE_ENABLED: "true"
+      COVERAGE_FILE: "/app/.coverage"
+
+      # Output directories
+      TEST_OUTPUT_DIR: "/app/test-output"
+      JUNIT_XML_FILE: "/app/test-output/junit.xml"
+      COVERAGE_XML_FILE: "/app/test-output/coverage.xml"
+    depends_on:
+      composer:
+        condition: service_started
+    volumes:
+      - ..:/app:cached
+      - test_output:/app/test-output
+      - test_cache:/tmp/huggingface
+    command: pytest test/integration -v --junitxml=/app/test-output/junit.xml --cov=composer --cov-report=xml:/app/test-output/coverage.xml --cov-report=term
+    networks:
+      - composer-integration-network
+
+networks:
+  composer-integration-network:
+    name: composer-integration-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: composer-integration-postgres-data
+  test_output:
+    name: composer-integration-test-output
+  test_cache:
+    name: composer-integration-test-cache

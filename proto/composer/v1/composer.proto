@@ -1,0 +1,216 @@
+syntax = "proto3";
+
+package composer.v1;
+
+import "google/api/annotations.proto";
+import "common/timestamp.proto";
+import "common/version.proto";
+import "server/v1/server.proto";
+
+option go_package = "github.com/llmmllab/proto/composer/v1;composerv1";
+option java_package = "com.llmmllab.composer.v1";
+
+// WorkflowHandle represents a created workflow
+message WorkflowHandle {
+    string workflow_id = 1;
+    google.protobuf.Timestamp created_at = 2;
+}
+
+// WorkflowState represents the state of a workflow
+message WorkflowState {
+    string user_id = 1;
+    int32 conversation_id = 2;
+    string workflow_type = 3;
+    map<string, string> variables = 4;
+    google.protobuf.Timestamp created_at = 5;
+    repeated server.v1.ConversationMessage messages = 6;
+}
+
+// ComposeWorkflowRequest requests workflow composition
+message ComposeWorkflowRequest {
+    string user_id = 1;
+    string workflow_type = 2;
+    string model_name = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    server.v1.UserConfig user_config = 5;
+    repeated server.v1.DynamicTool tools = 6;
+}
+
+// ExecuteWorkflowRequest requests workflow execution with streaming
+message ExecuteWorkflowRequest {
+    string workflow_id = 1;
+    WorkflowState initial_state = 2;
+    bool stream_events = 3;
+    repeated server.v1.ConversationMessage messages = 4;
+}
+
+// WorkflowEvent represents a workflow execution event
+message WorkflowEvent {
+    string event_type = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    oneof payload {
+        WorkflowStepStart step_start = 3;
+        WorkflowStepComplete step_complete = 4;
+        WorkflowError error = 5;
+        WorkflowOutput output = 6;
+    }
+}
+
+// WorkflowStepStart marks the start of a workflow step
+message WorkflowStepStart {
+    string step_name = 1;
+    map<string, string> inputs = 2;
+}
+
+// WorkflowStepComplete marks the completion of a workflow step
+message WorkflowStepComplete {
+    string step_name = 1;
+    map<string, string> outputs = 2;
+    int64 duration_ms = 3;
+}
+
+// WorkflowError represents a workflow error
+message WorkflowError {
+    string message = 1;
+    string error_code = 2;
+    map<string, string> details = 3;
+}
+
+// WorkflowOutput represents workflow output
+message WorkflowOutput {
+    bytes data = 1;
+    map<string, string> metadata = 2;
+}
+
+// ChatDelta represents a streaming delta response
+message ChatDelta {
+    string message_id = 1;
+    string role = 2;
+    string content = 3;
+    map<string, string> metadata = 4;
+}
+
+// ChatResponseDelta represents a streaming delta response with metadata
+message ChatResponseDelta {
+    ChatDelta delta = 1;
+    google.protobuf.Timestamp created_at = 2;
+    repeated float context = 3;
+    string finish_reason = 4;
+    double total_duration = 5;
+    double load_duration = 6;
+    double prompt_eval_count = 7;
+    double prompt_eval_duration = 8;
+    double eval_count = 9;
+    double eval_duration = 10;
+    string processing = 11;
+    string state = 12;
+    string prev_state = 13;
+}
+
+// ChatResponseComplete represents a workflow completion response
+message ChatResponseComplete {
+    WorkflowComplete complete = 1;
+    google.protobuf.Timestamp created_at = 2;
+    repeated float context = 3;
+    string finish_reason = 4;
+    double total_duration = 5;
+    double load_duration = 6;
+}
+
+// ChatResponse represents a streaming chat response
+message ChatResponse {
+    oneof response {
+        ChatResponseDelta delta = 1;
+        ChatResponseComplete complete = 2;
+    }
+}
+
+// WorkflowComplete marks workflow completion
+message WorkflowComplete {
+    bytes output_data = 1;
+    int64 duration_ms = 2;
+}
+
+// TodoItem represents a todo item
+message TodoItem {
+    string id = 1;
+    string title = 2;
+    bool completed = 3;
+    int64 created_at = 4;
+}
+
+// CreateInitialStateRequest requests initial workflow state creation
+message CreateInitialStateRequest {
+    string user_id = 1;
+    int32 conversation_id = 2;
+    string workflow_type = 3;
+    repeated server.v1.ConversationMessage messages = 4;
+}
+
+// ClearWorkflowCacheRequest requests workflow cache clearing
+message ClearWorkflowCacheRequest {
+    string user_id = 1;
+}
+
+// ClearWorkflowCacheResponse returns cache clear results
+message ClearWorkflowCacheResponse {
+    bool success = 1;
+    string message = 2;
+    int32 cleared_count = 3;
+}
+
+// GetWorkflowStatusRequest gets the status of a workflow
+message GetWorkflowStatusRequest {
+    string workflow_id = 1;
+}
+
+// GetWorkflowStatusResponse returns workflow status
+message GetWorkflowStatusResponse {
+    string workflow_id = 1;
+    string status = 2;
+    WorkflowState state = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp completed_at = 5;
+}
+
+// ComposerService provides workflow composition and execution
+service ComposerService {
+    // ComposeWorkflow creates a new workflow from requirements
+    rpc ComposeWorkflow(ComposeWorkflowRequest) returns (WorkflowHandle);
+
+    // ExecuteWorkflow executes a workflow with streaming responses
+    rpc ExecuteWorkflow(ExecuteWorkflowRequest) returns (stream ChatResponse);
+
+    // CreateInitialState creates initial state for a workflow
+    rpc CreateInitialState(CreateInitialStateRequest) returns (WorkflowState);
+
+    // ClearWorkflowCache clears cached workflows for a user
+    rpc ClearWorkflowCache(ClearWorkflowCacheRequest) returns (ClearWorkflowCacheResponse);
+
+    // GetWorkflowStatus gets the status of a workflow
+    rpc GetWorkflowStatus(GetWorkflowStatusRequest) returns (GetWorkflowStatusResponse);
+
+    // HealthCheck checks service health
+    rpc HealthCheck(common.v1.HealthCheckRequest) returns (common.v1.HealthCheckResponse);
+}
+
+// WorkflowBuilderService provides workflow builder operations
+service WorkflowBuilderService {
+    // ListWorkflowTypes lists available workflow types
+    rpc ListWorkflowTypes(ListWorkflowTypesRequest) returns (ListWorkflowTypesResponse);
+
+    // GetWorkflowSchema gets the schema for a workflow type
+    rpc GetWorkflowSchema(GetWorkflowSchemaRequest) returns (WorkflowSchema);
+}
+
+message ListWorkflowTypesRequest {}
+message ListWorkflowTypesResponse {
+    repeated string workflow_types = 1;
+}
+
+message GetWorkflowSchemaRequest { string workflow_type = 1; }
+message WorkflowSchema {
+    string workflow_type = 1;
+    string json_schema = 2;
+    string description = 3;
+}

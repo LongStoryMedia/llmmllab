@@ -1,0 +1,345 @@
+syntax = "proto3";
+
+package server.v1;
+
+import "google/api/annotations.proto";
+import "common/timestamp.proto";
+import "common/version.proto";
+
+option go_package = "github.com/llmmllab/proto/server/v1;serverv1";
+option java_package = "com.llmmllab.server.v1";
+
+// UserConfig represents user-specific configuration
+message UserConfig {
+    string user_id = 1;
+    bool summarization_enabled = 2;
+    int32 summarization_messages_before = 3;
+    int32 summarization_summaries_before = 4;
+    int32 embedding_dimension = 5;
+    int32 max_summary_levels = 6;
+    double summary_weight_coefficient = 7;
+    bool memory_enabled = 8;
+    int32 memory_limit = 9;
+    bool memory_cross_user = 10;
+    bool memory_cross_conversation = 11;
+    double similarity_threshold = 12;
+    bool always_retrieve = 13;
+    double timeout = 14;
+    bool workflow_caching_enabled = 15;
+    int32 workflow_cache_ttl = 16;
+    int32 max_parallel_tools = 17;
+    bool multi_agent_enabled = 18;
+    double default_timeout = 19;
+    int32 max_context_length = 20;
+    double context_trim_threshold = 21;
+    bool streaming_enabled = 22;
+    int32 stream_buffer_size = 23;
+    bool image_generation_enabled = 24;
+    string storage_directory = 25;
+    int32 max_image_size = 26;
+    int32 retention_hours = 27;
+    bool auto_prompt_refinement = 28;
+    int32 width = 29;
+    int32 height = 30;
+    int32 inference_steps = 31;
+    double guidance_scale = 32;
+    bool low_memory_mode = 33;
+    string negative_prompt = 34;
+    double base_timeout = 35;
+    int32 max_retries = 36;
+    double cooldown_period = 37;
+    bool perplexity_guard = 38;
+    double perplexity_threshold = 39;
+    bool gpu_no_kv_offload = 40;
+    int32 gpu_main_gpu = 41;
+    bool gpu_offload_kqv = 42;
+    bool parameter_optimization_enabled = 43;
+    repeated ParameterOptimization parameters = 44;
+    repeated ModelProfile model_profiles = 45;
+}
+
+// ModelProfile represents a model configuration
+message ModelProfile {
+    string profile_id = 1;
+    string model_name = 2;
+    string provider = 3;
+    string task_type = 4;
+    map<string, string> model_config = 5;
+    int32 gpu_layers = 6;
+    string main_gpu = 7;
+    double gpu_memory_fraction = 8;
+    bool flash_attn = 9;
+    int32 batch_size = 10;
+    int32 context_size = 11;
+    int32 threads = 12;
+    bool mlock = 13;
+    bool mmap = 14;
+}
+
+// ParameterOptimization represents parameter tuning configuration
+message ParameterOptimization {
+    string parameter_name = 1;
+    int32 priority = 2;
+    string tuning_strategy = 3;
+    int32 max_search_attempts = 4;
+    int32 floor = 5;
+    string operator = 6;
+    int32 modifier = 7;
+    int32 max_value = 8;
+}
+
+// ConversationMessage represents a message in a conversation
+message ConversationMessage {
+    string role = 1;
+    string content = 2;
+    repeated ToolCall tool_calls = 3;
+    map<string, string> analyses = 4;
+    repeated Document documents = 5;
+    google.protobuf.Timestamp created_at = 6;
+}
+
+// ToolCall represents a tool call
+message ToolCall {
+    string id = 1;
+    string name = 2;
+    map<string, string> args = 3;
+    bool success = 4;
+    string result_data = 5;
+}
+
+// Document represents an attached document
+message Document {
+    string id = 1;
+    string title = 2;
+    string content = 3;
+    string source = 4;
+    map<string, string> metadata = 5;
+}
+
+// ChatRequest represents a chat completion request
+message ChatRequest {
+    string user_id = 1;
+    int32 conversation_id = 2;
+    repeated ConversationMessage messages = 3;
+    string workflow_type = 4;
+    string model_name = 5;
+    UserConfig user_config = 6;
+    bool stream = 7;
+}
+
+// ChatResponse represents a chat response (delta or complete)
+message ChatResponse {
+    string message_id = 1;
+    string role = 2;
+    string content = 3;
+    map<string, string> metadata = 4;
+    WorkflowComplete complete = 5;
+}
+
+// WorkflowComplete marks workflow completion
+message WorkflowComplete {
+    bytes output_data = 1;
+    int64 duration_ms = 2;
+}
+
+// CreateConversationRequest creates a new conversation
+message CreateConversationRequest {
+    string user_id = 1;
+    string title = 2;
+}
+
+// CreateConversationResponse returns the created conversation
+message CreateConversationResponse {
+    int32 conversation_id = 1;
+    string title = 2;
+    google.protobuf.Timestamp created_at = 3;
+}
+
+// GetConversationRequest gets a conversation by ID
+message GetConversationRequest {
+    int32 conversation_id = 1;
+}
+
+// GetConversationResponse returns the conversation
+message GetConversationResponse {
+    int32 conversation_id = 1;
+    string user_id = 2;
+    string title = 3;
+    google.protobuf.Timestamp created_at = 4;
+    repeated ConversationMessage messages = 5;
+}
+
+// ListConversationsRequest lists conversations for a user
+message ListConversationsRequest {
+    string user_id = 1;
+    int32 limit = 2;
+    int32 offset = 3;
+}
+
+// ListConversationsResponse returns a list of conversations
+message ListConversationsResponse {
+    repeated GetConversationResponse conversations = 1;
+    int32 total_count = 2;
+}
+
+// MemoryFragment represents a memory fragment for retrieval
+message MemoryFragment {
+    string id = 1;
+    string content = 2;
+    string embedding_id = 3;
+    map<string, string> metadata = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+// SearchMemoryRequest searches memory for relevant fragments
+message SearchMemoryRequest {
+    string user_id = 1;
+    repeated float embedding = 2;
+    int32 top_k = 3;
+    double threshold = 4;
+}
+
+// SearchMemoryResponse returns matching memory fragments
+message SearchMemoryResponse {
+    repeated MemoryFragment fragments = 1;
+}
+
+// Summary represents a conversation summary
+message Summary {
+    string id = 1;
+    int32 conversation_id = 2;
+    string content = 3;
+    string summary_type = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+// CreateSummaryRequest creates a summary for a conversation
+message CreateSummaryRequest {
+    int32 conversation_id = 1;
+    string summary_type = 2;
+}
+
+// CreateSummaryResponse returns the created summary
+message CreateSummaryResponse {
+    Summary summary = 1;
+}
+
+// ModelProfileService manages model configurations
+service ModelProfileService {
+    // GetProfile retrieves a model profile by ID
+    rpc GetProfile(GetModelProfileRequest) returns (ModelProfile);
+
+    // ListProfiles lists all model profiles for a user
+    rpc ListProfiles(ListModelProfilesRequest) returns (ListModelProfilesResponse);
+
+    // CreateProfile creates a new model profile
+    rpc CreateProfile(CreateModelProfileRequest) returns (ModelProfile);
+
+    // UpdateProfile updates an existing model profile
+    rpc UpdateProfile(UpdateModelProfileRequest) returns (ModelProfile);
+
+    // DeleteProfile deletes a model profile
+    rpc DeleteProfile(DeleteModelProfileRequest) returns (StatusResponse);
+}
+
+// UserConfigService manages user configurations
+service UserConfigService {
+    // GetUserConfig retrieves user configuration
+    rpc GetUserConfig(GetUserConfigRequest) returns (UserConfig);
+
+    // UpdateUserConfig updates user configuration
+    rpc UpdateUserConfig(UpdateUserConfigRequest) returns (UserConfig);
+
+    // DefaultUserConfig gets default configuration for a new user
+    rpc DefaultUserConfig(DefaultUserConfigRequest) returns (UserConfig);
+}
+
+// ConversationService manages conversations
+service ConversationService {
+    // CreateConversation creates a new conversation
+    rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
+
+    // GetConversation gets a conversation by ID
+    rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
+
+    // ListConversations lists conversations for a user
+    rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+
+    // AddMessage adds a message to a conversation
+    rpc AddMessage(AddMessageRequest) returns (ConversationMessage);
+
+    // GetMessages gets messages for a conversation
+    rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+}
+
+// MemoryService manages vector memory
+service MemoryService {
+    // AddMemory adds a memory fragment
+    rpc AddMemory(AddMemoryRequest) returns (MemoryFragment);
+
+    // SearchMemory searches for relevant memory fragments
+    rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+
+    // DeleteMemory deletes a memory fragment
+    rpc DeleteMemory(DeleteMemoryRequest) returns (StatusResponse);
+}
+
+// SummaryService manages conversation summaries
+service SummaryService {
+    // CreateSummary creates a summary for a conversation
+    rpc CreateSummary(CreateSummaryRequest) returns (CreateSummaryResponse);
+
+    // GetSummary gets a summary by ID
+    rpc GetSummary(GetSummaryRequest) returns (Summary);
+
+    // ListSummaries lists summaries for a conversation
+    rpc ListSummaries(ListSummariesRequest) returns (ListSummariesResponse);
+}
+
+// DynamicToolService manages dynamic tool generation
+service DynamicToolService {
+    // GenerateTool generates a tool from a description
+    rpc GenerateTool(GenerateToolRequest) returns (DynamicTool);
+
+    // ListTools lists available tools
+    rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+
+    // ExecuteTool executes a tool
+    rpc ExecuteTool(ExecuteToolRequest) returns (ToolExecutionResponse);
+}
+
+// StatusResponse is a standard response for operations
+message StatusResponse {
+    bool success = 1;
+    string message = 2;
+    string error_code = 3;
+}
+
+// Request message types
+message GetModelProfileRequest { string profile_id = 1; }
+message ListModelProfilesRequest { string user_id = 1; }
+message ListModelProfilesResponse { repeated ModelProfile profiles = 1; }
+message CreateModelProfileRequest { ModelProfile profile = 1; }
+message UpdateModelProfileRequest { ModelProfile profile = 1; }
+message DeleteModelProfileRequest { string profile_id = 1; }
+
+message GetUserConfigRequest { string user_id = 1; }
+message UpdateUserConfigRequest { UserConfig config = 1; }
+message DefaultUserConfigRequest { string user_id = 1; }
+
+message AddMessageRequest { int32 conversation_id = 1; ConversationMessage message = 2; }
+message GetMessagesRequest { int32 conversation_id = 1; int32 limit = 2; }
+message GetMessagesResponse { repeated ConversationMessage messages = 1; }
+
+message AddMemoryRequest { string user_id = 1; string content = 2; repeated float embedding = 3; }
+message DeleteMemoryRequest { string id = 1; }
+message GetSummaryRequest { string id = 1; }
+message ListSummariesRequest { int32 conversation_id = 1; }
+message ListSummariesResponse { repeated Summary summaries = 1; }
+
+message GenerateToolRequest { string description = 1; }
+message DynamicTool { string name = 1; string description = 2; string json_schema = 3; }
+message ListToolsRequest { string user_id = 1; }
+message ListToolsResponse { repeated DynamicTool tools = 1; }
+message ExecuteToolRequest { string tool_name = 1; map<string, string> args = 2; }
+message ToolExecutionResponse { string result = 1; bool success = 2; }

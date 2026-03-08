@@ -15,17 +15,17 @@ The integration tests cover the full stack:
 ┌─────────────────────────▼───────────────────────────────────┐
 │                      Server (FastAPI)                       │
 │                   Port: 8000 (HTTP)                         │
-│  - Routers: OpenAI, Anthropic, Common                      │
-│  - Middleware: Auth, DB Init, Validation                   │
+│  - Routers: OpenAI, Anthropic, Common                       │
+│  - Middleware: Auth, DB Init, Validation                    │
 └─────────────────────────┬───────────────────────────────────┘
                           │
           ┌───────────────┼───────────────┐
           │               │               │
           ▼               ▼               ▼
-    ┌─────────┐    ┌──────────┐    ┌──────────┐
-    │ Composer│    │  Runner  │    │  Database│
-    │ LangGraph│   │ Pipelines│    │ PostgreSQL│
-    └─────────┘    └──────────┘    └──────────┘
+    ┌──────────┐    ┌──────────┐    ┌───────────┐
+    │ Composer │    │  Runner  │    │  Database │
+    │ LangGraph│    │ Pipelines│    │ PostgreSQL│
+    └──────────┘    └──────────┘    └───────────┘
           │               │               │
           └───────────────┼───────────────┘
                           │
@@ -103,6 +103,42 @@ docker-compose run --rm test-runner -vv
 
 ## Test Organization
 
+### Component-Specific Tests
+
+Tests are organized per component with unit and integration tests:
+
+```
+server/test/
+├── unit/              # Server unit tests
+│   ├── __init__.py
+│   ├── test_app.py    # App initialization tests
+│   ├── middleware/    # Middleware tests
+│   └── routers/       # Router tests
+└── integration/       # Server integration tests
+    ├── __init__.py
+    ├── conftest.py    # Shared fixtures
+    ├── test_database.py          # Database tests
+    ├── test_integration_setup.py # Environment setup
+    └── test_server.py            # Server API tests
+
+composer/test/
+├── unit/              # Composer unit tests
+└── integration/       # Composer integration tests
+    ├── __init__.py
+    ├── conftest.py    # Shared fixtures
+    ├── test_e2e_flow.py  # End-to-end tests (Composer to Runner)
+
+runner/test/
+├── unit/              # Runner unit tests
+└── integration/       # Runner integration tests
+    ├── __init__.py
+    └── test_runner.py # Pipeline execution tests
+```
+
+### Integration Tests (Legacy)
+
+The `test/integration/` directory contains legacy tests that span multiple components:
+
 ```
 test/integration/
 ├── docker-compose.yml          # Service definitions
@@ -110,11 +146,21 @@ test/integration/
 ├── Dockerfile.test            # Test runner build definition
 ├── conftest.py                # Pytest fixtures
 ├── pytest.ini                 # Pytest configuration
-├── test_database.py           # Database tests
-├── test_server.py             # Server endpoint tests
-├── test_composer.py           # Composer tests
-├── test_runner.py             # Runner tests
-└── test_e2e_flow.py           # End-to-end flow tests
+├── server/                    # Server integration tests (legacy)
+│   ├── __init__.py
+│   └── test_health.py         # Health check tests
+├── composer/                  # Composer integration tests (legacy)
+│   └── __init__.py
+├── runner/                    # Runner integration tests (legacy)
+│   └── __init__.py
+├── e2e/                       # End-to-end tests
+│   ├── __init__.py
+│   └── test_full_flow.py      # Full stack flow tests
+├── test_database.py           # Database tests (legacy)
+├── test_server.py             # Server endpoint tests (legacy)
+├── test_composer.py           # Composer tests (legacy)
+├── test_runner.py             # Runner tests (legacy)
+└── test_e2e_flow.py           # End-to-end flow tests (legacy)
 ```
 
 ## Fixtures

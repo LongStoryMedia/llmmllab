@@ -1,0 +1,58 @@
+# Dockerfile for Composer Integration Testing
+# Builds the Composer service with gRPC server
+
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    build-essential \
+    libpq-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+# Create a non-root user
+RUN useradd -m -u 1000 appuser
+
+# Install Python dependencies
+# Copy composer requirements first for better layer caching
+COPY --chown=appuser:appuser composer/requirements.txt /app/composer/
+
+# Install core dependencies
+RUN pip install --no-cache-dir -r /app/composer/requirements.txt
+
+# Install composer package in editable mode
+COPY --chown=appuser:appuser composer/ /app/composer/
+COPY --chown=appuser:appuser server/ /app/server/
+COPY --chown=appuser:appuser runner/ /app/runner/
+COPY --chown=appuser:appuser schemas/ /app/schemas/
+
+# Install server and runner in editable mode
+RUN pip install --no-cache-dir -e /app/server \
+    && pip install --no-cache-dir -e /app/runner
+
+# Create necessary directories
+RUN mkdir -p /app/logs \
+    /tmp/huggingface \
+    /app/config \
+    && chown -R appuser:appuser /app/logs /tmp/huggingface /app/config
+
+USER appuser
+
+# Expose the gRPC port
+EXPOSE 50051
+
+# Run the gRPC server
+CMD ["python", "-m", "composer.server.grpc"]
