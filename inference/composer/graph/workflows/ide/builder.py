@@ -205,7 +205,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="qwen3-coder-next-iq4-xs",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=131072,
+        num_ctx=196608,
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
@@ -219,7 +219,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Top-K sampling - only consider top K tokens by probability
         top_k=20,
         # Top-P (nucleus) sampling - consider tokens accounting for top P probability
-        top_p=0.95,
+        top_p=0.97,
         # Minimum probability threshold for token selection
         min_p=0.01,
         # Fallback max tokens limit
