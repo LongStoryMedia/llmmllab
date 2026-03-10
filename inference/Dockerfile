@@ -33,7 +33,7 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 
 RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-    git checkout tags/b8149 && \
+    git checkout tags/b8261 && \
     git checkout -b llmmll
 
 WORKDIR /llama.cpp
@@ -74,6 +74,8 @@ ENV PYTHONUNBUFFERED=1 \
     CUDA_DEVICE_ORDER=PCI_BUS_ID \
     CUDA_CACHE_PATH=/tmp/cuda_cache \
     CUDA_LAUNCH_BLOCKING=0 \
+    CUDA_SCALE_LAUNCH_QUEUES=4x \
+    GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 \
     PORT=8000 \
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \

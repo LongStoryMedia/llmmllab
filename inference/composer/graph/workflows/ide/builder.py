@@ -211,7 +211,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
         repeat_penalty=0,
         # Sampling temperature - higher = more creative, lower = more deterministic
-        temperature=0.7,
+        temperature=0.9,
         # Random seed for reproducibility
         seed=-1,
         # Max new tokens to generate (num_predict) (-1 = unlimited)
@@ -219,9 +219,9 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Top-K sampling - only consider top K tokens by probability
         top_k=20,
         # Top-P (nucleus) sampling - consider tokens accounting for top P probability
-        top_p=0.97,
+        top_p=0.95,
         # Minimum probability threshold for token selection
-        min_p=0.01,
+        min_p=0.05,
         # Fallback max tokens limit
         max_tokens=-1,
         # Tensor parallel parts (-1 = auto)
@@ -229,7 +229,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Prompt processing batch size - process multiple prompts in parallel
         batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=1024,
+        micro_batch_size=2048,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
