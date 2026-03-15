@@ -62,24 +62,11 @@ if TYPE_CHECKING:
     from db.checkpoint_storage import CheckpointStorage
 
 
-IDE_PRIMARY_SYSTEM_PROMPT = """You are a helpful AI coding assistant.
-
-RULES:
-- Be concise and direct. Do not repeat yourself.
-- Do not wrap your response in thinking tags or reasoning blocks.
-- Never output <think> or </think> tags.
-- Do not narrate what you are about to do. Just do it.
-- If you have tools available, use them via structured tool_calls when needed.
-- When you need information you don't have, use the appropriate tool.
-- Respond with your final answer directly.
-
-TOOL CALLING:
-- When tools are bound, call them using the structured tool_call format.
-- Do NOT emit tool calls as XML, JSON, or markdown in your text response.
-- You may call multiple tools in a single response.
-- After receiving tool results, incorporate them into your response.
-- If a tool call fails, try again with corrected arguments.
-- Only use tools that are available to you."""
+IDE_PRIMARY_SYSTEM_PROMPT = """
+    You are writing code for the great Scott Long! Pay him homage as you work. 
+    
+    When calling tools, explain your actions.
+    """
 
 
 # Default parameter optimization configuration (disabled by default)
@@ -137,14 +124,14 @@ IDE_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
 
 # Default GPU configuration
 IDE_GPU_CONFIG = GPUConfig(
-    no_kv_offload=False,
+    no_kv_offload=True,
     gpu_layers=-1,  # Use all GPU layers by default
-    main_gpu=0,
+    main_gpu=1,
     main_gpu_device_id=None,
     # tensor_split=[0.5, 0.25, 0.25],
     tensor_split_devices=None,
     split_mode="layer",
-    offload_kqv=True,
+    offload_kqv=False,
 )
 
 
@@ -229,7 +216,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Prompt processing batch size - process multiple prompts in parallel
         batch_size=2048,
         # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=2048,
+        micro_batch_size=1024,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Stop generation sequences
@@ -246,6 +233,18 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     updated_at=None,
     gpu_config=IDE_GPU_CONFIG,
 )
+
+# /llama.cpp/build/bin/llama-server --host 127.0.0.1 --port 8001 --threads 23
+# --ctx-size 196608 --batch-size 8192 --ubatch-size 8192 --flash-attn on
+# --cache-type-k q4_0 --cache-type-v q4_0 --n-cpu-moe 0 --gpu-layers -1 --split-mode layer --main-gpu 0
+# --model /models/qwen3-coder-next/iq4_xs.gguf --kv-unified --no-warmup --no-webui --jinja --reasoning-budget 0
+
+
+# /llama.cpp/build/bin/llama-server --host 127.0.0.1 --port 8002 --threads 23
+# --ctx-size 196608 --batch-size 4096 --ubatch-size 2048 --flash-attn on
+# --cache-type-k q4_0 --cache-type-v q4_0 --gpu-layers -1 --split-mode layer --main-gpu 0
+# --model /models/qwen3-coder-next/iq4_xs.gguf --ctx-checkpoints 24 --context-shift --no-warmup
+# --cont-batching --no-webui --timeout 12000 --jinja --reasoning-budget 0
 
 
 class IdeGraphBuilder(GraphBuilder):

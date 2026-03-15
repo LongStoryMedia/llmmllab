@@ -102,12 +102,23 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         # Standard server features with performance optimizations
         config.update(
             {
-                # "cont_batching": True,
+                "cont_batching": True,
                 # "metrics": True,
                 "no_warmup": True,  # Skip warmup for faster startup
                 "flash_attn": "on",  # Flash attention for faster prompt processing
-                "cache_type_k": "f16",  # Use f16 for KV cache
-                "cache_type_v": "f16",  # Use f16 for KV cache
+                "cache_type_k": "q8_0",  # Use f16 for KV cache
+                "cache_type_v": "q8_0",  # Use f16 for KV cache
+                # "threads": (int(os.cpu_count() or 5) - 1),
+                "threads": 2,
+                "threads_batch": 2,
+                "ctx_size": params.num_ctx or 90000,
+                "batch_size": params.batch_size or 2048,
+                "ubatch_size": params.micro_batch_size or (params.batch_size or 2048),
+                "reasoning_budget": (-1 if self.profile.parameters.think else 0),
+                "ctx_checkpoints": 24,
+                "timeout": 30000,
+                # "context_shift": True,
+                # "kv_unified": True,
             }
         )
 
@@ -115,17 +126,6 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         # GQA models on multi-GPU row-split and to prevent KV cache
         # thrashing under SWA/hybrid attention models.
         config["parallel"] = 1
-
-        # Core performance parameters
-        config.update(
-            {
-                "threads": (int(os.cpu_count() or 5) - 1),
-                "ctx_size": params.num_ctx or 90000,
-                "batch_size": params.batch_size or 2048,
-                "ubatch_size": params.micro_batch_size or (params.batch_size or 2048),
-                "reasoning_budget": (-1 if self.profile.parameters.think else 0),
-            }
-        )
 
         # GPU configuration
         config["n_gpu_layers"] = (
@@ -156,7 +156,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
 
         # MoE (Mixture of Experts) configuration
-        config["n_cpu_moe"] = params.n_cpu_moe
+        # config["n_cpu_moe"] = params.n_cpu_moe
 
         # NUMA distribution
         # config["numa"] = "distribute"

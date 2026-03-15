@@ -26,8 +26,9 @@ diffusers==0.35.1
 sentence-transformers==5.1.0
 safetensors==0.6.2
 sentencepiece==0.2.1
-pillow==11.0.0
+pillow==12.1.1
 gguf==0.17.1
+hy3dgen==2.0.2
 
 # Data and Datasets
 datasets==4.1.0
