@@ -1,84 +1,11 @@
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llmmll-models
-  namespace: llmmll
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Gi
----
-apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: llmmll-models
-  namespace: llmmll
+  name: generated-images
 spec:
   storageClassName: ""
   capacity:
     storage: 100Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /data/llmmll-models
-    type: DirectoryOrCreate
-  claimRef:
-    namespace: llmmll
-    name: llmmll-models
-# ---
-# apiVersion: v1
-# kind: PersistentVolumeClaim
-# metadata:
-#   name: sd-models
-#   namespace: llmmll
-# spec:
-#   accessModes:
-#     - ReadWriteOnce
-#   resources:
-#     requests:
-#       storage: 100Gi
-# ---
-# apiVersion: v1
-# kind: PersistentVolume
-# metadata:
-#   name: sd-models
-#   namespace: llmmll
-# spec:
-#   storageClassName: ""
-#   capacity:
-#     storage: 100Gi
-#   accessModes:
-#     - ReadWriteOnce
-#   hostPath:
-#     path: /data/sd-models
-#     type: DirectoryOrCreate
-#   claimRef:
-#     namespace: llmmll
-#     name: sd-models
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: generated-images
-  namespace: llmmll
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: generated-images
-  namespace: llmmll
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 10Gi
   accessModes:
     - ReadWriteOnce
   hostPath:
@@ -87,24 +14,32 @@ spec:
   claimRef:
     namespace: llmmll
     name: generated-images
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - lsnode-3
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: code-base
+  name: generated-images
   namespace: llmmll
 spec:
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
+      storage: 100Gi
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: code-base
-  namespace: llmmll
 spec:
   storageClassName: ""
   capacity:
@@ -117,63 +52,24 @@ spec:
   claimRef:
     namespace: llmmll
     name: code-base
-# ---
-# apiVersion: v1
-# kind: PersistentVolumeClaim
-# metadata:
-#   name: llama.cpp
-#   namespace: llmmll
-# spec:
-#   accessModes:
-#     - ReadWriteOnce
-#   resources:
-#     requests:
-#       storage: 30Gi
-# ---
-# apiVersion: v1
-# kind: PersistentVolume
-# metadata:
-#   name: llama.cpp
-#   namespace: llmmll
-# spec:
-#   storageClassName: ""
-#   capacity:
-#     storage: 10Gi
-#   accessModes:
-#     - ReadWriteOnce
-#   hostPath:
-#     path: /llama.cpp
-#     type: DirectoryOrCreate
-#   claimRef:
-#     namespace: llmmll
-#     name: llama.cpp
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - lsnode-3
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: models
+  name: code-base
   namespace: llmmll
 spec:
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 30Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: models
-  namespace: llmmll
-spec:
-  storageClassName: ""
-  capacity:
-    storage: 30Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /models
-    type: DirectoryOrCreate
-  claimRef:
-    namespace: llmmll
-    name: models
+      storage: 10Gi

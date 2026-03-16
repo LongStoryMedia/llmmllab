@@ -415,6 +415,19 @@ class PipelineFactory:
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxKontextPipe: {e}")
                 return None
+
+        if model.task == ModelTask.IMAGETO3D:
+            try:
+                from .pipelines.img23d.hunyuan3d import (  # pylint: disable=import-outside-toplevel
+                    Hunyuan3DImageTo3DPipeline,
+                )
+
+                return Hunyuan3DImageTo3DPipeline(model)  # type: ignore
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to initialize Hunyuan3DImageTo3DPipeline: {e}"
+                )
+
         return None
 
     # (Removed duplicate legacy cleanup method; single alias earlier in file)
