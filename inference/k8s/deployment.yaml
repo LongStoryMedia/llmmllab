@@ -34,7 +34,7 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: llmmll
-          image: 192.168.0.71:31500/inference:latest
+          image: 192.168.0.71:31500/inference:main
           imagePullPolicy: Always
           securityContext:
             privileged: true

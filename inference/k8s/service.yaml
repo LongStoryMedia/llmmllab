@@ -10,24 +10,24 @@ spec:
   selector:
     app: llmmll
   ports:
-    - name: ollama
-      port: 11434
-      targetPort: 11434
-      protocol: TCP
-      # nodePort: 30134
-    - name: ide
-      port: 11435
-      targetPort: 11435
-      protocol: TCP
-    - name: sd
+    # - name: ollama
+    #   port: 11434
+    #   targetPort: 11434
+    #   protocol: TCP
+    #   # nodePort: 30134
+    # - name: ide
+    #   port: 11435
+    #   targetPort: 11435
+    #   protocol: TCP
+    - name: llmmllab
       port: 8000
       targetPort: 8000
       protocol: TCP
-      # nodePort: 30080
-    - name: grpc
-      port: 50051
-      targetPort: 50051
-      protocol: TCP
-      # nodePort: 30051
+      nodePort: 30080
+    # - name: grpc
+    #   port: 50051
+    #   targetPort: 50051
+    #   protocol: TCP
+    # nodePort: 30051
   # clusterIP: 10.43.5.10
   publishNotReadyAddresses: true

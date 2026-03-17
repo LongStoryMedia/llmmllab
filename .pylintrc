@@ -1,2 +1,2 @@
 [MASTER]
-load-plugins=pylint_pydantic
+# load-plugins=pylint_pydantic  # Commented out - plugin not always available
