@@ -32,7 +32,12 @@ from models import (
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger, serialize_event_data
 
-from .content_parser import parse_content, strip_think_tags, clean_think_tags, RawToolCallStreamBuffer
+from .content_parser import (
+    parse_content,
+    strip_think_tags,
+    clean_think_tags,
+    RawToolCallStreamBuffer,
+)
 from .tool_call_parser import RawToolCallParser, _RAW_TOOL_CALL_RE
 
 
@@ -209,10 +214,6 @@ class WorkflowExecutor:
                 event_name = event.get("name", "")
                 run_id = event.get("run_id", "")
                 new_state = state
-
-                self.logger.debug(
-                    serialize_event_data(event), extra={"event_type": event_type}
-                )
 
                 # ----------------------------------------------------------------
                 # Streaming chunks (token by token)
