@@ -271,7 +271,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Enable reasoning/thinking mode
-        think=False,
+        think=True,
         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower) this is SO confusin and needs to be changed
         kv_on_cpu=True,
         # n_cpu_moe=10,
