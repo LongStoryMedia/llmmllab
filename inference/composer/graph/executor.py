@@ -401,11 +401,20 @@ class WorkflowExecutor:
                             text_parts = parse_content(output.content)
                             full_text = "".join(text_parts).strip()
 
-                            # For non-streaming responses the chat-template
-                            # prefix (e.g. </think>) is NOT included in the API
-                            # response content — only streaming includes it.
-                            # Bypass strip_think_tags to avoid misclassifying
-                            # everything as thinking.
+                            # Strip orphaned think tags that the streaming path
+                            # may have already consumed.  When --reasoning-budget
+                            # 0 forces the model to skip thinking, a bare
+                            # </think> can appear as the entire output; the
+                            # streaming handler silently absorbs it but
+                            # contents_buffer stays empty.  Without this cleanup
+                            # the tag leaks as literal content, poisoning the
+                            # conversation history and causing the model to emit
+                            # EOS on subsequent invocations.
+                            if "</think>" in full_text:
+                                full_text = full_text.split("</think>", 1)[-1].strip()
+                            if full_text.startswith("<think>"):
+                                full_text = ""
+
                             if _RAW_TOOL_CALL_RE.search(full_text):
                                 content_part, raw_tcs = (
                                     self.content_parser.strip_raw_tool_calls(full_text)
