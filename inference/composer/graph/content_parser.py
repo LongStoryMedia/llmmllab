@@ -29,6 +29,14 @@ _TOOL_CALL_BLOCK_RE = re.compile(
 )
 
 
+_THINK_TAG_RE = re.compile(r"</?think>", re.IGNORECASE)
+
+
+def clean_think_tags(text: str) -> str:
+    """Remove all <think> and </think> tags from text."""
+    return _THINK_TAG_RE.sub("", text).strip()
+
+
 def strip_think_tags(text: str, think_closed: bool = False) -> Tuple[str, str, bool]:
     """
     Split text on </think> boundary.
@@ -41,7 +49,7 @@ def strip_think_tags(text: str, think_closed: bool = False) -> Tuple[str, str, b
         Tuple of (thinking_part, content_part, new_think_closed)
         - If </think> found: returns (thinking content, rest after tag, True)
         - If no </think> and not closed yet: returns (text, "", False)
-        - If no </think> and already closed: returns ("", text, False)
+        - If no </think> and already closed: returns ("", text, True)
     """
     if "</think>" in text:
         before, after = text.split("</think>", 1)
@@ -51,7 +59,7 @@ def strip_think_tags(text: str, think_closed: bool = False) -> Tuple[str, str, b
         return before.strip(), after.lstrip("\n"), True
     if not think_closed:
         return text, "", False
-    return "", text, False
+    return "", text, True
 
 
 def parse_content(content: str | List[str | dict]) -> List[str]:

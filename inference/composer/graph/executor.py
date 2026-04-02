@@ -32,7 +32,7 @@ from models import (
 from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger, serialize_event_data
 
-from .content_parser import parse_content, strip_think_tags, RawToolCallStreamBuffer
+from .content_parser import parse_content, strip_think_tags, clean_think_tags, RawToolCallStreamBuffer
 from .tool_call_parser import RawToolCallParser, _RAW_TOOL_CALL_RE
 
 
@@ -571,6 +571,11 @@ class WorkflowExecutor:
             contents_buffer = thoughts_buffer + contents_buffer
             thoughts_buffer = ""
             think_closed = True
+
+        # Strip any residual think tags that leaked through (e.g. </think>
+        # split across streaming chunks that accumulated in thoughts_buffer
+        # and got promoted above).
+        contents_buffer = clean_think_tags(contents_buffer)
 
         # If think closed but model produced NO content and NO tool calls,
         # the thoughts are the only output — promote them to content so

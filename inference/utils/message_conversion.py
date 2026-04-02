@@ -53,6 +53,34 @@ def _get_file_extras(content_item: MessageContent) -> Dict[str, Any]:
     return {"extras": extras} if extras else {}
 
 
+_THINK_TAG_RE = re.compile(r"</?think>", re.IGNORECASE)
+
+
+def _strip_think_tags_from_content(
+    content_data: Union[str, List[Union[str, Dict[str, Any]]]],
+) -> Union[str, List[Union[str, Dict[str, Any]]]]:
+    """Remove <think>/<​/think> tags from assistant message content.
+
+    Handles both simple string content and multimodal list-of-dicts format.
+    """
+    if isinstance(content_data, str):
+        return _THINK_TAG_RE.sub("", content_data).strip()
+
+    cleaned: List[Union[str, Dict[str, Any]]] = []
+    for item in content_data:
+        if isinstance(item, dict) and item.get("type") == "text":
+            text = _THINK_TAG_RE.sub("", item.get("text", "")).strip()
+            if text:
+                cleaned.append({**item, "text": text})
+        elif isinstance(item, str):
+            text = _THINK_TAG_RE.sub("", item).strip()
+            if text:
+                cleaned.append(text)
+        else:
+            cleaned.append(item)
+    return cleaned
+
+
 def message_to_lc_message(
     message: Message, use_llama_format: bool = False
 ) -> AnyMessage:
@@ -69,6 +97,11 @@ def message_to_lc_message(
         content_data = convert_message_content_to_llama_format(message.content)
     else:
         content_data = convert_message_content_to_langchain_format(message.content)
+
+    # Strip residual think tags from assistant content to prevent poisoning
+    # the model's context (a prior turn may have leaked </think> as content).
+    if message.role in (MessageRole.ASSISTANT, MessageRole.AGENT):
+        content_data = _strip_think_tags_from_content(content_data)
 
     # For assistant messages, also parse XML tool calls from text content
     parsed_tool_calls = []
