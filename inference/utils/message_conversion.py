@@ -268,11 +268,54 @@ def messages_to_lc_messages(
 ) -> List[AnyMessage]:
     """Convert a list of Message objects to LangChain BaseMessages.
 
+    Drops empty assistant messages (no content AND no tool_calls) that would
+    teach the model to produce empty responses, and merges any consecutive
+    same-role messages that result from the removal.
+
     Args:
         messages: List of Message objects to convert
         use_llama_format: If True, use llama.cpp compatible format
     """
-    return [message_to_lc_message(msg, use_llama_format) for msg in messages]
+    converted: List[AnyMessage] = []
+    for msg in messages:
+        lc_msg = message_to_lc_message(msg, use_llama_format)
+
+        # Drop empty AI messages (no content, no tool_calls) — these poison
+        # the model into producing EOS immediately.
+        if isinstance(lc_msg, AIMessage):
+            content_empty = not lc_msg.content or (
+                isinstance(lc_msg.content, str) and not lc_msg.content.strip()
+            )
+            has_tc = bool(getattr(lc_msg, "tool_calls", None))
+            if content_empty and not has_tc:
+                logger.debug(
+                    "Dropping empty AIMessage from conversation history "
+                    "(no content, no tool_calls)"
+                )
+                continue
+
+        # Merge consecutive same-type messages (can happen after dropping
+        # empty AI messages: user → [empty AI dropped] → user).
+        if (
+            converted
+            and type(lc_msg) is type(converted[-1])
+            and isinstance(lc_msg, HumanMessage)
+        ):
+            prev = converted[-1]
+            prev_text = (
+                prev.content if isinstance(prev.content, str) else str(prev.content)
+            )
+            cur_text = (
+                lc_msg.content
+                if isinstance(lc_msg.content, str)
+                else str(lc_msg.content)
+            )
+            converted[-1] = HumanMessage(content=f"{prev_text}\n\n{cur_text}")
+            logger.debug("Merged consecutive HumanMessages after empty AI removal")
+            continue
+
+        converted.append(lc_msg)
+    return converted
 
 
 def lc_messages_to_messages(
