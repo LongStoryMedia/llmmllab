@@ -173,28 +173,6 @@ class ChatLlamaCppPipeline(BasePipeline):
                 top_p=self.profile.parameters.top_p or 0.9,
                 disable_streaming="tool_calling",
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
-                # NOTE: reasoning_effort and seed are intentionally omitted.
-                # reasoning_effort is an OpenAI o1/o3-only parameter that
-                # llama.cpp does not support.  seed is omitted because -1
-                # is not a valid value for the OpenAI SDK and llama.cpp
-                # defaults to random when unset.
-                extra_body={
-                    # Disable thinking mode via the Jinja chat template.
-                    # GLM-4.7-Flash's template checks `enable_thinking` and
-                    # emits <|assistant|></think> (no thinking) when false, vs
-                    # <|assistant|><think> (thinking enabled) when true/default.
-                    #
-                    # With thinking enabled, the model wastes tokens planning
-                    # instead of acting — it generates a brief internal plan
-                    # then hits EOS without producing tool_calls or content.
-                    # Disabling it forces the model to generate content/tool
-                    # calls directly, dramatically improving reliability.
-                    #
-                    # The key must be `chat_template_kwargs` (NOT a top-level
-                    # `thinking` or `enable_thinking`) — only this form is
-                    # forwarded by llama.cpp to the Jinja template renderer.
-                    "chat_template_kwargs": {"enable_thinking": False},
-                },
                 metadata={
                     "model_profile": self.profile.name,
                     "task": ModelProfileType(self.profile.type).name,

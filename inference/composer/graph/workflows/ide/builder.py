@@ -68,7 +68,6 @@ IDE_PRIMARY_SYSTEM_PROMPT = """
     When calling tools, explain your actions.
     """
 
-
 # Default parameter optimization configuration (disabled by default)
 IDE_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
     enabled=False,
@@ -117,8 +116,8 @@ IDE_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
     crash_prevention=CrashPrevention(
         enable_preallocation_test=False,
         memory_buffer_mb=4096,
-        timeout_seconds=120,
-        enable_graceful_degradation=False,
+        timeout_seconds=300,
+        enable_graceful_degradation=True,
     ),
 )
 
@@ -128,7 +127,7 @@ IDE_GPU_CONFIG = GPUConfig(
     gpu_layers=-1,  # Use all GPU layers by default
     main_gpu=1,
     main_gpu_device_id=None,
-    # tensor_split=[0.5, 0.25, 0.25],
+    # tensor_split=[0.1, 0.7, 0.2],  # More aggressive tensor splitting for large models
     tensor_split_devices=None,
     split_mode="layer",
     offload_kqv=False,
@@ -183,22 +182,74 @@ IDE_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
     tool_gen_repetition_threshold=3,
 )
 
+# IDE_PRIMARY_PROFILE = ModelProfile(
+#     id=uuid.UUID("10000000-2000-3000-4000-500000000000"),
+#     user_id="system",
+#     name="Primary (Default)",
+#     type=ModelProfileType.Primary.value,
+#     description="Primary model profile for general chat and reasoning.",
+#     model_name="qwen3-coder-next-iq4-xs",
+#     parameters=ModelParameters(
+#         # Context window size - max tokens the model can process at once
+#         num_ctx=196608,
+#         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
+#         repeat_last_n=-1,
+#         # Token repetition penalty - penalize repeated tokens (0 = disabled)
+#         repeat_penalty=0,
+#         # Sampling temperature - higher = more creative, lower = more deterministic
+#         temperature=0.9,
+#         # Random seed for reproducibility
+#         seed=-1,
+#         # Max new tokens to generate (num_predict) (-1 = unlimited)
+#         num_predict=-1,
+#         # Top-K sampling - only consider top K tokens by probability
+#         top_k=20,
+#         # Top-P (nucleus) sampling - consider tokens accounting for top P probability
+#         top_p=0.95,
+#         # Minimum probability threshold for token selection
+#         min_p=0.05,
+#         # Fallback max tokens limit
+#         max_tokens=-1,
+#         # Tensor parallel parts (-1 = auto)
+#         n_parts=-1,
+#         # Prompt processing batch size - process multiple prompts in parallel
+#         batch_size=2048,
+#         # Generation batch size - tokens per decode step per GPU (-1 = auto)
+#         micro_batch_size=1024,
+#         # Number of layers to keep on GPU (-1 = all layers on GPU)
+#         n_gpu_layers=-1,
+#         # Stop generation sequences
+#         stop=[],
+#         # Enable reasoning/thinking mode
+#         think=False,
+#         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower)
+#         kv_on_cpu=True,
+#         # n_cpu_moe=10,
+#     ),
+#     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
+#     parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
+#     created_at=None,
+#     updated_at=None,
+#     gpu_config=IDE_GPU_CONFIG,
+# )
+
+
 IDE_PRIMARY_PROFILE = ModelProfile(
     id=uuid.UUID("10000000-2000-3000-4000-500000000000"),
     user_id="system",
     name="Primary (Default)",
     type=ModelProfileType.Primary.value,
-    description="Primary model profile for general chat and reasoning.",
-    model_name="qwen3-coder-next-iq4-xs",
+    description="Primary model profile for agentic coding.",
+    model_name="?",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=196608,
+        num_ctx=131072,  # Start with a reasonable context size and optimize up if possible
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
         repeat_penalty=0,
         # Sampling temperature - higher = more creative, lower = more deterministic
-        temperature=0.9,
+        temperature=0.7,
         # Random seed for reproducibility
         seed=-1,
         # Max new tokens to generate (num_predict) (-1 = unlimited)
@@ -210,7 +261,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Minimum probability threshold for token selection
         min_p=0.05,
         # Fallback max tokens limit
-        max_tokens=-1,
+        max_tokens=8192,
         # Tensor parallel parts (-1 = auto)
         n_parts=-1,
         # Prompt processing batch size - process multiple prompts in parallel
@@ -219,11 +270,9 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         micro_batch_size=1024,
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
-        # Stop generation sequences
-        stop=[],
         # Enable reasoning/thinking mode
         think=False,
-        # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower)
+        # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower) this is SO confusin and needs to be changed
         kv_on_cpu=True,
         # n_cpu_moe=10,
     ),
@@ -233,18 +282,6 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     updated_at=None,
     gpu_config=IDE_GPU_CONFIG,
 )
-
-# /llama.cpp/build/bin/llama-server --host 127.0.0.1 --port 8001 --threads 23
-# --ctx-size 196608 --batch-size 8192 --ubatch-size 8192 --flash-attn on
-# --cache-type-k q4_0 --cache-type-v q4_0 --n-cpu-moe 0 --gpu-layers -1 --split-mode layer --main-gpu 0
-# --model /models/qwen3-coder-next/iq4_xs.gguf --kv-unified --no-warmup --no-webui --jinja --reasoning-budget 0
-
-
-# /llama.cpp/build/bin/llama-server --host 127.0.0.1 --port 8002 --threads 23
-# --ctx-size 196608 --batch-size 4096 --ubatch-size 2048 --flash-attn on
-# --cache-type-k q4_0 --cache-type-v q4_0 --gpu-layers -1 --split-mode layer --main-gpu 0
-# --model /models/qwen3-coder-next/iq4_xs.gguf --ctx-checkpoints 24 --context-shift --no-warmup
-# --cont-batching --no-webui --timeout 12000 --jinja --reasoning-budget 0
 
 
 class IdeGraphBuilder(GraphBuilder):
@@ -313,6 +350,12 @@ class IdeGraphBuilder(GraphBuilder):
         try:
             prof = IDE_PRIMARY_PROFILE
             if model_name:
+                self.logger.info(
+                    "Overriding primary profile model_name",
+                    user_id=user_id,
+                    original_model=prof.model_name,
+                    new_model=model_name,
+                )
                 prof = ModelProfile(
                     **{
                         **prof.model_dump(),

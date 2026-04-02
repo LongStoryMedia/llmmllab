@@ -7,6 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
+import regex
 
 from server.middleware.auth import get_user_id
 from models.anthropic.create_message_request import CreateMessageRequest
@@ -521,7 +522,7 @@ async def stream_message(
         {
             "type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": None},
-            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+            "usage": {"output_tokens": output_tokens},
         },
     )
     yield _sse("message_stop", {"type": "message_stop"})
@@ -534,15 +535,15 @@ async def createMessage(
 ) -> Union[MessageResponse, StreamingResponse]:
     """Operation ID: createMessage"""
     user_id = get_user_id(request)
-
     if not user_id:
         raise HTTPException(status_code=401, detail="User ID not found in request")
-
-    # models are customized in ~/.claude/settings.json
 
     try:
         body = CreateMessageRequest.model_validate(req_body)
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
+        claude_regex = regex.compile(r"claude|haiku|sonnet|opus", regex.IGNORECASE)
+        if claude_regex.search(body.model):
+            body.model = "Qwen3_5_4B"
 
         client_tools = None
         tool_choice = None
@@ -565,7 +566,10 @@ async def createMessage(
                 },
             )
         else:
-            logger.debug("Anthropic request without tools")
+            logger.debug(
+                f"Anthropic request without tools: {body.model_dump_json(indent=2)}"
+            )
+            # body.stream = True
 
         if body.stream:
             return StreamingResponse(

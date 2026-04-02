@@ -510,7 +510,7 @@ def models_to_yaml(models: list[dict[str, Any]]) -> str:
         lines.append("    name: " + escape_yaml_value(model.get("name", "")))
         lines.append("    model: " + escape_yaml_value(model.get("model", "")))
         lines.append("    task: " + model.get("task", ""))
-        lines.append("    modified_at: " + model.get("modified_at", ""))
+        lines.append(f'    modified_at: "{model.get("modified_at", "")}"')
         lines.append("    digest: " + model.get("digest", ""))
         lines.append("    size: " + str(model.get("size", 0)))
         lines.append("    details:")

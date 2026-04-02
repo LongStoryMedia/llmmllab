@@ -33,13 +33,13 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 
 RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-    git checkout tags/b8149 && \
+    git checkout tags/b8464 && \
     git checkout -b llmmll
 
 WORKDIR /llama.cpp
 RUN cmake -B build \
     -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES="75;86" \
+    -DCMAKE_CUDA_ARCHITECTURES="86" \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --config Release -j6
 
@@ -70,7 +70,7 @@ ENV PYTHONUNBUFFERED=1 \
     BNB_CUDA_VERSION=128 \
     TOKENIZERS_PARALLELISM=true \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-    TORCH_CUDA_ARCH_LIST="7.5;8.6" \
+    # TORCH_CUDA_ARCH_LIST="8.6" \
     CUDA_DEVICE_ORDER=PCI_BUS_ID \
     CUDA_CACHE_PATH=/tmp/cuda_cache \
     CUDA_LAUNCH_BLOCKING=0 \

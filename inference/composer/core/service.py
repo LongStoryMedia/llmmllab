@@ -91,8 +91,12 @@ class ComposerService:
 
                 if model_name:
                     cache_key += f"_{model_name}"
+                    cached_workflow = await user_cache.get(cache_key)
+                else:
+                    entry = user_cache.cache.popitem()[1]
+                    assert entry is not None, "Cached workflow should not be None"
+                    cached_workflow = entry.access()
 
-                cached_workflow = await user_cache.get(cache_key)
                 if cached_workflow:
                     self.logger.debug(
                         "Retrieved workflow from cache",

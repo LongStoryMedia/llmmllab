@@ -178,7 +178,7 @@ class LocalPipelineCacheManager:
         metadata: Optional[dict] = None,
     ) -> BasePipeline | Embeddings:
         assert profile.id is not None, "ModelProfile must have a valid ID"
-        profile_id = str(profile.id)
+        profile_id = f"{profile.id}_{model.name}"
 
         with self._lock:
             entry = self._cache.get(profile_id)
@@ -511,7 +511,7 @@ class LocalPipelineCacheManager:
             # First pass: collect all PIDs and clean up pipelines
             # FIX: Iterate over ALL model fields, not just set ones
             # This ensures default profile IDs (like Chat/Primary) are caught even if not explicitly set in DB
-            for model_profile_field in user_config.model_profiles.model_fields:
+            for model_profile_field in user_config.model_profiles.model_fields:  # type: ignore[attr-defined]
                 profile_id = getattr(user_config.model_profiles, model_profile_field)
                 if not profile_id:
                     continue
@@ -663,7 +663,8 @@ class LocalPipelineCacheManager:
             "activation_gb": breakdown["activation_gb"],
             "overhead_gb": breakdown["overhead_gb"],
             "clip_model_gb": breakdown["clip_model_gb"],
-            "total_gb": breakdown["total_gpu_gb"],
+            # "total_gb": breakdown["total_gpu_gb"],
+            "total_gb": 20,
             "kv_efficiency": 1.0,  # Not used in breakdown
             "gpu_layers": breakdown["gpu_layers_loaded"],
         }

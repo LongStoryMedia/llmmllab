@@ -106,19 +106,22 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 # "metrics": True,
                 "no_warmup": True,  # Skip warmup for faster startup
                 "flash_attn": "on",  # Flash attention for faster prompt processing
-                "cache_type_k": "q8_0",  # Use f16 for KV cache
-                "cache_type_v": "q8_0",  # Use f16 for KV cache
-                # "threads": (int(os.cpu_count() or 5) - 1),
-                "threads": 2,
-                "threads_batch": 2,
+                # "cache_type_k": "q8_0",  # Use f16 for KV cache
+                # "cache_type_v": "q8_0",  # Use f16 for KV cache
+                "cache_type_k": "q4_0",  # Use f16 for KV cache
+                "cache_type_v": "q4_0",  # Use f16 for KV cache
+                "threads": int(os.cpu_count() or 4),
+                # "threads_batch": 2,
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 2048,
                 "ubatch_size": params.micro_batch_size or (params.batch_size or 2048),
                 "reasoning_budget": (-1 if self.profile.parameters.think else 0),
                 "ctx_checkpoints": 24,
                 "timeout": 30000,
-                # "context_shift": True,
+                "context_shift": True,
+                "mirostat": 1,
                 # "kv_unified": True,
+                "cache_ram": 0,
             }
         )
 

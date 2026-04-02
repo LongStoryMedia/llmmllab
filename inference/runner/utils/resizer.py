@@ -228,6 +228,7 @@ class Resizer:
         self, optimal_params: OptimalParameters, model: Model
     ) -> MemoryBreakdown:
         """
+        DEPRECATED: This function is now much more accurate when ModelDetails includes the necessary fields.
         Calculate detailed GPU memory requirements breakdown.
         """
         # --- 1. EXTRACT PARAMETERS ---

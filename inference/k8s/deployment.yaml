@@ -153,6 +153,7 @@ spec:
               value: "1"
             - name: API_VERSION
               value: "v1"
+              # THIS SHOULD BE UPDATED WITH  Number  OF GPUS;
             - name: CUDA_VISIBLE_DEVICES
               value: "0,1,2"
             - name: CUDA_DEVICE_ORDER
