@@ -145,15 +145,15 @@ class ChatLlamaCppPipeline(BasePipeline):
             # params = self._build_chat_model_params()
 
             # Create ChatOpenAI instance with debug logging
-            # disable_streaming="tool_calling" makes LangChain fall back to
-            # a single non-streaming API call whenever tools are bound.
-            # This avoids "Invalid diff: now finding less tool calls!"
-            # errors from LangChain's streaming tool-call diff tracker,
-            # which are triggered by llama.cpp's GLM 4.5 chat format
-            # producing chunk sequences that LangChain cannot reconcile.
-            # Trade-off: text responses are not token-streamed when tools
-            # are bound (Copilot always sends tools), but tool calling
-            # is reliable.  Content still arrives via on_chat_model_end.
+            # NOTE: streaming is enabled even with tools bound.  Previously
+            # disable_streaming="tool_calling" was set to work around
+            # "Invalid diff: now finding less tool calls!" errors from
+            # LangChain's streaming tool-call diff tracker with GLM 4.5.
+            # That is no longer needed and disabling streaming causes
+            # empty-response bugs: when the model returns only reasoning
+            # tokens (stripped by --reasoning-budget 0), the non-streaming
+            # path receives content="" which is silently dropped, producing
+            # an empty assistant turn that breaks Claude Code.
 
             # Resolve max_tokens: profile uses -1 for "unlimited", but the
             # OpenAI SDK requires a positive int or omission.  llama.cpp
@@ -171,7 +171,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 temperature=self.profile.parameters.temperature or 0.7,
                 # max_tokens=max_tokens,  # type: ignore[assignment]
                 top_p=self.profile.parameters.top_p or 0.9,
-                disable_streaming="tool_calling",
+                streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={
                     "model_profile": self.profile.name,

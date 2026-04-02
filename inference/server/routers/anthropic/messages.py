@@ -474,6 +474,37 @@ async def stream_message(
             },
         )
 
+    # Safety net: if model produced absolutely nothing (no content, no tool
+    # calls), emit a minimal text block so the client doesn't receive a
+    # completely empty assistant turn which causes Claude Code to silently
+    # drop the response.
+    if not has_content and not has_tool_calls and not final_content:
+        logger.warning(
+            "Model produced empty response — no content or tool calls",
+            extra={"model": model_name, "input_tokens": input_tokens},
+        )
+        if not text_block_started:
+            yield _sse(
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": text_block_index,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            )
+            text_block_started = True
+        yield _sse(
+            "content_block_delta",
+            {
+                "type": "content_block_delta",
+                "index": text_block_index,
+                "delta": {
+                    "type": "text_delta",
+                    "text": "[Model returned empty response. The context may be too large or the model may need to be reloaded. Please try again.]",
+                },
+            },
+        )
+
     # Close the text block
     if text_block_started:
         yield _sse(

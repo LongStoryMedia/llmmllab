@@ -599,6 +599,14 @@ class WorkflowExecutor:
             },
         )
 
+        if not contents_buffer and not thoughts_buffer and not tool_calls:
+            self.logger.warning(
+                "Model produced empty response — no content, thoughts, or tool calls. "
+                "This may indicate the model emitted only reasoning tokens that were "
+                "stripped (e.g. <think></think> with --reasoning-budget 0), or the "
+                "context was too large for meaningful generation.",
+            )
+
         final_message = Message(
             role=MessageRole.ASSISTANT,
             content=message_contents,
