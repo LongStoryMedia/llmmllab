@@ -35,7 +35,6 @@ from runner import pipeline_factory
 from runner.pipelines.llamacpp.chat import ChatLlamaCppPipeline
 from utils.logging import llmmllogger
 
-
 logger = llmmllogger.bind(component="anthropic_messages_router")
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
@@ -574,7 +573,7 @@ async def createMessage(
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
         claude_regex = regex.compile(r"claude|haiku|sonnet|opus", regex.IGNORECASE)
         if claude_regex.search(body.model):
-            body.model = "Qwen3_5_4B"
+            body.model = "Qwen3_5_0_8B"
 
         client_tools = None
         tool_choice = None
