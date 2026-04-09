@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from collections.abc import AsyncIterator
 from typing import Dict, Union, Any
@@ -46,8 +47,11 @@ router = APIRouter(prefix="/messages", tags=["Messages"])
 _CLAUDE_ASSUMED_CONTEXT = 200_000
 
 # Single continuation prompt: asks the model if it meant to call a tool.
-# If it responds with just text (e.g. "done"), we accept that. If it
-# responds with a tool call, we use it.
+# Controlled by ENABLE_TOOL_CONTINUATION env var (set to "1" or "true" to enable).
+_CONTINUATION_ENABLED = os.getenv("ENABLE_TOOL_CONTINUATION", "true").lower() in (
+    "1",
+    "true",
+)
 _CONTINUATION_PROMPT = (
     "Did you mean to call any tools? If not, simply respond with 'done'. "
     "Otherwise, continue working."
@@ -444,7 +448,10 @@ async def stream_message(
                 final_content = "".join(parts)
                 logger.debug(
                     "Captured final content from done event",
-                    extra={"content_len": len(final_content), "content_preview": final_content[:200]},
+                    extra={
+                        "content_len": len(final_content),
+                        "content_preview": final_content[:200],
+                    },
                 )
             if event.prompt_eval_count:
                 input_tokens = _scale_tokens(int(event.prompt_eval_count))
@@ -458,7 +465,10 @@ async def stream_message(
                 if part.type == MessageContentType.TEXT and part.text:
                     logger.debug(
                         "Streaming content delta",
-                        extra={"text_len": len(part.text), "text_preview": part.text[:100]},
+                        extra={
+                            "text_len": len(part.text),
+                            "text_preview": part.text[:100],
+                        },
                     )
                     if not text_block_started:
                         yield _sse(
@@ -487,7 +497,8 @@ async def stream_message(
     # responds with just text we accept the original response as final.
     # ----------------------------------------------------------------
     if (
-        not has_tool_calls
+        _CONTINUATION_ENABLED
+        and not has_tool_calls
         and client_tools
         and (has_content or final_content)
     ):
@@ -743,13 +754,16 @@ async def createMessage(
         has_tool_calls = bool(
             chat_response.message and chat_response.message.tool_calls
         )
-        has_content = bool(
-            chat_response.message and chat_response.message.content
-        )
-        if not has_tool_calls and client_tools and has_content:
+        has_content = bool(chat_response.message and chat_response.message.content)
+        if (
+            _CONTINUATION_ENABLED
+            and not has_tool_calls
+            and client_tools
+            and has_content
+        ):
             accumulated_text = "".join(
                 c.text
-                for c in chat_response.message.content
+                for c in chat_response.message.content  # type: ignore
                 if c.type == MessageContentType.TEXT and c.text
             )
             if accumulated_text:
