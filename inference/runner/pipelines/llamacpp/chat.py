@@ -8,7 +8,7 @@ to our llama.cpp server and exposes it for use with composer agents.
 import json
 import os
 import re
-from typing import Any, Dict, Iterator, List, Optional, Type
+from typing import Any, Dict, Iterator, List, Optional, Type, cast
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage, AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatResult, ChatGenerationChunk
@@ -236,30 +236,10 @@ class ChatLlamaCppPipeline(BasePipeline):
             "pipeline_type": "langchain_chatopenai",
         }
 
-    # Matches content that is purely <think> / </think> tags (with optional whitespace).
-    _BARE_THINK_RE = re.compile(r"^\s*(</?think>\s*)+$")
-
+    # Pass messages through raw - no sanitization
     def _sanitize_messages(self, messages: List[BaseMessage]) -> List[BaseMessage]:
-        """Strip orphaned <think>/</think> tags from AI message content.
-
-        When --reasoning-budget 0 forces the model to skip thinking, a bare
-        </think> can leak into conversation history as an assistant message.
-        On subsequent invocations the model sees this orphaned tag and
-        immediately produces EOS (empty response).  This method cleans such
-        messages so they don't poison the context window.
-        """
-        cleaned: List[BaseMessage] = []
-        for msg in messages:
-            if isinstance(msg, AIMessage) and isinstance(msg.content, str):
-                if self._BARE_THINK_RE.match(msg.content):
-                    msg = msg.model_copy(update={"content": ""})
-                elif "</think>" in msg.content:
-                    new_content = msg.content.split("</think>", 1)[-1].strip()
-                    if new_content.startswith("<think>"):
-                        new_content = ""
-                    msg = msg.model_copy(update={"content": new_content})
-            cleaned.append(msg)
-        return cleaned
+        """Pass messages through without modification."""
+        return messages
 
     def _generate(
         self,

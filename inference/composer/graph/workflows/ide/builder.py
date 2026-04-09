@@ -243,7 +243,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="?",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=131072,  # Start with a reasonable context size and optimize up if possible
+        num_ctx=150000,  # Start with a reasonable context size and optimize up if possible
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
@@ -271,7 +271,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Enable reasoning/thinking mode
-        think=True,
+        think=False,
         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower) this is SO confusin and needs to be changed
         kv_on_cpu=True,
         # n_cpu_moe=10,
@@ -451,6 +451,7 @@ class IdeGraphBuilder(GraphBuilder):
             messages=messages,
             current_user_message=current_user_message,
             user_id=user_id,
+            workflow_type="ide",
             user_config=UserConfig(
                 user_id=user_id,
                 memory=None,

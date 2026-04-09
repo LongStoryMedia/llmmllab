@@ -11,7 +11,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    cast,
 )
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -25,17 +24,13 @@ from models import (
     Message,
     MessageContent,
     ChatResponse,
-    Thought,
     ToolCall,
     GenerationState,
 )
-from runner.pipelines.llamacpp.chat import ReasoningAwareAIMessageChunk
 from utils.logging import llmmllogger, serialize_event_data
 
 from .content_parser import (
     parse_content,
-    strip_think_tags,
-    clean_think_tags,
     RawToolCallStreamBuffer,
 )
 from .tool_call_parser import RawToolCallParser, _RAW_TOOL_CALL_RE
@@ -172,10 +167,7 @@ class WorkflowExecutor:
         """
         start_time = datetime.now(timezone.utc)
         contents_buffer = ""
-        thoughts_buffer = ""
-        think_closed = False
         tool_calls: Dict[str, ToolCall] = {}
-        thoughts: List[Thought] = []
         message_contents: List[MessageContent] = []
         state: Optional[GenerationState] = None
         prev_state: Optional[GenerationState] = state
@@ -223,72 +215,20 @@ class WorkflowExecutor:
                     "on_llm_stream",
                 ) and isinstance(chunk, AIMessage):
 
-                    # -- Reasoning / thinking tokens (ReasoningAwareAIMessageChunk) --
-                    if hasattr(chunk, "reasoning_content"):
-                        rc = cast(ReasoningAwareAIMessageChunk, chunk).reasoning_content
-                        if rc and rc.strip():
-                            thoughts_buffer += rc
-                            new_state = GenerationState.THINKING
-                            res = self._make_response(
-                                conversation_id,
-                                state,
-                                prev_state,
-                                message_kwargs={"thoughts": [Thought(text=rc)]},
-                            )
-                            if new_state != state:
-                                self.logger.debug(
-                                    f"State transition: {state} -> {new_state}"
-                                )
-                                state = new_state
-                            prev_state = state
-                            yield res
-                            continue
-
                     # -- Regular content tokens --
                     if chunk.content:
                         text_parts = parse_content(chunk.content)
                         for raw_text in text_parts:
-                            # Split on </think> boundary first.
-                            thinking_part, content_part, think_closed = (
-                                strip_think_tags(raw_text, think_closed)
-                            )
-
-                            # Emit thinking fragment if present.
-                            if thinking_part:
-                                thoughts_buffer += thinking_part
-                                new_state = GenerationState.THINKING
-                                res = self._make_response(
-                                    conversation_id,
-                                    state,
-                                    prev_state,
-                                    message_kwargs={
-                                        "thoughts": [Thought(text=thinking_part)]
-                                    },
-                                )
-                                if new_state != state:
-                                    self.logger.debug(
-                                        f"State transition: {state} -> {new_state}"
-                                    )
-                                    state = new_state
-                                prev_state = state
-                                yield res
-
-                            if not content_part:
-                                continue
-
-                            # Feed the content fragment through the streaming
-                            # tool-call buffer.  The buffer holds back any bytes
-                            # from the first <tool_call> open-tag until the
-                            # matching close-tag arrives, which may be in a
-                            # future chunk.  Only safe_text (pre-tool-call prose)
-                            # is forwarded immediately.
-                            safe_text, complete_blocks = tc_stream_buf.feed(
-                                content_part
-                            )
+                            # Pass content through raw - no think tag stripping
+                            safe_text, complete_blocks = tc_stream_buf.feed(raw_text)
 
                             # Emit safe text (content that precedes any tool-call
                             # XML, or plain content with no tool-call markers).
                             if safe_text:
+                                self.logger.debug(
+                                    "Streaming content chunk",
+                                    extra={"text_len": len(safe_text), "text_preview": safe_text[:100]},
+                                )
                                 contents_buffer += safe_text
                                 new_state = GenerationState.RESPONDING
                                 res = self._make_response(
@@ -398,6 +338,15 @@ class WorkflowExecutor:
                         has_end_tc = bool(
                             hasattr(output, "tool_calls") and output.tool_calls
                         )
+                        self.logger.debug(
+                            "on_llm_end event",
+                            extra={
+                                "has_output_content": bool(output.content),
+                                "contents_buffer_len": len(contents_buffer),
+                                "has_end_tc": has_end_tc,
+                                "will_extract": bool(output.content and not contents_buffer and not has_end_tc),
+                            },
+                        )
                         if output.content and not contents_buffer and not has_end_tc:
                             text_parts = parse_content(output.content)
                             full_text = "".join(text_parts).strip()
@@ -413,7 +362,7 @@ class WorkflowExecutor:
                             # EOS on subsequent invocations.
                             if "</think>" in full_text:
                                 full_text = full_text.split("</think>", 1)[-1].strip()
-                            if full_text.startswith("<think>"):
+                            if full_text.strip() == "<think>":
                                 full_text = ""
 
                             if _RAW_TOOL_CALL_RE.search(full_text):
@@ -424,6 +373,13 @@ class WorkflowExecutor:
                                 content_part, raw_tcs = full_text, []
 
                             if content_part:
+                                self.logger.info(
+                                    "Yielding content from on_llm_end",
+                                    extra={
+                                        "content_len": len(content_part),
+                                        "content_preview": content_part[:200],
+                                    },
+                                )
                                 contents_buffer += content_part
                                 new_state = GenerationState.RESPONDING
                                 res = self._make_response(
@@ -564,32 +520,8 @@ class WorkflowExecutor:
             )
 
         # --------------------------------------------------------------------
-        # Build final accumulated message
+        # Build final accumulated message - pass through raw
         # --------------------------------------------------------------------
-
-        # If think never closed, the buffered "thoughts" are actually content.
-        if thoughts_buffer and not think_closed:
-            contents_buffer = thoughts_buffer + contents_buffer
-            thoughts_buffer = ""
-            think_closed = True
-
-        # Strip any residual think tags that leaked through (e.g. </think>
-        # split across streaming chunks that accumulated in thoughts_buffer
-        # and got promoted above).
-        contents_buffer = clean_think_tags(contents_buffer)
-
-        # If think closed but model produced NO content and NO tool calls,
-        # the thoughts are the only output — promote them to content so
-        # the response isn't empty.
-        if thoughts_buffer and not contents_buffer and not tool_calls:
-            self.logger.debug(
-                "No content or tool calls after thinking — promoting thoughts to content",
-                extra={"thoughts_len": len(thoughts_buffer)},
-            )
-            contents_buffer = thoughts_buffer
-            thoughts_buffer = ""
-            think_closed = True
-
         if contents_buffer:
             message_contents.append(
                 MessageContent(
@@ -598,34 +530,27 @@ class WorkflowExecutor:
                     created_at=datetime.now(timezone.utc),
                 )
             )
-        if thoughts_buffer:
-            thoughts.append(
-                Thought(text=thoughts_buffer, created_at=datetime.now(timezone.utc))
-            )
 
         self.logger.info("Workflow execution completed. Producing final output.")
-        self.logger.debug(
-            "Final output buffers",
+        self.logger.info(
+            "Final message construction",
             extra={
-                "final_content_len": len(contents_buffer),
-                "final_thoughts_len": len(thoughts_buffer),
+                "contents_buffer_len": len(contents_buffer),
+                "contents_buffer_preview": contents_buffer[:200] if contents_buffer else "",
+                "message_contents_len": len(message_contents),
                 "total_tool_calls": len(tool_calls),
-                "content_preview": contents_buffer[:200] if contents_buffer else "",
             },
         )
 
-        if not contents_buffer and not thoughts_buffer and not tool_calls:
+        if not contents_buffer and not tool_calls:
             self.logger.warning(
-                "Model produced empty response — no content, thoughts, or tool calls. "
-                "This may indicate the model emitted only reasoning tokens that were "
-                "stripped (e.g. <think></think> with --reasoning-budget 0), or the "
-                "context was too large for meaningful generation.",
+                "Model produced empty response — no content or tool calls.",
             )
 
         final_message = Message(
             role=MessageRole.ASSISTANT,
             content=message_contents,
-            thoughts=thoughts,
+            thoughts=[],
             tool_calls=list(tool_calls.values()),
             conversation_id=conversation_id,
         )

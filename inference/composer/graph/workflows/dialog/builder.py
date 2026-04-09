@@ -367,6 +367,7 @@ class DialogGraphBuilder(GraphBuilder):
             summaries=summaries,
             current_user_message=current_user_message,  # Use Message object directly
             user_id=user_id,
+            workflow_type="dialog",
             user_config=user_config,
             conversation_id=conversation_id,
             things_to_remember=[current_user_message],

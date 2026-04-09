@@ -53,11 +53,17 @@ async def composer_chat_completion(
     logger.info(f"Starting workflow execution for request {request_id}")
 
     async for event in composer.execute_workflow(initial_state, workflow):
-        print(
-            extract_text_from_message(event.message) if event.message else "",
-            flush=True,
-            end="",
-        )  # Debug print
+        if event.message:
+            text = extract_text_from_message(event.message)
+            logger.debug(
+                "Yielding event",
+                extra={
+                    "done": event.done,
+                    "finish_reason": event.finish_reason,
+                    "text_len": len(text),
+                    "text_preview": text[:100] if text else "",
+                },
+            )
         if event.finish_reason == "complete" and event.message:
             message_id = await storage.get_service(storage.message).add_message(
                 event.message

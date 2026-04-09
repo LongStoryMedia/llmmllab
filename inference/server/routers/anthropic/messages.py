@@ -410,6 +410,14 @@ async def stream_message(
 
     async for event in execute_workflow(initial_state, workflow):
         if event.done:
+            logger.debug(
+                "Received done event",
+                extra={
+                    "has_message": bool(event.message),
+                    "has_tool_calls": bool(event.message and event.message.tool_calls),
+                    "has_content": bool(event.message and event.message.content),
+                },
+            )
             if event.message and event.message.tool_calls:
                 final_tool_calls = event.message.tool_calls
                 has_tool_calls = True
@@ -422,6 +430,10 @@ async def stream_message(
                     if c.type == MessageContentType.TEXT and c.text
                 ]
                 final_content = "".join(parts)
+                logger.debug(
+                    "Captured final content from done event",
+                    extra={"content_len": len(final_content), "content_preview": final_content[:200]},
+                )
             if event.prompt_eval_count:
                 input_tokens = _scale_tokens(int(event.prompt_eval_count))
             if event.eval_count:
@@ -432,6 +444,10 @@ async def stream_message(
         if event.message and event.message.content:
             for part in event.message.content:
                 if part.type == MessageContentType.TEXT and part.text:
+                    logger.debug(
+                        "Streaming content delta",
+                        extra={"text_len": len(part.text), "text_preview": part.text[:100]},
+                    )
                     if not text_block_started:
                         yield _sse(
                             "content_block_start",
@@ -547,6 +563,16 @@ async def stream_message(
         )
 
     stop_reason = "tool_use" if has_tool_calls else "end_turn"
+    logger.debug(
+        "Stream complete",
+        extra={
+            "has_content": has_content,
+            "has_tool_calls": has_tool_calls,
+            "final_content_len": len(final_content),
+            "stop_reason": stop_reason,
+            "text_block_started": text_block_started,
+        },
+    )
     yield _sse(
         "message_delta",
         {

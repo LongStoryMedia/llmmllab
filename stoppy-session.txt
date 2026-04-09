@@ -1,0 +1,70 @@
+● I see - the SplitModeEnum is nested inside GPUConfig. Let me fix the import:                                                                                                                                    
+                                                                                                                                                                                                                  
+● Update(utils/proto_conversion.py)                                                                                                                                                                               
+  ⎿  Added 1 line, removed 1 line                                                                                                                                                                                 
+      12  from messages import user_config_pb2                                                                                                                                                                    
+      13  from messages import message_pb2                                                                                                                                                                        
+      14  from messages import model_profile_pb2                                                                                                                                                                  
+      15 -from messages.gpu_config_pb2 import SplitModeEnum                                                                                                                                                       
+      15 +from messages.gpu_config_pb2 import GPUConfig                                                                                                                                                    
+      16  
+      17  from composer.v1 import composer_pb2 as server_composer_pb2
+      18  
+
+● Update(utils/proto_conversion.py)  
+  ⎿  Added 4 lines, removed 4 lines                                                       
+      721          if hasattr(gpu, 'split_mode') and gpu.split_mode is not None:
+      722              # Convert string to enum: SPLITMODEENUM_NONE=0, SPLITMODEENUM_ROW=1, SPLITMODEENUM_LAYER=2                                                                                                 
+      723              split_mode_map = {
+      724 -                'none': SplitModeEnum.SPLITMODEENUM_NONE,                                                                                                                                              
+      725 -                'row': SplitModeEnum.SPLITMODEENUM_ROW,                                                                                                                                         
+      726 -                'layer': SplitModeEnum.SPLITMODEENUM_LAYER,                                                                                                                                            
+      724 +                'none': GPUConfig.SPLITMODEENUM_NONE,                                                                                                                                           
+      725 +                'row': GPUConfig.SPLITMODEENUM_ROW,                                                                                                                                             
+      726 +                'layer': GPUConfig.SPLITMODEENUM_LAYER,                                                                                                                                         
+      727              }
+      728 -            proto_gpu.split_mode = split_mode_map.get(gpu.split_mode.lower(), SplitModeEnum.SPLITMODEENUM_NONE)                                                                                 
+      728 +            proto_gpu.split_mode = split_mode_map.get(gpu.split_mode.lower(), GPUConfig.SPLITMODEENUM_NONE)                                                                                     
+      729          if hasattr(gpu, 'offload_kqv') and gpu.offload_kqv is not None:
+      730              proto_gpu.offload_kqv = gpu.offload_kqv
+      731  
+  ⎿  Found 4 new diagnostic issues in 1 file (ctrl+o to expand)
+
+● I see there's still an old reference to SplitModeEnum in the file. Let me read the file to see what's there:
+                                                                                          
+  Read 1 file (ctrl+o to expand)                                                                                                                                                                                  
+  ⎿  Found 4 new diagnostic issues in 1 file (ctrl+o to expand)                                                                                                                                                   
+                                                                                                                                                                                                                  
+● The issue is that Pyright doesn't recognize the enum values on the imported class. Let me check the actual generated .py file to see how it's structured:                                                       
+                                                                                                                                                                                                                  
+  Read 1 file (ctrl+o to expand)                                                                                                                                                                                  
+                                                                                          
+● The generated proto file uses dynamic generation. The issue is that at runtime, the enum values are accessible, but the type stubs don't expose them properly. Since this works at runtime, I should just use   
+  integer values (0, 1, 2) which is what the enum maps to anyway. Let me simplify:                                                                                                                                
+                                                                                                                                                                                                                  
+✻ Crunched for 9m 31s                                                                                                                                                                                             
+                                                                                                                                                                                                                                       
+❯ go ahead                                                                                                                                                                                                        
+                                                                                                                                                                                                                  
+● Update(utils/proto_conversion.py)                                                                                                                                                                               
+  ⎿  Added 3 lines, removed 6 lines                                                                                                                                                                               
+      720              proto_gpu.tensor_split_devices.extend(gpu.tensor_split_devices)                                                                                                                            
+      721          if hasattr(gpu, 'split_mode') and gpu.split_mode is not None:          
+      722              # Convert string to enum: SPLITMODEENUM_NONE=0, SPLITMODEENUM_ROW=1, SPLITMODEENUM_LAYER=2                                                                                                 
+      723 -            split_mode_map = {                                                                                                                                                                         
+      724 -                'none': GPUConfig.SPLITMODEENUM_NONE,                                                                                                                                           
+      725 -                'row': GPUConfig.SPLITMODEENUM_ROW,                                                                                                                                                    
+      726 -                'layer': GPUConfig.SPLITMODEENUM_LAYER,                                                                                                                                         
+      727 -            }                                                                                                                                                                                   
+      728 -            proto_gpu.split_mode = split_mode_map.get(gpu.split_mode.lower(), GPUConfig.SPLITMODEENUM_NONE)                                                                                     
+      723 +            # Using integer values directly since proto enum values are integers                                                                                                                
+      724 +            split_mode_map = {'none': 0, 'row': 1, 'layer': 2}                                                                                                                                  
+      725 +            proto_gpu.split_mode = split_mode_map.get(gpu.split_mode.lower(), 0)                                                                                                                
+      726          if hasattr(gpu, 'offload_kqv') and gpu.offload_kqv is not None:
+      727              proto_gpu.offload_kqv = gpu.offload_kqv
+      728  
+
+● Now I can remove the unused GPUConfig import:
+                                                                                          
+✻ Cooked for 53s                 
+                  

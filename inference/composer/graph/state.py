@@ -38,6 +38,10 @@ class WorkflowState(BaseModel):
         Optional[Message], lambda x, y: y if y is not None else x
     ] = Field(default=None, description="Most recent user message in the conversation")
 
+    workflow_type: Annotated[
+        Optional[str], lambda x, y: y if y is not None else x
+    ] = Field(default=None, description="Type of workflow (ide, dialog, etc.)")
+
     things_to_remember: Annotated[
         Sequence[Union[Message, Summary, SearchTopicSynthesis, Document]],
         operator.add,
