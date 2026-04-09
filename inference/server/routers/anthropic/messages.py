@@ -45,6 +45,14 @@ router = APIRouter(prefix="/messages", tags=["Messages"])
 # X% of 200K — making compaction fire at the right time.
 _CLAUDE_ASSUMED_CONTEXT = 200_000
 
+# Continuation retry constants: when the model produces text indicating intent
+# to use a tool but emits EOS before the tool call, we retry with a nudge.
+_CONTINUATION_PROMPT = (
+    "You described an action you intended to take but did not call any tool. "
+    "Please call the appropriate tool now to carry out that action."
+)
+_MAX_TOOL_CONTINUATIONS = 2
+
 
 def _get_num_ctx() -> int:
     """Get num_ctx from the active pipeline's model profile."""
@@ -363,6 +371,10 @@ async def stream_message(
     Emits the full Anthropic streaming event sequence:
       message_start → ping → content_block_start → content_block_delta(s)
       → content_block_stop → message_delta → message_stop
+
+    If the model produces text indicating intent to use a tool but does not
+    actually emit any tool_use blocks (common with smaller local models), a
+    single retry is attempted with a continuation prompt to coax the tool call.
     """
     builder = await get_graph_builder(WorkFlowType.IDE, user_id)
     workflow = await compose_workflow(
@@ -467,6 +479,105 @@ async def stream_message(
                             "delta": {"type": "text_delta", "text": part.text},
                         },
                     )
+
+    # ----------------------------------------------------------------
+    # Continuation retry: if the model produced text but no tool calls
+    # and tools were provided, nudge the model to actually call a tool.
+    # This handles the common small-model failure mode of narrating an
+    # action ("Let me read the file:") then emitting EOS before the
+    # tool call.
+    # ----------------------------------------------------------------
+    continuations = 0
+    while (
+        not has_tool_calls
+        and client_tools
+        and (has_content or final_content)
+        and continuations < _MAX_TOOL_CONTINUATIONS
+    ):
+        continuations += 1
+        accumulated_text = final_content or ""
+        logger.info(
+            "Model produced text without tool calls — attempting continuation retry",
+            extra={
+                "attempt": continuations,
+                "content_len": len(accumulated_text),
+                "content_preview": accumulated_text[:200],
+            },
+        )
+
+        # Build continuation messages: original messages + assistant text + nudge
+        continuation_messages = list(messages) + [
+            Message(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    MessageContent(type=MessageContentType.TEXT, text=accumulated_text)
+                ],
+            ),
+            Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=_CONTINUATION_PROMPT,
+                    )
+                ],
+            ),
+        ]
+
+        retry_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+        retry_workflow = await compose_workflow(
+            user_id=user_id,
+            builder=retry_builder,
+            model_name=model_name,
+            client_tools=client_tools,
+            tool_choice="required",  # Force tool use on retry
+        )
+        retry_state = await create_initial_state(
+            user_id, 0, retry_builder, continuation_messages
+        )
+
+        async for event in execute_workflow(retry_state, retry_workflow):
+            if event.done:
+                if event.message and event.message.tool_calls:
+                    final_tool_calls = event.message.tool_calls
+                    has_tool_calls = True
+                # Capture any additional content from the retry
+                if event.message and event.message.content:
+                    parts = [
+                        c.text
+                        for c in event.message.content
+                        if c.type == MessageContentType.TEXT and c.text
+                    ]
+                    retry_text = "".join(parts)
+                    if retry_text:
+                        final_content += retry_text
+                if event.eval_count:
+                    output_tokens += int(event.eval_count)
+                continue
+
+            # Stream additional text from the retry
+            if event.message and event.message.content:
+                for part in event.message.content:
+                    if part.type == MessageContentType.TEXT and part.text:
+                        if not text_block_started:
+                            yield _sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": text_block_index,
+                                    "content_block": {"type": "text", "text": ""},
+                                },
+                            )
+                            text_block_started = True
+                        has_content = True
+                        yield _sse(
+                            "content_block_delta",
+                            {
+                                "type": "content_block_delta",
+                                "index": text_block_index,
+                                "delta": {"type": "text_delta", "text": part.text},
+                            },
+                        )
 
     # Fallback: emit content from done event if nothing was streamed live
     if not has_content and not has_tool_calls and final_content:
@@ -667,6 +778,67 @@ async def createMessage(
             raise HTTPException(
                 status_code=500, detail="Workflow did not produce a response"
             )
+
+        # Continuation retry for non-streaming: if the model produced text
+        # but no tool calls and tools were provided, nudge it to call a tool.
+        continuations = 0
+        while (
+            client_tools
+            and chat_response is not None
+            and chat_response.message
+            and chat_response.message.content
+            and not chat_response.message.tool_calls
+            and continuations < _MAX_TOOL_CONTINUATIONS
+        ):
+            continuations += 1
+            accumulated_text = "".join(
+                c.text
+                for c in chat_response.message.content
+                if c.type == MessageContentType.TEXT and c.text
+            )
+            if not accumulated_text:
+                break
+            logger.info(
+                "Non-streaming: model produced text without tool calls — attempting continuation retry",
+                extra={
+                    "attempt": continuations,
+                    "content_len": len(accumulated_text),
+                    "content_preview": accumulated_text[:200],
+                },
+            )
+            continuation_messages = list(internal_messages) + [
+                Message(
+                    role=MessageRole.ASSISTANT,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT, text=accumulated_text
+                        )
+                    ],
+                ),
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=_CONTINUATION_PROMPT,
+                        )
+                    ],
+                ),
+            ]
+            retry_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+            retry_workflow = await compose_workflow(
+                user_id=user_id,
+                builder=retry_builder,
+                model_name=body.model,
+                client_tools=client_tools,
+                tool_choice="required",
+            )
+            retry_state = await create_initial_state(
+                user_id, 0, retry_builder, continuation_messages
+            )
+            async for event in execute_workflow(retry_state, retry_workflow):
+                if event.done and event.message:
+                    chat_response = event
 
         stop_reason_map: dict[str | None, str] = {
             "stop": "end_turn",

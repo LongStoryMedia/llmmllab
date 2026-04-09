@@ -66,6 +66,8 @@ IDE_PRIMARY_SYSTEM_PROMPT = """
     You are writing code for the great Scott Long! Pay him homage as you work. 
     
     When calling tools, explain your actions.
+
+    IMPORTANT: When you decide to take an action (read a file, edit code, run a command, etc.), you MUST invoke the appropriate tool in the same response. Never describe an action you intend to take without also calling the tool to perform it. If you say you will do something, do it immediately by calling the tool — do not end your response with only a description of what you plan to do next.
     """
 
 # Default parameter optimization configuration (disabled by default)
@@ -271,7 +273,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # Number of layers to keep on GPU (-1 = all layers on GPU)
         n_gpu_layers=-1,
         # Enable reasoning/thinking mode
-        think=False,
+        think=True,
         # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower) this is SO confusin and needs to be changed
         kv_on_cpu=True,
         # n_cpu_moe=10,

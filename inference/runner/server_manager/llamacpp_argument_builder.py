@@ -115,6 +115,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 2048,
                 "ubatch_size": params.micro_batch_size or (params.batch_size or 2048),
+                # Reasoning / thinking configuration
+                # --reasoning: on/off/auto — whether the model should use <think> blocks
+                # --reasoning-format: how thought tags are extracted/returned
+                # --reasoning-budget: token budget for thinking (-1 = unlimited, 0 = disabled)
+                "reasoning": ("on" if self.profile.parameters.think else "off"),
+                # "reasoning_format": ("deepseek" if self.profile.parameters.think else "none"),
                 "reasoning_budget": (-1 if self.profile.parameters.think else 0),
                 "ctx_checkpoints": 24,
                 "timeout": 30000,

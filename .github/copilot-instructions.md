@@ -1,93 +1,94 @@
 # LLM ML Lab – AI Coding Agent Guide
+## Commands
 
-Focus: Execute precisely against current architecture. No speculation.
+### Development
 
-## Core Principles
-1. Verify code before modifying – read surrounding files first.
-2. Prefer removal/simplification over added complexity.
-3. Never leave unused experimental code; clean as you go.
-4. Keep Kubernetes pod healthy – fix crash loops immediately.
-5. Use short, single-purpose commands (avoid long chained subshells).
-6. Strong typing over reflection (`getattr`/`hasattr` avoided).
-7. Always commit + sync after meaningful changes.
-
-## High-Level Architecture
-- `inference/` container houses: `composer/` (LangGraph orchestration), `runner/` (pure LLM interface & streaming), `server/` (FastAPI + gRPC), `evaluation/` (benchmarking), `db/` provides storage services; register new storage in `init_db.py` & `db/__init__.py`, `utils/` shared utilities, `test/` unit and integration tests.
-- `inference/composer/graph/` builds workflow state machines (see `subgraphs/tools_agent.py`, `summarization_middleware.py`). Composer owns all orchestration; runner must stay stateless regarding workflows.
-- `schemas/` YAML → generated models in `inference/models/` and TS types in `ui/src/types/` via `./regenerate_models.sh` (existing schemas) or `schema2code` for single new model.
-- `ui/` React TS (MUI) consumes OpenAI-compatible and custom endpoints from server.
-
-## Workflow & Agents Pattern
-- Agents inherit `BaseAgent` for metadata injection, logging, error handling (see `docs/base_agent_architecture.md`).
-- Subgraphs: build `StateGraph(WorkflowState)` with nodes; tool routing uses conditional edges (example: `should_continue_tool_calls` in `tools_agent.py`).
-- Middleware (e.g. `SummarizationMiddleware`) modifies message lists before model invocation using token thresholds; respect its patterns (ID assignment, safe cutoff logic, tool pair preservation).
-- Context assembly occurs via `assemble_context_messages()` (see `docs/context_assembly_usage.md`) combining summaries, memories, search results, then recent messages.
-
-## Database & Schema Rules
-- All SQL idempotent; use parameter placeholders `$1`, `$2` etc. Never string format SQL.
-- New entity flow: schema → `./regenerate_models.sh` → SQL in `db/sql/<entity>/` → storage service (`<entity>_storage.py`) using `typed_pool`, `get_query` → register.
-- New standalone model (no full regen): `schema2code --language python --output inference/models/<name>.py schemas/<name>.yaml`.
-
-## Execution & Environment
-- **CRITICAL**: Debug files (`debug/`) MUST be run in Kubernetes pod, never locally
-- Pod execution: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
-- Local env (non-debug only): `source inference/.venv/bin/activate`
-- Always run modules with `python -m <module>` (avoid direct file paths) for import correctness.
-- Sync code: `inference/sync-code.sh` (retry once if fails).
-
-## Testing & Validation
-- **CRITICAL**: All debug files must run in pod: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.<test_name>`
-- Unit: `cd inference && pytest test/` for pure logic changes (local OK).
-- Full E2E: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.e2e` (composer + runner + db).
-- Tools agent focus: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.tools_agent`.
-- Memory E2E: `kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.memory_e2e`.
-- A change is incomplete if: lint/import errors, hardcoded paths, failing pod, or architectural pattern violations.
-
-## UI Conventions
-- Lint & typecheck: `cd ui && npm run lint && npm run typecheck`.
-- Use generated types in `ui/src/types/` for API models; avoid manual duplication.
-
-## Configuration
-- System settings: `schemas/config.yaml`. User prefs: `schemas/user_config.yaml`.
-- Add new env var: update schema → regenerate models → k8s deployment → runtime validation.
-
-## Safe Change Checklist
-1. Read target file + related doc in `docs/`.
-2. Confirm pattern match (agent inheritance, context assembly, storage registration, etc.).
-3. Implement minimal diff; avoid unrelated refactors.
-4. Add/adjust tests only for changed logic.
-5. Run appropriate test command.
-6. Commit descriptive message; run `inference/sync-code.sh`.
-
-## Anti-Patterns (Avoid)
-- Long chained kubectl commands; break into two steps.
-- Direct file execution (`python path/file.py`).
-- Hardcoded absolute import path modifications.
-- Leaving experimental commented blocks or dead code.
-- SQL with string interpolation.
-
-## Quick Command Examples
 ```bash
-# Pod name lookup
-kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}'
-
-# Validate config load
-kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -c "from composer.config import config; print('CONFIG_OK')"
-
-# Run summarization middleware test (example)
-kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.test_composer_real_e2e
-
-# Run memory E2E test
-kubectl exec -it -n llmmll <POD_NAME> -- /app/v.sh python -m debug.memory_e2e
+make start          # Start inference (dev mode) and UI in parallel
+make inference-dev  # Start inference service only (syncs code to k8s, tails logs)
+make start-ui       # Start UI dev server only (cd ui && npm run dev)
 ```
 
-## When Adding Middleware or Subgraphs
-- Preserve message ID handling (`uuid` assignment if missing).
-- Maintain separation of AI/Tool message pairs; use similar safe cutoff logic if trimming.
-- Return updated state, not raw model outputs; append `response.message` only if present.
+### Testing
 
-## Final Reminder
-No guesswork. Every modification must align with existing documented patterns and minimal diff philosophy.
+```bash
+make test                           # Run all tests (inference + UI)
+cd inference && pytest test/        # Run Python tests only
+cd inference && pytest test/unit/test_foo.py  # Run a single test file
+cd ui && npm run test               # Run UI tests (Vitest)
+```
 
----
-Feedback welcome: highlight unclear sections or missing workflows.
+### Validation & Linting
+
+```bash
+make validate       # TypeScript tsc --noEmit + Python compileall + Pyright type check
+cd ui && npm run lint   # ESLint on UI code
+```
+
+### Code Generation
+
+```bash
+./regenerate_models.sh              # Regenerate all models from YAML schemas
+./regenerate_models.sh python       # Python models only → inference/models/
+./regenerate_models.sh typescript   # TypeScript types only → ui/src/types/
+```
+
+### Deployment
+
+```bash
+make deploy         # Deploy all services (inference, maistro, ui) to k8s
+make clean          # Remove build artifacts (debug/out/, ui/build/, inference/models/)
+make e2e-<test>     # Run end-to-end test inside k8s pod
+make clear-debug    # Remove debug output files and sync code
+```
+
+## Architecture
+
+### Structure
+
+```
+inference/      Python FastAPI inference service (deployed to k8s)
+  server/       API layer: routers, middleware, app.py entry point
+  runner/       Model execution: pipeline_factory, pipeline_cache, pipelines/
+  composer/     LangGraph agent orchestration, tool generation
+  db/           Multi-tier storage: PostgreSQL, Redis, in-memory
+  evaluation/   Model benchmarking
+  models/       Generated from YAML schemas (do not edit directly)
+  debug/        Debug utilities and output files
+ui/             React 19 + Vite frontend
+schemas/        YAML schema definitions (source of truth for models)
+docs/           Architecture documentation
+```
+
+### Key Architectural Patterns
+
+**Schema-Driven Development**: All data contracts are defined as YAML schemas in `schemas/`. The `schema2code` tool generates `inference/models/*.py` and `ui/src/types/*.ts` from these. **Never edit generated model files directly** — edit the YAML schema and regenerate.
+
+**Pipeline System**: The runner uses a pluggable pipeline pattern. `pipeline_factory.py` creates appropriate pipelines (text, image, embeddings, multimodal). `pipeline_cache.py` manages instances. All pipeline implementations live in `runner/pipelines/`.
+
+**Multi-Tier Caching**: User config flows in-memory → Redis → PostgreSQL. See `docs/multi_tier_user_config_caching.md`.
+
+**Provider Compatibility**: The server implements both OpenAI-compatible endpoints (`routers/openai/`) and Anthropic-compatible endpoints (`routers/anthropic/`). These share the underlying runner/pipeline infrastructure.
+
+**Streaming**: Chat and image responses stream token-by-token. The streaming architecture is documented in `docs/RUNNER_ARCHITECTURE_OVERHAUL.md`.
+
+**Deployment**: The inference service runs in Kubernetes (`inference/k8s/`). `make inference-dev` syncs local code to the cluster via `inference/sync-code.sh` and tails logs.
+
+### Key Entry Points
+
+| Component | Entry Point |
+|-----------|-------------|
+| FastAPI app | `inference/server/app.py` |
+| OpenAI chat endpoint | `inference/server/routers/openai/chat.py` |
+| Anthropic messages endpoint | `inference/server/routers/anthropic/messages.py` |
+| Pipeline creation | `inference/runner/pipeline_factory.py` |
+| Composer/agents | `inference/composer/__init__.py` |
+| React app | `ui/src/main.tsx` |
+| Routes | `ui/src/Router.tsx` |
+
+### Configuration
+
+- Python type checking: `pyrightconfig.json` (Python 3.12, basic mode, covers server/composer/runner)
+- TypeScript: `ui/tsconfig.json` (ESNext, paths aliased `@/*` → `./src/*`, strict: false)
+- Pytest: `inference/pytest.ini` (asyncio_mode: auto, testpaths: `test/unit tests`)
+- ESLint: `ui/.eslintrc.cjs` (xo + TypeScript + React hooks, 2-space indent)
