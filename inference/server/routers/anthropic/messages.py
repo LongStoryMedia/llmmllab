@@ -565,35 +565,89 @@ async def stream_message(
         )
 
     # Safety net: if model produced absolutely nothing (no content, no tool
-    # calls), emit a minimal text block so the client doesn't receive a
-    # completely empty assistant turn which causes Claude Code to silently
-    # drop the response.
+    # calls), re-send the last user message to get a real response instead
+    # of surfacing an error to the client.
     if not has_content and not has_tool_calls and not final_content:
         logger.warning(
-            "Model produced empty response — no content or tool calls",
+            "Model produced empty response — retrying with same messages",
             extra={"model": model_name, "input_tokens": input_tokens},
         )
-        if not text_block_started:
+        retry_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+        retry_workflow = await compose_workflow(
+            user_id=user_id,
+            builder=retry_builder,
+            model_name=model_name,
+            client_tools=client_tools,
+            tool_choice=tool_choice,
+        )
+        retry_state = await create_initial_state(user_id, 0, retry_builder, messages)
+
+        async for event in execute_workflow(retry_state, retry_workflow):
+            if event.done:
+                if event.message and event.message.tool_calls:
+                    final_tool_calls = event.message.tool_calls
+                    has_tool_calls = True
+                if event.message and event.message.content:
+                    parts = [
+                        c.text
+                        for c in event.message.content
+                        if c.type == MessageContentType.TEXT and c.text
+                    ]
+                    final_content = "".join(parts)
+                if event.eval_count:
+                    output_tokens += int(event.eval_count)
+                continue
+
+            if event.message and event.message.content:
+                for part in event.message.content:
+                    if part.type == MessageContentType.TEXT and part.text:
+                        if not text_block_started:
+                            yield _sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": text_block_index,
+                                    "content_block": {"type": "text", "text": ""},
+                                },
+                            )
+                            text_block_started = True
+                        has_content = True
+                        yield _sse(
+                            "content_block_delta",
+                            {
+                                "type": "content_block_delta",
+                                "index": text_block_index,
+                                "delta": {"type": "text_delta", "text": part.text},
+                            },
+                        )
+
+        # If retry also produced nothing, emit fallback so the stream isn't empty
+        if not has_content and not has_tool_calls and not final_content:
+            logger.warning(
+                "Retry also produced empty response",
+                extra={"model": model_name},
+            )
+            if not text_block_started:
+                yield _sse(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": text_block_index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                )
+                text_block_started = True
             yield _sse(
-                "content_block_start",
+                "content_block_delta",
                 {
-                    "type": "content_block_start",
+                    "type": "content_block_delta",
                     "index": text_block_index,
-                    "content_block": {"type": "text", "text": ""},
+                    "delta": {
+                        "type": "text_delta",
+                        "text": "[Model returned empty response after retry. The context may be too large or the model may need to be reloaded.]",
+                    },
                 },
             )
-            text_block_started = True
-        yield _sse(
-            "content_block_delta",
-            {
-                "type": "content_block_delta",
-                "index": text_block_index,
-                "delta": {
-                    "type": "text_delta",
-                    "text": "[Model returned empty response. The context may be too large or the model may need to be reloaded. Please try again.]",
-                },
-            },
-        )
 
     # Close the text block
     if text_block_started:
@@ -802,6 +856,40 @@ async def createMessage(
                         # Only replace if the retry actually produced tool calls
                         if event.message.tool_calls:
                             chat_response = event
+
+        # Retry on empty response: if the model produced nothing at all,
+        # re-send the same messages once to get a real response.
+        response_has_content = bool(
+            chat_response.message
+            and chat_response.message.content
+            and any(
+                c.text
+                for c in chat_response.message.content
+                if c.type == MessageContentType.TEXT and c.text
+            )
+        )
+        response_has_tools = bool(
+            chat_response.message and chat_response.message.tool_calls
+        )
+        if not response_has_content and not response_has_tools:
+            logger.warning(
+                "Non-streaming: model produced empty response — retrying with same messages",
+                extra={"model": body.model},
+            )
+            retry_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+            retry_workflow = await compose_workflow(
+                user_id=user_id,
+                builder=retry_builder,
+                model_name=body.model,
+                client_tools=client_tools,
+                tool_choice=tool_choice,
+            )
+            retry_state = await create_initial_state(
+                user_id, 0, retry_builder, internal_messages
+            )
+            async for event in execute_workflow(retry_state, retry_workflow):
+                if event.done and event.message:
+                    chat_response = event
 
         stop_reason_map: dict[str | None, str] = {
             "stop": "end_turn",
