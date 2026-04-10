@@ -56,6 +56,11 @@ _CONTINUATION_PROMPT = (
     "Did you mean to call any tools? If not, simply respond with 'done'. "
     "Otherwise, continue working."
 )
+_EMPTY_RESPONSE_NUDGE = (
+    "Your response didn't produce any output. Did you mean to say something "
+    "or use a tool? If so, continue. Otherwise, simply respond with 'done' "
+    "and nothing else."
+)
 
 
 def _get_num_ctx() -> int:
@@ -621,33 +626,101 @@ async def stream_message(
                             },
                         )
 
-        # If retry also produced nothing, emit fallback so the stream isn't empty
+        # If retry also produced nothing, try once more with an explicit nudge
         if not has_content and not has_tool_calls and not final_content:
             logger.warning(
-                "Retry also produced empty response",
+                "Retry also produced empty response — sending nudge prompt",
                 extra={"model": model_name},
             )
-            if not text_block_started:
+            nudge_messages = list(messages) + [
+                Message(
+                    role=MessageRole.USER,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=_EMPTY_RESPONSE_NUDGE,
+                        )
+                    ],
+                ),
+            ]
+            nudge_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+            nudge_workflow = await compose_workflow(
+                user_id=user_id,
+                builder=nudge_builder,
+                model_name=model_name,
+                client_tools=client_tools,
+                tool_choice="auto",
+            )
+            nudge_state = await create_initial_state(
+                user_id, 0, nudge_builder, nudge_messages
+            )
+
+            async for event in execute_workflow(nudge_state, nudge_workflow):
+                if event.done:
+                    if event.message and event.message.tool_calls:
+                        final_tool_calls = event.message.tool_calls
+                        has_tool_calls = True
+                    if event.message and event.message.content:
+                        parts = [
+                            c.text
+                            for c in event.message.content
+                            if c.type == MessageContentType.TEXT and c.text
+                        ]
+                        final_content = "".join(parts)
+                    if event.eval_count:
+                        output_tokens += int(event.eval_count)
+                    continue
+
+                if event.message and event.message.content:
+                    for part in event.message.content:
+                        if part.type == MessageContentType.TEXT and part.text:
+                            if not text_block_started:
+                                yield _sse(
+                                    "content_block_start",
+                                    {
+                                        "type": "content_block_start",
+                                        "index": text_block_index,
+                                        "content_block": {"type": "text", "text": ""},
+                                    },
+                                )
+                                text_block_started = True
+                            has_content = True
+                            yield _sse(
+                                "content_block_delta",
+                                {
+                                    "type": "content_block_delta",
+                                    "index": text_block_index,
+                                    "delta": {"type": "text_delta", "text": part.text},
+                                },
+                            )
+
+            # Final fallback if nudge also produced nothing
+            if not has_content and not has_tool_calls and not final_content:
+                logger.warning(
+                    "All retries produced empty response",
+                    extra={"model": model_name},
+                )
+                if not text_block_started:
+                    yield _sse(
+                        "content_block_start",
+                        {
+                            "type": "content_block_start",
+                            "index": text_block_index,
+                            "content_block": {"type": "text", "text": ""},
+                        },
+                    )
+                    text_block_started = True
                 yield _sse(
-                    "content_block_start",
+                    "content_block_delta",
                     {
-                        "type": "content_block_start",
+                        "type": "content_block_delta",
                         "index": text_block_index,
-                        "content_block": {"type": "text", "text": ""},
+                        "delta": {
+                            "type": "text_delta",
+                            "text": "[Model returned empty response after all retries. The context may be too large or the model may need to be reloaded.]",
+                        },
                     },
                 )
-                text_block_started = True
-            yield _sse(
-                "content_block_delta",
-                {
-                    "type": "content_block_delta",
-                    "index": text_block_index,
-                    "delta": {
-                        "type": "text_delta",
-                        "text": "[Model returned empty response after retry. The context may be too large or the model may need to be reloaded.]",
-                    },
-                },
-            )
 
     # Close the text block
     if text_block_started:
@@ -890,6 +963,50 @@ async def createMessage(
             async for event in execute_workflow(retry_state, retry_workflow):
                 if event.done and event.message:
                     chat_response = event
+
+            # If retry also produced nothing, try once more with nudge
+            response_has_content = bool(
+                chat_response.message
+                and chat_response.message.content
+                and any(
+                    c.text
+                    for c in chat_response.message.content
+                    if c.type == MessageContentType.TEXT and c.text
+                )
+            )
+            response_has_tools = bool(
+                chat_response.message and chat_response.message.tool_calls
+            )
+            if not response_has_content and not response_has_tools:
+                logger.warning(
+                    "Non-streaming: retry also empty — sending nudge prompt",
+                    extra={"model": body.model},
+                )
+                nudge_messages = list(internal_messages) + [
+                    Message(
+                        role=MessageRole.USER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=_EMPTY_RESPONSE_NUDGE,
+                            )
+                        ],
+                    ),
+                ]
+                nudge_builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+                nudge_workflow = await compose_workflow(
+                    user_id=user_id,
+                    builder=nudge_builder,
+                    model_name=body.model,
+                    client_tools=client_tools,
+                    tool_choice="auto",
+                )
+                nudge_state = await create_initial_state(
+                    user_id, 0, nudge_builder, nudge_messages
+                )
+                async for event in execute_workflow(nudge_state, nudge_workflow):
+                    if event.done and event.message:
+                        chat_response = event
 
         stop_reason_map: dict[str | None, str] = {
             "stop": "end_turn",
