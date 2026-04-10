@@ -225,10 +225,6 @@ class WorkflowExecutor:
                             # Emit safe text (content that precedes any tool-call
                             # XML, or plain content with no tool-call markers).
                             if safe_text:
-                                self.logger.debug(
-                                    "Streaming content chunk",
-                                    extra={"text_len": len(safe_text), "text_preview": safe_text[:100]},
-                                )
                                 contents_buffer += safe_text
                                 new_state = GenerationState.RESPONDING
                                 res = self._make_response(
@@ -344,7 +340,11 @@ class WorkflowExecutor:
                                 "has_output_content": bool(output.content),
                                 "contents_buffer_len": len(contents_buffer),
                                 "has_end_tc": has_end_tc,
-                                "will_extract": bool(output.content and not contents_buffer and not has_end_tc),
+                                "will_extract": bool(
+                                    output.content
+                                    and not contents_buffer
+                                    and not has_end_tc
+                                ),
                             },
                         )
                         if output.content and not contents_buffer and not has_end_tc:
@@ -536,7 +536,9 @@ class WorkflowExecutor:
             "Final message construction",
             extra={
                 "contents_buffer_len": len(contents_buffer),
-                "contents_buffer_preview": contents_buffer[:200] if contents_buffer else "",
+                "contents_buffer_preview": (
+                    contents_buffer[:200] if contents_buffer else ""
+                ),
                 "message_contents_len": len(message_contents),
                 "total_tool_calls": len(tool_calls),
             },

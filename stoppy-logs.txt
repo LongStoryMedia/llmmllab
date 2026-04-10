@@ -1,431 +1,55 @@
-2026-04-09T16:33:22.048397Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:22.048534Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:22.048642Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
-2026-04-09T16:33:22.048727Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
-2026-04-09T16:33:22.056579Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
-2026-04-09T16:33:22.056698Z [debug    ] Authentication successful      [llmmllab] component=app
-2026-04-09T16:33:22.073518Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 28, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 28, 'tool_choice': None}
-2026-04-09T16:33:22.073963Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:22.074111Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:22.074224Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_27B operation=miss success=True
-2026-04-09T16:33:22.074332Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_27B original_model=? user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.074560Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_27B model_arg=Qwen3_5_27B user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.074675Z [debug    ] Requesting pipeline for model_id: Qwen3_5_27B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
-2026-04-09T16:33:22.074773Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_27B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
-Starting new HTTP connection (1): 127.0.0.1:8001
-http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
-2026-04-09T16:33:22.077011Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-27B [llmmllab] component=LocalPipelineCacheManager
-2026-04-09T16:33:22.077296Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-09T16:33:22.079086Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=91287a7ab2464420a53ba57c7c57ab15 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.079686Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-INFO:     10.42.0.0:63775 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
-2026-04-09T16:33:22.217871Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.228611Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=25 node_id=91287a7ab2464420a53ba57c7c57ab15 node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.228791Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=91287a7ab2464420a53ba57c7c57ab15 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.232471Z [debug    ] Merged consecutive HumanMessages after empty AI removal [llmmllab] component=message_conversion
-2026-04-09T16:33:22.232593Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.232709Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.232802Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.232905Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.232993Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233078Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233161Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233244Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233329Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233412Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233494Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:22.233561Z [debug    ] Running agent with 23 messages [llmmllab] component=PrimaryCodingAgent node_id=91287a7ab2464420a53ba57c7c57ab15 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:22.373127Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.375222Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.989 (> 0.100 thold), f_keep = 0.994 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.377395Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.377476Z [debug    ] slot launch_slot_: id  0 | task 11211 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.377543Z [debug    ] slot update_slots: id  0 | task 11211 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 54586 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.377630Z [debug    ] slot update_slots: id  0 | task 11211 | n_past = 53966, slot.prompt.tokens.size() = 54272, seq_id = 0, pos_min = 54271, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.377702Z [debug    ] slot update_slots: id  0 | task 11211 | Checking checkpoint with [53963, 53963] against 53966... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.404329Z [debug    ] slot update_slots: id  0 | task 11211 | restored context checkpoint (pos_min = 53963, pos_max = 53963, n_tokens = 53964, n_past = 53964, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.404443Z [debug    ] slot update_slots: id  0 | task 11211 | n_tokens = 53964, memory_seq_rm [53964, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:22.404542Z [debug    ] slot update_slots: id  0 | task 11211 | prompt processing progress, n_tokens = 54582, batch.n_tokens = 618, progress = 0.999927 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.284108Z [debug    ] slot update_slots: id  0 | task 11211 | n_tokens = 54582, memory_seq_rm [54582, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.289080Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.289209Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.289304Z [debug    ] slot init_sampler: id  0 | task 11211 | init sampler, took 4.75 ms, tokens: text = 54586, total = 54586 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.289398Z [debug    ] slot update_slots: id  0 | task 11211 | prompt processing done, n_tokens = 54586, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.623289Z [debug    ] slot update_slots: id  0 | task 11211 | created context checkpoint 19 of 24 (pos_min = 54581, pos_max = 54581, n_tokens = 54582, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.690485Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.699199Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:23.828670Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
-2026-04-09T16:33:29.661605Z [debug    ] slot print_timing: id  0 | task 11211 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.661793Z [debug    ] prompt eval time =    1319.69 ms /   622 tokens (    2.12 ms per token,   471.32 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.661904Z [debug    ]        eval time =    5964.35 ms /    91 tokens (   65.54 ms per token,    15.26 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.661979Z [debug    ]       total time =    7284.04 ms /   713 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.663054Z [debug    ] slot      release: id  0 | task 11211 | stop processing: n_tokens = 54676, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.663168Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.664108Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-09T16:33:29.666488Z [debug    ] State transition: GenerationState.RESPONDING -> GenerationState.EXECUTING [llmmllab]
-2026-04-09T16:33:29.666605Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 109}
-2026-04-09T16:33:29.667976Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['Read']
-2026-04-09T16:33:29.668097Z [warning  ] Failed to convert LangChain message ID 'lc_run--f10a4379-5bfb-48d2-8d36-f9700901345e' to int [llmmllab] component=message_conversion
-2026-04-09T16:33:29.668207Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-09T16:33:29.668308Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-09T16:33:29.669246Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-09T16:33:29.669348Z [debug    ] Final output buffers           [llmmllab] extra={'final_content_len': 109, 'total_tool_calls': 1, 'content_preview': "I see there's still an old reference to SplitModeEnum in the file. Let me read the file to see what's there:\n"}
-2026-04-09T16:33:29.701446Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:29.701571Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:29.701659Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
-2026-04-09T16:33:29.701726Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
-2026-04-09T16:33:29.709596Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
-2026-04-09T16:33:29.709708Z [debug    ] Authentication successful      [llmmllab] component=app
-2026-04-09T16:33:29.718171Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 28, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 28, 'tool_choice': None}
-INFO:     10.42.0.0:63775 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
-2026-04-09T16:33:29.721091Z [debug    ] User config retrieved from database: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:29.721228Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:29.721338Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_27B operation=miss success=True
-2026-04-09T16:33:29.721485Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_27B original_model=? user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:29.721724Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_27B model_arg=Qwen3_5_27B user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:29.721847Z [debug    ] Requesting pipeline for model_id: Qwen3_5_27B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
-2026-04-09T16:33:29.721944Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_27B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
-Starting new HTTP connection (1): 127.0.0.1:8001
-http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
-2026-04-09T16:33:29.723694Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-27B [llmmllab] component=LocalPipelineCacheManager
-2026-04-09T16:33:29.723893Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-09T16:33:29.725610Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=13dbdbb1f1fa49a696c38dc68eee76b5 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:29.726198Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-2026-04-09T16:33:29.857360Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:29.867936Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=27 node_id=13dbdbb1f1fa49a696c38dc68eee76b5 node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:29.868100Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=13dbdbb1f1fa49a696c38dc68eee76b5 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:29.872333Z [debug    ] Merged consecutive HumanMessages after empty AI removal [llmmllab] component=message_conversion
-2026-04-09T16:33:29.872455Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.872590Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.872727Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.872849Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.872964Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873063Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873159Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873256Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873357Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873468Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873552Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873633Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:29.873727Z [debug    ] Running agent with 25 messages [llmmllab] component=PrimaryCodingAgent node_id=13dbdbb1f1fa49a696c38dc68eee76b5 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:30.014682Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.017192Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.993 (> 0.100 thold), f_keep = 0.998 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.019594Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.019717Z [debug    ] slot launch_slot_: id  0 | task 11304 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.019854Z [debug    ] slot update_slots: id  0 | task 11304 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 54978 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.019978Z [debug    ] slot update_slots: id  0 | task 11304 | n_past = 54584, slot.prompt.tokens.size() = 54676, seq_id = 0, pos_min = 54675, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.020082Z [debug    ] slot update_slots: id  0 | task 11304 | Checking checkpoint with [54581, 54581] against 54584... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.046273Z [debug    ] slot update_slots: id  0 | task 11304 | restored context checkpoint (pos_min = 54581, pos_max = 54581, n_tokens = 54582, n_past = 54582, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.046402Z [debug    ] slot update_slots: id  0 | task 11304 | n_tokens = 54582, memory_seq_rm [54582, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.046531Z [debug    ] slot update_slots: id  0 | task 11304 | prompt processing progress, n_tokens = 54974, batch.n_tokens = 392, progress = 0.999927 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.666578Z [debug    ] slot update_slots: id  0 | task 11304 | n_tokens = 54974, memory_seq_rm [54974, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.671367Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.671466Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.671560Z [debug    ] slot init_sampler: id  0 | task 11304 | init sampler, took 4.78 ms, tokens: text = 54978, total = 54978 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.671674Z [debug    ] slot update_slots: id  0 | task 11304 | prompt processing done, n_tokens = 54978, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.913752Z [debug    ] slot update_slots: id  0 | task 11304 | created context checkpoint 20 of 24 (pos_min = 54973, pos_max = 54973, n_tokens = 54974, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.980903Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:30.989225Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:31.118462Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
-2026-04-09T16:33:36.862393Z [debug    ] slot print_timing: id  0 | task 11304 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.862545Z [debug    ] prompt eval time =     967.86 ms /   396 tokens (    2.44 ms per token,   409.15 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.862628Z [debug    ]        eval time =    5874.81 ms /    90 tokens (   65.28 ms per token,    15.32 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.862696Z [debug    ]       total time =    6842.67 ms /   486 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.863882Z [debug    ] slot      release: id  0 | task 11304 | stop processing: n_tokens = 55067, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.864010Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:36.864702Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-09T16:33:36.866398Z [debug    ] State transition: GenerationState.RESPONDING -> GenerationState.EXECUTING [llmmllab]
-2026-04-09T16:33:36.866514Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 154}
-2026-04-09T16:33:36.867887Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['Read']
-2026-04-09T16:33:36.868009Z [warning  ] Failed to convert LangChain message ID 'lc_run--65ae4387-f8d3-4aaf-8aa9-16fd5a917d32' to int [llmmllab] component=message_conversion
-2026-04-09T16:33:36.868134Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-09T16:33:36.868241Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-09T16:33:36.869254Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-09T16:33:36.869358Z [debug    ] Final output buffers           [llmmllab] extra={'final_content_len': 154, 'total_tool_calls': 1, 'content_preview': "The issue is that Pyright doesn't recognize the enum values on the imported class. Let me check the actual generated .py file to see how it's structured:\n"}
-2026-04-09T16:33:36.981078Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:36.981203Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:33:36.981292Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
-2026-04-09T16:33:36.981360Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
-2026-04-09T16:33:36.989059Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
-2026-04-09T16:33:36.989171Z [debug    ] Authentication successful      [llmmllab] component=app
-2026-04-09T16:33:36.997952Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 28, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 28, 'tool_choice': None}
-2026-04-09T16:33:36.998418Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:36.998546Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:33:36.998643Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_27B operation=miss success=True
-2026-04-09T16:33:36.998763Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_27B original_model=? user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:36.999016Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_27B model_arg=Qwen3_5_27B user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:36.999130Z [debug    ] Requesting pipeline for model_id: Qwen3_5_27B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
-2026-04-09T16:33:36.999230Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_27B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
-Starting new HTTP connection (1): 127.0.0.1:8001
-http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
-2026-04-09T16:33:37.001387Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-27B [llmmllab] component=LocalPipelineCacheManager
-2026-04-09T16:33:37.001601Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-09T16:33:37.003673Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=9f82f3300d884092933115d0f215e301 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:37.004422Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-INFO:     10.42.0.0:63775 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
-2026-04-09T16:33:37.145178Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.155770Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=29 node_id=9f82f3300d884092933115d0f215e301 node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:37.155950Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=9f82f3300d884092933115d0f215e301 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:37.159364Z [debug    ] Merged consecutive HumanMessages after empty AI removal [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159457Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159574Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159681Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159772Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159870Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.159955Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160037Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160119Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160202Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160282Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160364Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160470Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160620Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:33:37.160776Z [debug    ] Running agent with 27 messages [llmmllab] component=PrimaryCodingAgent node_id=9f82f3300d884092933115d0f215e301 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:33:37.335530Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.337630Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.982 (> 0.100 thold), f_keep = 0.998 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.339878Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.339962Z [debug    ] slot launch_slot_: id  0 | task 11396 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.340048Z [debug    ] slot update_slots: id  0 | task 11396 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 55979 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.340146Z [debug    ] slot update_slots: id  0 | task 11396 | n_past = 54976, slot.prompt.tokens.size() = 55067, seq_id = 0, pos_min = 55066, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.340230Z [debug    ] slot update_slots: id  0 | task 11396 | Checking checkpoint with [54973, 54973] against 54976... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.366679Z [debug    ] slot update_slots: id  0 | task 11396 | restored context checkpoint (pos_min = 54973, pos_max = 54973, n_tokens = 54974, n_past = 54974, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.366799Z [debug    ] slot update_slots: id  0 | task 11396 | n_tokens = 54974, memory_seq_rm [54974, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:37.366928Z [debug    ] slot update_slots: id  0 | task 11396 | prompt processing progress, n_tokens = 55975, batch.n_tokens = 1001, progress = 0.999929 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:38.792405Z [debug    ] slot update_slots: id  0 | task 11396 | n_tokens = 55975, memory_seq_rm [55975, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:38.797187Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:38.797317Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:38.797404Z [debug    ] slot init_sampler: id  0 | task 11396 | init sampler, took 4.86 ms, tokens: text = 55979, total = 55979 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:38.797479Z [debug    ] slot update_slots: id  0 | task 11396 | prompt processing done, n_tokens = 55979, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:39.334360Z [debug    ] slot update_slots: id  0 | task 11396 | created context checkpoint 21 of 24 (pos_min = 55974, pos_max = 55974, n_tokens = 55975, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:39.401962Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:39.409487Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:39.540657Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
-2026-04-09T16:33:43.903705Z [debug    ] slot print_timing: id  0 | task 11396 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.903880Z [debug    ] prompt eval time =    2068.55 ms /  1005 tokens (    2.06 ms per token,   485.85 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.903972Z [debug    ]        eval time =    4495.12 ms /    69 tokens (   65.15 ms per token,    15.35 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.904049Z [debug    ]       total time =    6563.67 ms /  1074 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.905413Z [debug    ] slot      release: id  0 | task 11396 | stop processing: n_tokens = 56047, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.905547Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:33:43.906231Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'stop'}
-2026-04-09T16:33:43.907631Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'stop', 'has_tool_calls': False, 'content_len': 286}
-2026-04-09T16:33:43.908977Z [warning  ] Failed to convert LangChain message ID 'lc_run--8992121b-9585-48ad-82c1-0e38e457b91d' to int [llmmllab] component=message_conversion
-2026-04-09T16:33:43.909111Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-09T16:33:43.910030Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-09T16:33:43.910134Z [debug    ] Final output buffers           [llmmllab] extra={'final_content_len': 286, 'total_tool_calls': 0, 'content_preview': "The generated proto file uses dynamic generation. The issue is that at runtime, the enum values are accessible, but the type stubs don't expose them properly. Since this works at runtime, I should jus"}
-[2026-04-09 16:34:13] [INFO] Checking service status...
-[2026-04-09 16:34:13] [INFO] rest_api (PID 57) is running
-[2026-04-09 16:35:13] [INFO] Checking service status...
-[2026-04-09 16:35:13] [INFO] rest_api (PID 57) is running
-
-[2026-04-09 16:34:13] [INFO] Checking service status...
-[2026-04-09 16:34:13] [INFO] rest_api (PID 57) is running
-[2026-04-09 16:35:13] [INFO] Checking service status...
-[2026-04-09 16:35:13] [INFO] rest_api (PID 57) is running
-[2026-04-09 16:36:13] [INFO] Checking service status...
-[2026-04-09 16:36:13] [INFO] rest_api (PID 57) is running
-2026-04-09T16:36:33.321536Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:36:33.321712Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:36:33.321807Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
-2026-04-09T16:36:33.321923Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
-2026-04-09T16:36:33.330229Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
-2026-04-09T16:36:33.330341Z [debug    ] Authentication successful      [llmmllab] component=app
-2026-04-09T16:36:33.337207Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 28, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 28, 'tool_choice': None}
-2026-04-09T16:36:33.337620Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:36:33.337756Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:36:33.337865Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_27B operation=miss success=True
-2026-04-09T16:36:33.337964Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_27B original_model=? user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.338193Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_27B model_arg=Qwen3_5_27B user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.338294Z [debug    ] Requesting pipeline for model_id: Qwen3_5_27B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
-2026-04-09T16:36:33.338397Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_27B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
-Starting new HTTP connection (1): 127.0.0.1:8001
-http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
-2026-04-09T16:36:33.340251Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-27B [llmmllab] component=LocalPipelineCacheManager
-2026-04-09T16:36:33.340459Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-09T16:36:33.342014Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=3a7dd566dbf040b1b8f4e197b2f6c66a node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.342725Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-INFO:     10.42.0.0:58038 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
-2026-04-09T16:36:33.479583Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.490136Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=31 node_id=3a7dd566dbf040b1b8f4e197b2f6c66a node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.490293Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=3a7dd566dbf040b1b8f4e197b2f6c66a node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.494746Z [debug    ] Merged consecutive HumanMessages after empty AI removal [llmmllab] component=message_conversion
-2026-04-09T16:36:33.494872Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.494986Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495098Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495184Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495271Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495362Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495444Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495544Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495660Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495763Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.495889Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.496010Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.496183Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:36:33.496365Z [debug    ] Running agent with 29 messages [llmmllab] component=PrimaryCodingAgent node_id=3a7dd566dbf040b1b8f4e197b2f6c66a node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:36:33.671078Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.673121Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.696 (> 0.100 thold), f_keep = 0.696 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676311Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676394Z [debug    ] slot launch_slot_: id  0 | task 11467 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676471Z [debug    ] slot update_slots: id  0 | task 11467 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 56057 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676540Z [debug    ] slot update_slots: id  0 | task 11467 | n_past = 39027, slot.prompt.tokens.size() = 56047, seq_id = 0, pos_min = 56046, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676611Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [55974, 55974] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676670Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [54973, 54973] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676725Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [54581, 54581] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676784Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [53963, 53963] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676850Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [53775, 53775] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676901Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [52981, 52981] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676945Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [52580, 52580] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.676988Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [52394, 52394] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677030Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [51559, 51559] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677071Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [50867, 50867] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677112Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [50458, 50458] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677156Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [49434, 49434] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677202Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [48848, 48848] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677246Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [48615, 48615] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677289Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [47591, 47591] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677334Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [41124, 41124] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677376Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [40100, 40100] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.677420Z [debug    ] slot update_slots: id  0 | task 11467 | Checking checkpoint with [32767, 32767] against 39027... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.756182Z [debug    ] slot update_slots: id  0 | task 11467 | restored context checkpoint (pos_min = 32767, pos_max = 32767, n_tokens = 32768, n_past = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.756314Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 40100, pos_max = 40100, n_tokens = 40101, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.768730Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 41124, pos_max = 41124, n_tokens = 41125, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.780385Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 47591, pos_max = 47591, n_tokens = 47592, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.790438Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 48615, pos_max = 48615, n_tokens = 48616, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.800133Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 48848, pos_max = 48848, n_tokens = 48849, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.808541Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 49434, pos_max = 49434, n_tokens = 49435, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.816864Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 50458, pos_max = 50458, n_tokens = 50459, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.824624Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 50867, pos_max = 50867, n_tokens = 50868, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.832049Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 51559, pos_max = 51559, n_tokens = 51560, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.839572Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 52394, pos_max = 52394, n_tokens = 52395, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.847006Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 52580, pos_max = 52580, n_tokens = 52581, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.854334Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 52981, pos_max = 52981, n_tokens = 52982, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.861776Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 53775, pos_max = 53775, n_tokens = 53776, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.869143Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 53963, pos_max = 53963, n_tokens = 53964, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.876537Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 54581, pos_max = 54581, n_tokens = 54582, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.883883Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 54973, pos_max = 54973, n_tokens = 54974, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.891196Z [debug    ] slot update_slots: id  0 | task 11467 | erased invalidated context checkpoint (pos_min = 55974, pos_max = 55974, n_tokens = 55975, n_swa = 0, pos_next = 32768, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.898506Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 32768, memory_seq_rm [32768, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:33.900697Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 34816, batch.n_tokens = 2048, progress = 0.621082 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:36.293712Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 34816, memory_seq_rm [34816, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:36.293882Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 36864, batch.n_tokens = 2048, progress = 0.657616 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:38.734516Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 36864, memory_seq_rm [36864, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:38.734666Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 38912, batch.n_tokens = 2048, progress = 0.694151 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:41.213055Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 38912, memory_seq_rm [38912, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:41.213204Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 40960, batch.n_tokens = 2048, progress = 0.730685 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:43.733720Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 40960, memory_seq_rm [40960, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:43.733845Z [debug    ] slot update_slots: id  0 | task 11467 | 8192 tokens since last checkpoint at 32768, creating new checkpoint during processing at position 43008 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:43.733916Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 43008, batch.n_tokens = 2048, progress = 0.767219 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:44.203053Z [debug    ] slot update_slots: id  0 | task 11467 | created context checkpoint 5 of 24 (pos_min = 40959, pos_max = 40959, n_tokens = 40960, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:46.773032Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 43008, memory_seq_rm [43008, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:46.773180Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 45056, batch.n_tokens = 2048, progress = 0.803753 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:49.391476Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 45056, memory_seq_rm [45056, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:49.391656Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 47104, batch.n_tokens = 2048, progress = 0.840288 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:52.054699Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 47104, memory_seq_rm [47104, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:52.054895Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 49152, batch.n_tokens = 2048, progress = 0.876822 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:54.759404Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 49152, memory_seq_rm [49152, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:54.759562Z [debug    ] slot update_slots: id  0 | task 11467 | 8192 tokens since last checkpoint at 40960, creating new checkpoint during processing at position 51200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:54.759651Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 51200, batch.n_tokens = 2048, progress = 0.913356 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:55.255351Z [debug    ] slot update_slots: id  0 | task 11467 | created context checkpoint 6 of 24 (pos_min = 49151, pos_max = 49151, n_tokens = 49152, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:57.999079Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 51200, memory_seq_rm [51200, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:36:57.999270Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 53248, batch.n_tokens = 2048, progress = 0.949890 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:00.794169Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 53248, memory_seq_rm [53248, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:00.794348Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 55029, batch.n_tokens = 1781, progress = 0.981661 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:03.249151Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 55029, memory_seq_rm [55029, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:03.249294Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing progress, n_tokens = 56053, batch.n_tokens = 1024, progress = 0.999929 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:03.653725Z [debug    ] slot update_slots: id  0 | task 11467 | created context checkpoint 7 of 24 (pos_min = 55028, pos_max = 55028, n_tokens = 55029, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.089332Z [debug    ] slot update_slots: id  0 | task 11467 | n_tokens = 56053, memory_seq_rm [56053, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.094291Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.094411Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.094494Z [debug    ] slot init_sampler: id  0 | task 11467 | init sampler, took 4.83 ms, tokens: text = 56057, total = 56057 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.094563Z [debug    ] slot update_slots: id  0 | task 11467 | prompt processing done, n_tokens = 56057, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.605809Z [debug    ] slot update_slots: id  0 | task 11467 | created context checkpoint 8 of 24 (pos_min = 56052, pos_max = 56052, n_tokens = 56053, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.673329Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:05.680840Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-[2026-04-09 16:37:13] [INFO] Checking service status...
-[2026-04-09 16:37:13] [INFO] rest_api (PID 57) is running
-2026-04-09T16:37:24.470447Z [debug    ] slot print_timing: id  0 | task 11467 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.470622Z [debug    ] prompt eval time =   32003.40 ms / 23289 tokens (    1.37 ms per token,   727.70 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.470711Z [debug    ]        eval time =   18790.36 ms /   284 tokens (   66.16 ms per token,    15.11 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.470806Z [debug    ]       total time =   50793.76 ms / 23573 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.471775Z [debug    ] slot      release: id  0 | task 11467 | stop processing: n_tokens = 56340, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.471951Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.472546Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-09T16:37:24.475982Z [debug    ] State transition: None -> GenerationState.EXECUTING [llmmllab]
-2026-04-09T16:37:24.476097Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 0}
-2026-04-09T16:37:24.477457Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['Edit']
-2026-04-09T16:37:24.477577Z [warning  ] Failed to convert LangChain message ID 'lc_run--a62eab19-1d35-4cd1-b64b-cc7b474b5e02' to int [llmmllab] component=message_conversion
-2026-04-09T16:37:24.477673Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-09T16:37:24.477759Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-09T16:37:24.478722Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-09T16:37:24.478840Z [debug    ] Final output buffers           [llmmllab] extra={'final_content_len': 0, 'total_tool_calls': 1, 'content_preview': ''}
-2026-04-09T16:37:24.586056Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:37:24.586181Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
-2026-04-09T16:37:24.586268Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
-2026-04-09T16:37:24.586337Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
-2026-04-09T16:37:24.593836Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
-2026-04-09T16:37:24.593949Z [debug    ] Authentication successful      [llmmllab] component=app
-2026-04-09T16:37:24.602754Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 28, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 28, 'tool_choice': None}
-2026-04-09T16:37:24.603219Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:37:24.603377Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
-2026-04-09T16:37:24.603470Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_27B operation=miss success=True
-2026-04-09T16:37:24.603565Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_27B original_model=? user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.603780Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_27B model_arg=Qwen3_5_27B user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.603899Z [debug    ] Requesting pipeline for model_id: Qwen3_5_27B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
-2026-04-09T16:37:24.603978Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_27B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
-Starting new HTTP connection (1): 127.0.0.1:8001
-http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
-2026-04-09T16:37:24.605955Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-27B [llmmllab] component=LocalPipelineCacheManager
-2026-04-09T16:37:24.606240Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-09T16:37:24.608551Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=86271e8e0780496fa81ff11d99c5ab95 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.609295Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-INFO:     10.42.0.0:58038 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
-2026-04-09T16:37:24.749944Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.760923Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=33 node_id=86271e8e0780496fa81ff11d99c5ab95 node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.761085Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=86271e8e0780496fa81ff11d99c5ab95 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.764582Z [debug    ] Merged consecutive HumanMessages after empty AI removal [llmmllab] component=message_conversion
-2026-04-09T16:37:24.764677Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.764766Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.764848Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.764939Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765028Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765111Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765194Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765277Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765360Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765441Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765523Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765606Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765688Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765808Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-09T16:37:24.765906Z [debug    ] Running agent with 31 messages [llmmllab] component=PrimaryCodingAgent node_id=86271e8e0780496fa81ff11d99c5ab95 node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-09T16:37:24.948046Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.950505Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.994 (> 0.100 thold), f_keep = 0.995 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.952785Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.952900Z [debug    ] slot launch_slot_: id  0 | task 11764 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.952976Z [debug    ] slot update_slots: id  0 | task 11764 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 56388 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.953078Z [debug    ] slot update_slots: id  0 | task 11764 | n_past = 56055, slot.prompt.tokens.size() = 56340, seq_id = 0, pos_min = 56339, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.953169Z [debug    ] slot update_slots: id  0 | task 11764 | Checking checkpoint with [56052, 56052] against 56055... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.979679Z [debug    ] slot update_slots: id  0 | task 11764 | restored context checkpoint (pos_min = 56052, pos_max = 56052, n_tokens = 56053, n_past = 56053, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.979791Z [debug    ] slot update_slots: id  0 | task 11764 | n_tokens = 56053, memory_seq_rm [56053, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:24.979883Z [debug    ] slot update_slots: id  0 | task 11764 | prompt processing progress, n_tokens = 56384, batch.n_tokens = 331, progress = 0.999929 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.481440Z [debug    ] slot update_slots: id  0 | task 11764 | n_tokens = 56384, memory_seq_rm [56384, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.486396Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.486522Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.486607Z [debug    ] slot init_sampler: id  0 | task 11764 | init sampler, took 4.88 ms, tokens: text = 56388, total = 56388 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.486689Z [debug    ] slot update_slots: id  0 | task 11764 | prompt processing done, n_tokens = 56388, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.688762Z [debug    ] slot update_slots: id  0 | task 11764 | created context checkpoint 9 of 24 (pos_min = 56383, pos_max = 56383, n_tokens = 56384, size = 149.626 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.756042Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.764663Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:25.894973Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
-2026-04-09T16:37:26.545811Z [debug    ] slot print_timing: id  0 | task 11764 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.545936Z [debug    ] prompt eval time =     810.04 ms /   335 tokens (    2.42 ms per token,   413.56 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.546028Z [debug    ]        eval time =     782.88 ms /    13 tokens (   60.22 ms per token,    16.61 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.546094Z [debug    ]       total time =    1592.92 ms /   348 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.547377Z [debug    ] slot      release: id  0 | task 11764 | stop processing: n_tokens = 56400, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.547521Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-27B
-2026-04-09T16:37:26.548210Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'stop'}
-2026-04-09T16:37:26.549408Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'stop', 'has_tool_calls': False, 'content_len': 45}
-2026-04-09T16:37:26.550745Z [warning  ] Failed to convert LangChain message ID 'lc_run--4c64d2c7-3f6e-4bcc-b76c-d0b16e96b5c0' to int [llmmllab] component=message_conversion
-2026-04-09T16:37:26.550880Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-09T16:37:26.551811Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-09T16:37:26.551926Z [debug    ] Final output buffers           [llmmllab] extra={'final_content_len': 45, 'total_tool_calls': 0, 'content_preview': 'Now I can remove the unused GPUConfig import:'}
-
+    {
+        "content": "I'll help you debug this gRPC error. Let me first understand the flow and check the relevant code.\n\n<call_anthropic_tool>\n<tool_name>superpowers:systematic-debugging</tool_name>\n</call_anthropic_tool>",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": null,
+        "id": "e8354763-1633-4af6-93e1-c459109ba40e",
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+    },
+    {
+        "content": "Did you mean to call any tools? If not, simply respond with 'done'. Otherwise, continue working.",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": "d00b66b5-7fa4-4025-a476-9c432d0ad843"
+    }
+] [llmmllab] component=ChatLlamaCppPipeline model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.551723Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553068Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.993 (> 0.100 thold), f_keep = 0.995 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553186Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> reasoning-budget -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553291Z [debug    ] slot launch_slot_: id  0 | task 4331 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553378Z [debug    ] slot update_slots: id  0 | task 4331 | new prompt, n_ctx_slot = 150016, n_keep = 0, task.n_tokens = 12531 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553460Z [debug    ] slot update_slots: id  0 | task 4331 | n_past = 12441, slot.prompt.tokens.size() = 12501, seq_id = 0, pos_min = 12500, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.553537Z [debug    ] slot update_slots: id  0 | task 4331 | Checking checkpoint with [12440, 12440] against 12441... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.579937Z [debug    ] slot update_slots: id  0 | task 4331 | restored context checkpoint (pos_min = 12440, pos_max = 12440, n_tokens = 12441, n_past = 12441, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.580023Z [debug    ] slot update_slots: id  0 | task 4331 | n_tokens = 12441, memory_seq_rm [12441, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.580104Z [debug    ] slot update_slots: id  0 | task 4331 | prompt processing progress, n_tokens = 12527, batch.n_tokens = 86, progress = 0.999681 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.880857Z [debug    ] slot update_slots: id  0 | task 4331 | n_tokens = 12527, memory_seq_rm [12527, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.882053Z [debug    ] reasoning-budget: activated, budget=0 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.882140Z [debug    ] reasoning-budget: budget=0, forcing immediately [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.882225Z [debug    ] slot init_sampler: id  0 | task 4331 | init sampler, took 1.11 ms, tokens: text = 12531, total = 12531 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.882289Z [debug    ] slot update_slots: id  0 | task 4331 | prompt processing done, n_tokens = 12531, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:26.986000Z [debug    ] slot update_slots: id  0 | task 4331 | created context checkpoint 4 of 24 (pos_min = 12526, pos_max = 12526, n_tokens = 12527, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:27.027923Z [debug    ] reasoning-budget: forced sequence complete, done [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:27.034431Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:27.036230Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
+2026-04-10T16:25:32.314645Z [debug    ] slot print_timing: id  0 | task 4331 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.314808Z [debug    ] prompt eval time =     481.13 ms /    90 tokens (    5.35 ms per token,   187.06 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.314872Z [debug    ]        eval time =    5280.27 ms /   157 tokens (   33.63 ms per token,    29.73 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.314917Z [debug    ]       total time =    5761.40 ms /   247 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.315004Z [debug    ] slot      release: id  0 | task 4331 | stop processing: n_tokens = 12687, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.315053Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-10T16:25:32.315669Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'stop'}
+2026-04-10T16:25:32.318180Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': True, 'contents_buffer_len': 509, 'has_end_tc': False, 'will_extract': False}
+2026-04-10T16:25:32.318301Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'stop', 'has_tool_calls': False, 'content_len': 509}
+2026-04-10T16:25:32.319317Z [warning  ] Failed to convert LangChain message ID 'lc_run--0b6ac914-ca97-40fe-9110-d4792192eeb3' to int [llmmllab] component=message_conversion
+2026-04-10T16:25:32.319435Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
+2026-04-10T16:25:32.320421Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
+2026-04-10T16:25:32.320524Z [info     ] Final message construction     [llmmllab] extra={'contents_buffer_len': 509, 'contents_buffer_preview': '</think>\n\nUsing the systematic debugging skill to investigate this gRPC error where runner is throwing `AttributeError: provider`. Let me examine the relevant code paths.\n\n<Read>\n<file_path>/home/lsm/', 'message_contents_len': 1, 'total_tool_calls': 0}
+2026-04-10T16:25:32.320766Z [debug    ] Stream complete                [llmmllab] component=anthropic_messages_router extra={'has_content': True, 'has_tool_calls': False, 'final_content_len': 210, 'stop_reason': 'end_turn', 'text_block_started': True}
+[2026-04-10 16:26:23] [INFO] Checking service status...
+[2026-04-10 16:26:23] [INFO] rest_api (PID 57) is running

@@ -463,13 +463,6 @@ async def stream_message(
         if event.message and event.message.content:
             for part in event.message.content:
                 if part.type == MessageContentType.TEXT and part.text:
-                    logger.debug(
-                        "Streaming content delta",
-                        extra={
-                            "text_len": len(part.text),
-                            "text_preview": part.text[:100],
-                        },
-                    )
                     if not text_block_started:
                         yield _sse(
                             "content_block_start",
