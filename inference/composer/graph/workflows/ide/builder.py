@@ -245,7 +245,7 @@ IDE_PRIMARY_PROFILE = ModelProfile(
     model_name="?",
     parameters=ModelParameters(
         # Context window size - max tokens the model can process at once
-        num_ctx=150000,  # Start with a reasonable context size and optimize up if possible
+        num_ctx=155000,  # Start with a reasonable context size and optimize up if possible
         # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
         repeat_last_n=-1,
         # Token repetition penalty - penalize repeated tokens (0 = disabled)
