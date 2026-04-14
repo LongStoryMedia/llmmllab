@@ -527,10 +527,12 @@ async def stream_message(
     async for event in execute_workflow(initial_state, workflow):
         # -----------------------------------------------------------
         # ServerToolEvent — emitted by the executor when the
-        # ServerToolNode completes a tool call.  Convert to SSE.
+        # ServerToolNode completes a tool call.  Emit as standard
+        # text content blocks so Claude Code can render them and
+        # preserve them in conversation history across compaction.
         # -----------------------------------------------------------
         if isinstance(event, ServerToolEvent):
-            # Close the current text block before emitting tool blocks
+            # Close the current text block before emitting tool info
             if text_block_started:
                 yield _sse(
                     "content_block_stop",
@@ -539,20 +541,31 @@ async def stream_message(
                 text_block_started = False
 
             tc = event.tool_call
-            tc_id = tc.execution_id or f"srvtoolu_{uuid.uuid4().hex[:24]}"
+            canonical = event.canonical_name
 
-            # Emit server_tool_use block
+            # Format a concise text summary of the tool call + results
+            result_text = event.result_text or ""
+            # Truncate very long results to avoid bloating the response
+            max_result_len = 4000
+            if len(result_text) > max_result_len:
+                result_text = result_text[:max_result_len] + "\n\n[... truncated]"
+
+            if canonical == "web_search":
+                query = tc.args.get("query", "")
+                tool_summary = f"\n\n🔍 **Web Search:** {query}\n\n{result_text}\n\n"
+            elif canonical == "web_fetch":
+                url = tc.args.get("url", "")
+                tool_summary = f"\n\n📄 **Web Fetch:** {url}\n\n{result_text}\n\n"
+            else:
+                tool_summary = f"\n\n🔧 **{tc.name}**\n\n{result_text}\n\n"
+
+            # Emit as a standard text block
             yield _sse(
                 "content_block_start",
                 {
                     "type": "content_block_start",
                     "index": next_block_index,
-                    "content_block": {
-                        "type": "server_tool_use",
-                        "id": tc_id,
-                        "name": tc.name,
-                        "input": {},
-                    },
+                    "content_block": {"type": "text", "text": ""},
                 },
             )
             yield _sse(
@@ -560,10 +573,7 @@ async def stream_message(
                 {
                     "type": "content_block_delta",
                     "index": next_block_index,
-                    "delta": {
-                        "type": "input_json_delta",
-                        "partial_json": json.dumps(tc.args),
-                    },
+                    "delta": {"type": "text_delta", "text": tool_summary},
                 },
             )
             yield _sse(
@@ -571,48 +581,7 @@ async def stream_message(
                 {"type": "content_block_stop", "index": next_block_index},
             )
             next_block_index += 1
-
-            # Emit result block
-            canonical = event.canonical_name
-            if canonical == "web_search":
-                result_block_type = "web_search_tool_result"
-                result_content: Any = [
-                    {
-                        "type": "web_search_result",
-                        "title": "Search Results",
-                        "url": "",
-                        "encrypted_content": event.result_text,
-                        "page_age": "",
-                    }
-                ]
-            elif canonical == "web_fetch":
-                result_block_type = "web_fetch_tool_result"
-                result_content = {
-                    "type": "web_fetch_result",
-                    "url": tc.args.get("url", ""),
-                    "content": event.result_text,
-                }
-            else:
-                result_block_type = "server_tool_result"
-                result_content = event.result_text
-
-            yield _sse(
-                "content_block_start",
-                {
-                    "type": "content_block_start",
-                    "index": next_block_index,
-                    "content_block": {
-                        "type": result_block_type,
-                        "tool_use_id": tc_id,
-                        "content": result_content,
-                    },
-                },
-            )
-            yield _sse(
-                "content_block_stop",
-                {"type": "content_block_stop", "index": next_block_index},
-            )
-            next_block_index += 1
+            has_content = True
             continue
 
         # -----------------------------------------------------------
