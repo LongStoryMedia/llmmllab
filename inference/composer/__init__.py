@@ -20,13 +20,14 @@ Architectural Role:
 - Maintains Protocol-based decoupling requirements
 """
 
-from typing import AsyncIterator, List, Optional, Type
+from typing import AsyncIterator, List, Optional, Type, Union
 from pydantic import BaseModel
 from models import ChatResponse, Message
 from utils.logging import llmmllogger
 from .core.service import CompiledStateGraph, ComposerService
 from .core.errors import ComposerError
 from .graph.executor import stream_workflow
+from .graph.state import ServerToolEvent
 from .graph.workflows.base import GraphBuilder
 from .graph.workflows.factory import WorkFlowType, get_builder
 
@@ -165,7 +166,7 @@ async def create_initial_state(
 async def execute_workflow(
     initial_state: BaseModel,
     workflow: CompiledStateGraph,
-) -> AsyncIterator[ChatResponse]:
+) -> AsyncIterator[Union[ChatResponse, ServerToolEvent]]:
     """
     Execute a compiled workflow with the given initial state.
 

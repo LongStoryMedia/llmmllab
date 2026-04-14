@@ -32,13 +32,13 @@ from composer import (
     get_graph_builder,
 )
 from composer.graph.workflows.factory import WorkFlowType
+from composer.graph.state import ServerToolEvent
 from composer.tools.server_tool_executor import (
     separate_server_tools,
     get_server_tool_names,
     make_server_tool_definitions,
     find_locally_executable_tools,
     extract_server_tool_calls,
-    execute_server_tool,
     _CLIENT_TOOL_NAME_MAP,
 )
 from runner import pipeline_factory
@@ -395,10 +395,11 @@ async def stream_message(
     single retry is attempted with a continuation prompt to coax the tool call.
 
     Server-side tools (web_search, web_fetch) are intercepted and executed
-    locally.  Their calls are emitted as ``server_tool_use`` content blocks
-    and results as ``web_search_tool_result`` / ``web_fetch_tool_result``
-    blocks, matching the Anthropic streaming API contract so that clients
-    preserve the full tool-call history across turns.
+    locally within the LangGraph workflow via ServerToolNode.  The executor
+    yields ``ServerToolEvent`` objects at iteration boundaries which this
+    function converts to ``server_tool_use`` and result SSE content blocks,
+    matching the Anthropic streaming API contract so that clients preserve
+    the full tool-call history across turns.
     """
     # ----------------------------------------------------------------
     # Separate server-side tools from client tools. Server tools are
@@ -428,7 +429,7 @@ async def stream_message(
         # Also detect client tools like WebSearch/WebFetch that should be
         # executed locally.  These keep their original definitions (they
         # already have input_schema) but their names are added to
-        # server_tool_names so we intercept their calls.
+        # server_tool_names so ServerToolNode intercepts their calls.
         local_names = find_locally_executable_tools(client_tools)
         if local_names:
             server_tool_names |= local_names
@@ -472,114 +473,34 @@ async def stream_message(
     final_content: str = ""
     output_tokens = 0
 
-    # Keep a running message list so server tool results accumulate
-    # across loop iterations.
-    running_messages = list(messages)
-    _MAX_SERVER_TOOL_ITERATIONS = 10
+    # Build workflow — pass server_tool_names so the graph handles the
+    # Agent → ServerToolNode → Agent loop internally.
+    builder = await get_graph_builder(WorkFlowType.IDE, user_id)
+    workflow = await compose_workflow(
+        user_id=user_id,
+        builder=builder,
+        model_name=model_name,
+        client_tools=client_tools,
+        tool_choice=tool_choice,
+        server_tool_names=server_tool_names or None,
+    )
+    initial_state = await create_initial_state(user_id, 0, builder, messages)
 
-    for _iteration in range(_MAX_SERVER_TOOL_ITERATIONS):
-        # Build workflow WITHOUT server_tool_names — we handle the loop at
-        # the router level so that tool_use/tool_result blocks are properly
-        # emitted as SSE events.
-        builder = await get_graph_builder(WorkFlowType.IDE, user_id)
-        workflow = await compose_workflow(
-            user_id=user_id,
-            builder=builder,
-            model_name=model_name,
-            client_tools=client_tools,
-            tool_choice=tool_choice,
-        )
-        initial_state = await create_initial_state(
-            user_id, 0, builder, running_messages
-        )
+    async for event in execute_workflow(initial_state, workflow):
+        # -----------------------------------------------------------
+        # ServerToolEvent — emitted by the executor when the
+        # ServerToolNode completes a tool call.  Convert to SSE.
+        # -----------------------------------------------------------
+        if isinstance(event, ServerToolEvent):
+            # Close the current text block before emitting tool blocks
+            if text_block_started:
+                yield _sse(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": text_block_index},
+                )
+                text_block_started = False
 
-        iter_tool_calls: list[ToolCall] = []
-        iter_content: str = ""
-
-        async for event in execute_workflow(initial_state, workflow):
-            if event.done:
-                if event.message and event.message.tool_calls:
-                    iter_tool_calls = event.message.tool_calls
-                if event.message and event.message.content:
-                    parts = [
-                        c.text
-                        for c in event.message.content
-                        if c.type == MessageContentType.TEXT and c.text
-                    ]
-                    iter_content = "".join(parts)
-                if event.prompt_eval_count:
-                    input_tokens = _scale_tokens(int(event.prompt_eval_count))
-                if event.eval_count:
-                    output_tokens += int(event.eval_count)
-                continue
-
-            # Stream live text deltas
-            if event.message and event.message.content:
-                for part in event.message.content:
-                    if part.type == MessageContentType.TEXT and part.text:
-                        if not text_block_started:
-                            yield _sse(
-                                "content_block_start",
-                                {
-                                    "type": "content_block_start",
-                                    "index": next_block_index,
-                                    "content_block": {"type": "text", "text": ""},
-                                },
-                            )
-                            text_block_index = next_block_index
-                            next_block_index += 1
-                            text_block_started = True
-                        has_content = True
-                        yield _sse(
-                            "content_block_delta",
-                            {
-                                "type": "content_block_delta",
-                                "index": text_block_index,
-                                "delta": {"type": "text_delta", "text": part.text},
-                            },
-                        )
-
-        # Separate server tool calls from client tool calls
-        if server_tool_names and iter_tool_calls:
-            srv_calls, cli_calls = extract_server_tool_calls(
-                iter_tool_calls, server_tool_names
-            )
-        else:
-            srv_calls, cli_calls = [], iter_tool_calls
-
-        if not srv_calls:
-            # No server tool calls — we're done looping. Record client
-            # tool calls for emission after the loop.
-            final_tool_calls = cli_calls
-            has_tool_calls = bool(final_tool_calls)
-            final_content = iter_content
-            break
-
-        # Close the current text block before emitting server tool blocks
-        if text_block_started:
-            yield _sse(
-                "content_block_stop",
-                {"type": "content_block_stop", "index": text_block_index},
-            )
-            text_block_started = False
-
-        # ---- Emit server_tool_use + execute + emit results ----
-        # Build the assistant message for running_messages (text + tool calls)
-        assistant_contents: list[MessageContent] = []
-        if iter_content:
-            assistant_contents.append(
-                MessageContent(type=MessageContentType.TEXT, text=iter_content)
-            )
-        running_messages.append(
-            Message(
-                role=MessageRole.ASSISTANT,
-                content=assistant_contents
-                or [MessageContent(type=MessageContentType.TEXT, text="")],
-                tool_calls=iter_tool_calls,
-            )
-        )
-
-        for tc in srv_calls:
+            tc = event.tool_call
             tc_id = tc.execution_id or f"srvtoolu_{uuid.uuid4().hex[:24]}"
 
             # Emit server_tool_use block
@@ -613,20 +534,16 @@ async def stream_message(
             )
             next_block_index += 1
 
-            # Execute the tool
-            result_text = await execute_server_tool(tc)
-
-            # Determine result block type based on canonical tool name
-            canonical = _CLIENT_TOOL_NAME_MAP.get(tc.name, tc.name)
+            # Emit result block
+            canonical = event.canonical_name
             if canonical == "web_search":
                 result_block_type = "web_search_tool_result"
-                # Wrap the text results into the expected format
-                result_content = [
+                result_content: Any = [
                     {
                         "type": "web_search_result",
                         "title": "Search Results",
                         "url": "",
-                        "encrypted_content": result_text,
+                        "encrypted_content": event.result_text,
                         "page_age": "",
                     }
                 ]
@@ -635,13 +552,12 @@ async def stream_message(
                 result_content = {
                     "type": "web_fetch_result",
                     "url": tc.args.get("url", ""),
-                    "content": result_text,
+                    "content": event.result_text,
                 }
             else:
                 result_block_type = "server_tool_result"
-                result_content = result_text
+                result_content = event.result_text
 
-            # Emit result block
             yield _sse(
                 "content_block_start",
                 {
@@ -659,40 +575,62 @@ async def stream_message(
                 {"type": "content_block_stop", "index": next_block_index},
             )
             next_block_index += 1
+            continue
 
-            # Append tool result to running messages
-            running_messages.append(
-                Message(
-                    role=MessageRole.TOOL,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=result_text,
-                        )
-                    ],
-                    tool_calls=[
-                        ToolCall(
-                            name=tc.name,
-                            args=tc.args,
-                            execution_id=tc_id,
-                        )
-                    ],
-                )
-            )
+        # -----------------------------------------------------------
+        # ChatResponse events (text deltas, done event)
+        # -----------------------------------------------------------
+        if event.done:
+            if event.message and event.message.tool_calls:
+                final_tool_calls = event.message.tool_calls
+                has_tool_calls = True
+            if event.message and event.message.content:
+                parts = [
+                    c.text
+                    for c in event.message.content
+                    if c.type == MessageContentType.TEXT and c.text
+                ]
+                final_content = "".join(parts)
+            if event.prompt_eval_count:
+                input_tokens = _scale_tokens(int(event.prompt_eval_count))
+            if event.eval_count:
+                output_tokens = int(event.eval_count)
+            continue
 
-        # If there were also client tool calls alongside server calls,
-        # stop looping — those need to go back to the client.
-        if cli_calls:
-            final_tool_calls = cli_calls
-            has_tool_calls = True
-            final_content = iter_content
-            break
-    else:
-        # Exhausted max iterations
-        logger.warning(
-            "Server tool loop hit max iterations",
-            extra={"max": _MAX_SERVER_TOOL_ITERATIONS},
-        )
+        # Stream live text deltas
+        if event.message and event.message.content:
+            for part in event.message.content:
+                if part.type == MessageContentType.TEXT and part.text:
+                    if not text_block_started:
+                        yield _sse(
+                            "content_block_start",
+                            {
+                                "type": "content_block_start",
+                                "index": next_block_index,
+                                "content_block": {"type": "text", "text": ""},
+                            },
+                        )
+                        text_block_index = next_block_index
+                        next_block_index += 1
+                        text_block_started = True
+                    has_content = True
+                    yield _sse(
+                        "content_block_delta",
+                        {
+                            "type": "content_block_delta",
+                            "index": text_block_index,
+                            "delta": {"type": "text_delta", "text": part.text},
+                        },
+                    )
+
+    # After the graph's server tool loop, filter out any remaining server
+    # tool calls from final_tool_calls — only client tool calls should be
+    # emitted to the client.
+    if server_tool_names and final_tool_calls:
+        final_tool_calls = [
+            tc for tc in final_tool_calls if tc.name not in server_tool_names
+        ]
+        has_tool_calls = bool(final_tool_calls)
 
     # ----------------------------------------------------------------
     # Single continuation check: if the model produced text but no tool
@@ -715,7 +653,7 @@ async def stream_message(
             },
         )
 
-        continuation_messages = list(running_messages) + [
+        continuation_messages = list(messages) + [
             Message(
                 role=MessageRole.ASSISTANT,
                 content=[
@@ -740,12 +678,15 @@ async def stream_message(
             model_name=model_name,
             client_tools=client_tools,
             tool_choice="auto",
+            server_tool_names=server_tool_names or None,
         )
         retry_state = await create_initial_state(
             user_id, 0, retry_builder, continuation_messages
         )
 
         async for event in execute_workflow(retry_state, retry_workflow):
+            if isinstance(event, ServerToolEvent):
+                continue
             if event.done:
                 if event.message and event.message.tool_calls:
                     final_tool_calls = event.message.tool_calls
@@ -792,12 +733,13 @@ async def stream_message(
             model_name=model_name,
             client_tools=client_tools,
             tool_choice=tool_choice,
+            server_tool_names=server_tool_names or None,
         )
-        retry_state = await create_initial_state(
-            user_id, 0, retry_builder, running_messages
-        )
+        retry_state = await create_initial_state(user_id, 0, retry_builder, messages)
 
         async for event in execute_workflow(retry_state, retry_workflow):
+            if isinstance(event, ServerToolEvent):
+                continue
             if event.done:
                 if event.message and event.message.tool_calls:
                     final_tool_calls = event.message.tool_calls
@@ -844,7 +786,7 @@ async def stream_message(
                 "Retry also produced empty response — sending nudge prompt",
                 extra={"model": model_name},
             )
-            nudge_messages = list(running_messages) + [
+            nudge_messages = list(messages) + [
                 Message(
                     role=MessageRole.USER,
                     content=[
@@ -862,12 +804,15 @@ async def stream_message(
                 model_name=model_name,
                 client_tools=client_tools,
                 tool_choice="auto",
+                server_tool_names=server_tool_names or None,
             )
             nudge_state = await create_initial_state(
                 user_id, 0, nudge_builder, nudge_messages
             )
 
             async for event in execute_workflow(nudge_state, nudge_workflow):
+                if isinstance(event, ServerToolEvent):
+                    continue
                 if event.done:
                     if event.message and event.message.tool_calls:
                         final_tool_calls = event.message.tool_calls
@@ -1113,6 +1058,8 @@ async def createMessage(
         )
         chat_response: ChatResponse | None = None
         async for event in execute_workflow(initial_state, workflow):
+            if isinstance(event, ServerToolEvent):
+                continue
             if event.done and event.message:
                 chat_response = event
         if chat_response is None:
@@ -1188,6 +1135,8 @@ async def createMessage(
                     user_id, 0, retry_builder, continuation_messages
                 )
                 async for event in execute_workflow(retry_state, retry_workflow):
+                    if isinstance(event, ServerToolEvent):
+                        continue
                     if event.done and event.message:
                         # Only replace if the retry actually produced tool calls
                         if event.message.tool_calls:
@@ -1225,6 +1174,8 @@ async def createMessage(
                 user_id, 0, retry_builder, internal_messages
             )
             async for event in execute_workflow(retry_state, retry_workflow):
+                if isinstance(event, ServerToolEvent):
+                    continue
                 if event.done and event.message:
                     chat_response = event
 
@@ -1270,6 +1221,8 @@ async def createMessage(
                     user_id, 0, nudge_builder, nudge_messages
                 )
                 async for event in execute_workflow(nudge_state, nudge_workflow):
+                    if isinstance(event, ServerToolEvent):
+                        continue
                     if event.done and event.message:
                         chat_response = event
 

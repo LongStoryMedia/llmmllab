@@ -11,13 +11,15 @@ from typing import (
     Dict,
     List,
     Optional,
+    Union,
 )
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.messages import AIMessage, ToolMessage
-from composer.constants import STRUCTURED_AGENT_RUNNABLE_NAME
+from composer.constants import STRUCTURED_AGENT_RUNNABLE_NAME, TOOL_NODE_NAME
+from composer.graph.state import ServerToolEvent
 from models import (
     MessageContentType,
     MessageRole,
@@ -149,7 +151,7 @@ class WorkflowExecutor:
         initial_state: BaseModel,
         config: Optional[RunnableConfig] = None,
         thread_id: Optional[str] = None,
-    ) -> AsyncIterator[ChatResponse]:
+    ) -> AsyncIterator[Union[ChatResponse, ServerToolEvent]]:
         """
         Execute a compiled workflow with streaming output.
 
@@ -171,6 +173,9 @@ class WorkflowExecutor:
         message_contents: List[MessageContent] = []
         state: Optional[GenerationState] = None
         prev_state: Optional[GenerationState] = state
+        # Track how many server_tool_events we've already yielded to avoid
+        # duplicates (the state field accumulates via operator.add).
+        server_tool_events_yielded = 0
         conversation_id = getattr(initial_state, "conversation_id")
         assert conversation_id is not None and isinstance(
             conversation_id, int
@@ -463,7 +468,46 @@ class WorkflowExecutor:
                     res.message.structured_output = output
 
                 # ----------------------------------------------------------------
-                # Server-side tool execution
+                # ServerToolNode completed — yield ServerToolEvents so the
+                # router can emit SSE content blocks at iteration boundaries.
+                # ----------------------------------------------------------------
+                elif event_type == "on_chain_end" and event_name == TOOL_NODE_NAME:
+                    # output is the state dict returned by ServerToolNode
+                    raw_events: list = []
+                    if isinstance(output, dict):
+                        raw_events = output.get("server_tool_events", [])
+                    elif output is not None and hasattr(output, "server_tool_events"):
+                        raw_events = output.server_tool_events  # type: ignore[union-attr]
+
+                    # Only yield events we haven't seen yet (the state
+                    # accumulates via operator.add across iterations).
+                    new_events = raw_events[server_tool_events_yielded:]
+                    for evt in new_events:
+                        tc = (
+                            evt.get("tool_call")
+                            if isinstance(evt, dict)
+                            else getattr(evt, "tool_call", None)
+                        )
+                        result: str = (
+                            evt.get("result_text", "")
+                            if isinstance(evt, dict)
+                            else getattr(evt, "result_text", "")
+                        ) or ""
+                        canonical: str = (
+                            evt.get("canonical_name", "")
+                            if isinstance(evt, dict)
+                            else getattr(evt, "canonical_name", "")
+                        ) or ""
+                        if tc is not None:
+                            yield ServerToolEvent(
+                                tool_call=tc,
+                                result_text=result,
+                                canonical_name=canonical,
+                            )
+                            server_tool_events_yielded += 1
+
+                # ----------------------------------------------------------------
+                # Server-side tool execution (LangGraph built-in ToolNode)
                 # ----------------------------------------------------------------
                 elif event_type.endswith("_tool_start"):
                     new_state = GenerationState.EXECUTING
@@ -591,7 +635,7 @@ async def stream_workflow(
     config: Optional[RunnableConfig] = None,
     logger: Optional[Any] = None,
     context: str = "workflow_stream",
-) -> AsyncIterator[ChatResponse]:
+) -> AsyncIterator[Union[ChatResponse, ServerToolEvent]]:
     """
     Convenience function for streaming workflow execution.
     Args:
@@ -602,7 +646,7 @@ async def stream_workflow(
         logger: Optional logger instance
         context: Context name for metadata
     Yields:
-        ChatResponse: Stream events from workflow execution
+        ChatResponse or ServerToolEvent: Stream events from workflow execution
     """
     executor = create_executor(logger=logger, context=context)
     async for event in executor.stream_workflow(

@@ -4,7 +4,8 @@ This is the centralized state schema that acts as the common interface
 """
 
 import operator
-from typing import List, Optional, Annotated, Sequence, Union
+from typing import Any, Dict, List, Optional, Annotated, Sequence, Union
+from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from models import (
@@ -18,7 +19,21 @@ from models import (
     SearchResult,
     Message,
     Document,
+    ToolCall,
 )
+
+
+@dataclass
+class ServerToolEvent:
+    """Emitted by the executor when ServerToolNode executes a server-side tool.
+
+    Carries the original tool call and the execution result so the router
+    can emit the correct SSE content blocks (server_tool_use, result).
+    """
+
+    tool_call: ToolCall
+    result_text: str
+    canonical_name: str  # "web_search", "web_fetch", etc.
 
 
 class WorkflowState(BaseModel):
@@ -38,9 +53,9 @@ class WorkflowState(BaseModel):
         Optional[Message], lambda x, y: y if y is not None else x
     ] = Field(default=None, description="Most recent user message in the conversation")
 
-    workflow_type: Annotated[
-        Optional[str], lambda x, y: y if y is not None else x
-    ] = Field(default=None, description="Type of workflow (ide, dialog, etc.)")
+    workflow_type: Annotated[Optional[str], lambda x, y: y if y is not None else x] = (
+        Field(default=None, description="Type of workflow (ide, dialog, etc.)")
+    )
 
     things_to_remember: Annotated[
         Sequence[Union[Message, Summary, SearchTopicSynthesis, Document]],
@@ -96,6 +111,13 @@ class WorkflowState(BaseModel):
     # User configuration - centralized to eliminate database fetch duplication
     user_config: Annotated[UserConfig, lambda x, y: y if y is not None else x] = Field(
         ..., description="User configuration for this workflow execution"
+    )
+
+    # Server tool execution events — populated by ServerToolNode so the
+    # executor can yield them to the router for SSE emission.
+    server_tool_events: Annotated[List[Dict[str, Any]], operator.add] = Field(
+        default_factory=list,
+        description="Server-side tool call/result events for streaming",
     )
 
 

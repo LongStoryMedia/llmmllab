@@ -14,9 +14,12 @@ from typing import Set
 from composer.graph.state import WorkflowState
 from composer.tools.server_tool_executor import (
     extract_server_tool_calls,
-    execute_server_tool_calls,
+    execute_server_tool,
+    _CLIENT_TOOL_NAME_MAP,
 )
 from models import MessageRole
+from models.tool_call import ToolCall
+from models.message import Message, MessageContent, MessageContentType
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="ServerToolNode")
@@ -27,6 +30,12 @@ class ServerToolNode:
 
     Only processes tool calls whose names match the provided server_tool_names set.
     Other tool calls (client-side) are left untouched for proxy passthrough.
+
+    Populates ``state.server_tool_events`` with dicts of the form::
+
+        {"tool_call": ToolCall, "result_text": str, "canonical_name": str}
+
+    so the executor / router can emit the correct SSE content blocks.
     """
 
     def __init__(self, server_tool_names: Set[str]):
@@ -55,8 +64,43 @@ class ServerToolNode:
             },
         )
 
-        tool_result_messages = await execute_server_tool_calls(server_calls)
+        new_events: list[dict] = []
+        tool_result_messages: list[Message] = []
+
+        for tc in server_calls:
+            tc_id = tc.execution_id or tc.name
+            result_text = await execute_server_tool(tc)
+            canonical = _CLIENT_TOOL_NAME_MAP.get(tc.name, tc.name)
+
+            new_events.append(
+                {
+                    "tool_call": tc,
+                    "result_text": result_text,
+                    "canonical_name": canonical,
+                }
+            )
+
+            tool_result_messages.append(
+                Message(
+                    role=MessageRole.TOOL,
+                    content=[
+                        MessageContent(
+                            type=MessageContentType.TEXT,
+                            text=result_text,
+                        )
+                    ],
+                    tool_calls=[
+                        ToolCall(
+                            name=tc.name,
+                            args=tc.args,
+                            execution_id=tc_id,
+                        )
+                    ],
+                )
+            )
+
         state.messages.extend(tool_result_messages)
+        state.server_tool_events.extend(new_events)
 
         return state
 
