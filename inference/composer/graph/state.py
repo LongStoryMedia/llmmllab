@@ -120,6 +120,13 @@ class WorkflowState(BaseModel):
         description="Server-side tool call/result events for streaming",
     )
 
+    # Tracks how many times the Agent→ServerToolNode→Agent loop has run
+    # so the routing function can enforce a maximum iteration count.
+    server_tool_iterations: Annotated[int, lambda x, y: (x or 0) + (y or 0)] = Field(
+        default=0,
+        description="Counter for server tool loop iterations",
+    )
+
 
 def assemble_context_messages(state: WorkflowState) -> List[Message]:
     """

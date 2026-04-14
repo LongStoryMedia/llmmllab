@@ -230,11 +230,47 @@ async def _execute_web_search(args: Dict[str, Any]) -> str:
     try:
         result = await web_search.ainvoke({"query": query})
         logger.info(f"✅ Web search completed for: {query}")
-        return str(result)
+        return _format_search_result(result, query)
     except Exception as e:
         error_msg = f"Web search failed: {str(e)}"
         logger.error(error_msg, query=query)
         return f"Error: {error_msg}"
+
+
+def _format_search_result(raw: str, query: str) -> str:
+    """Convert raw JSON search results into concise text for the model.
+
+    This dramatically reduces token usage vs dumping the full JSON, and
+    gives the model a cleaner signal it can act on.
+    """
+    import json as _json  # pylint: disable=import-outside-toplevel
+
+    try:
+        data = _json.loads(raw)
+    except (ValueError, TypeError):
+        # Not JSON — return as-is (already a string)
+        return raw
+
+    contents = data.get("contents", [])
+    if not contents:
+        error = data.get("error")
+        return f"No search results found for: {query}" + (
+            f" ({error})" if error else ""
+        )
+
+    lines = [f"Search results for: {query}\n"]
+    for item in contents:
+        title = item.get("title", "")
+        url = item.get("url", "")
+        snippet = item.get("content", "")
+        lines.append(f"- {title}")
+        if url:
+            lines.append(f"  {url}")
+        if snippet:
+            lines.append(f"  {snippet}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
 
 
 async def _execute_web_fetch(args: Dict[str, Any]) -> str:
