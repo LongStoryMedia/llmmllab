@@ -18,7 +18,6 @@ from composer.tools.server_tool_executor import (
     _CLIENT_TOOL_NAME_MAP,
 )
 from models import MessageRole
-from models.tool_call import ToolCall
 from models.message import Message, MessageContent, MessageContentType
 from utils.logging import llmmllogger
 
@@ -65,10 +64,9 @@ class ServerToolNode:
         )
 
         new_events: list[dict] = []
-        tool_result_messages: list[Message] = []
+        result_parts: list[str] = []
 
         for tc in server_calls:
-            tc_id = tc.execution_id or tc.name
             result_text = await execute_server_tool(tc)
             canonical = _CLIENT_TOOL_NAME_MAP.get(tc.name, tc.name)
 
@@ -79,27 +77,59 @@ class ServerToolNode:
                     "canonical_name": canonical,
                 }
             )
+            result_parts.append(result_text)
 
-            tool_result_messages.append(
-                Message(
-                    role=MessageRole.TOOL,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT,
-                            text=result_text,
-                        )
-                    ],
-                    tool_calls=[
-                        ToolCall(
-                            name=tc.name,
-                            args=tc.args,
-                            execution_id=tc_id,
-                        )
-                    ],
+        # --- Rewrite messages so the local model understands tool results ---
+        # Local models don't handle ToolMessage / tool_call_id well.
+        # Instead:
+        #   1. Strip server tool calls from the last assistant message
+        #      (keep any text content + client-side tool calls).
+        #   2. Inject a USER message containing the search/fetch results
+        #      so the model sees them as normal context it can reason over.
+        server_call_names = {tc.name for tc in server_calls}
+        remaining_tool_calls = [
+            tc for tc in (last_message.tool_calls or [])
+            if tc.name not in server_call_names
+        ]
+        last_message.tool_calls = remaining_tool_calls or None
+
+        # Ensure the assistant message has some text content (avoids empty AIMessage
+        # which LangChain drops / the model sees as EOS).
+        has_text = any(
+            c.type == MessageContentType.TEXT and c.text
+            for c in last_message.content
+        )
+        if not has_text:
+            query_summaries = []
+            for tc in server_calls:
+                args = tc.args or {}
+                q = args.get("query") or args.get("url") or tc.name
+                query_summaries.append(q)
+            last_message.content.append(
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=f"[Performed server-side tool calls: {', '.join(query_summaries)}]",
                 )
             )
 
-        state.messages.extend(tool_result_messages)
+        # Build a single USER message with all results
+        combined_results = "\n\n".join(result_parts)
+        state.messages.append(
+            Message(
+                role=MessageRole.USER,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=(
+                            f"Here are the results from the tools you just invoked. "
+                            f"Use these results to answer the original question:\n\n"
+                            f"{combined_results}"
+                        ),
+                    )
+                ],
+            )
+        )
+
         state.server_tool_events.extend(new_events)
         state.server_tool_iterations = 1  # reducer adds to existing count
 
