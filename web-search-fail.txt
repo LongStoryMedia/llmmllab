@@ -1,773 +1,537 @@
-2026-04-14T20:48:03.755835Z [info     ] ChatOpenAI initialized with base_url: http://127.0.0.1:8001/v1 [llmmllab] component=ChatLlamaCppPipeline model=Qwen3.5-122B-A10B
-2026-04-14T20:48:03.755941Z [info     ] LangChain ChatOpenAI pipeline ready for Qwen3.5-122B-A10B [llmmllab] component=ChatLlamaCppPipeline model=Qwen3.5-122B-A10B
-2026-04-14T20:48:03.755991Z [debug    ] 💾 Cached NEW pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-122B-A10B [llmmllab] component=LocalPipelineCacheManager
-2026-04-14T20:48:03.806104Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
-2026-04-14T20:48:03.808186Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:48:03.809709Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
-2026-04-14T20:48:03.812903Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=256 node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-14T20:48:03.813117Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:48:03.816303Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816395Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816467Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816536Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816599Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816673Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816760Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816827Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816891Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.816946Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817006Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817065Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817123Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817177Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817236Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817293Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817350Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817405Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817464Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817521Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817579Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817633Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817692Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817748Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817806Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817884Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817940Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.817999Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818054Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818113Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818166Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818229Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818283Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818341Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818399Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818458Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818514Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818574Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.818634Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.819707Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.819783Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.819851Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.819912Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.819973Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820034Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820091Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820149Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820206Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820263Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820321Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820379Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820439Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820493Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820552Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820610Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820666Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820726Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820783Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820846Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820906Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.820961Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821020Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821076Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821132Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821190Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821242Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821301Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821357Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821416Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821474Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821528Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821585Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821641Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821696Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821752Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821810Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821911Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.821965Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822025Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822081Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822139Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822198Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822254Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822313Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822370Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822448Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822505Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822561Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822620Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822675Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822733Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822786Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822857Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822913Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.822998Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823059Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823118Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823170Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823228Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823286Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823342Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823398Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823453Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823512Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823563Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823621Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823679Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823733Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823788Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823851Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823910Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.823965Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824021Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824081Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824137Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824194Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824254Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824306Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824366Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824419Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824480Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824533Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:48:03.824608Z [debug    ] Running agent with 255 messages [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:48:04.404987Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.409707Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.411416Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.411571Z [debug    ] slot launch_slot_: id  0 | task 0 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.411674Z [debug    ] slot update_slots: id  0 | task 0 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 93568 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.411766Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 0, memory_seq_rm [0, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:04.411891Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 2048, batch.n_tokens = 2048, progress = 0.021888 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:06.292276Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 2048, memory_seq_rm [2048, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:06.292420Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 4096, batch.n_tokens = 2048, progress = 0.043776 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:08.054892Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 4096, memory_seq_rm [4096, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:08.055010Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 6144, batch.n_tokens = 2048, progress = 0.065663 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:09.855121Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 6144, memory_seq_rm [6144, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:09.855320Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 8192, batch.n_tokens = 2048, progress = 0.087551 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:11.699674Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 8192, memory_seq_rm [8192, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:11.699840Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 0, creating new checkpoint during processing at position 10240 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:11.699934Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 10240, batch.n_tokens = 2048, progress = 0.109439 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:11.941030Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 1 of 24 (pos_min = 8191, pos_max = 8191, n_tokens = 8192, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:13.809424Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 10240, memory_seq_rm [10240, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:13.809564Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 12288, batch.n_tokens = 2048, progress = 0.131327 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:15.715464Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 12288, memory_seq_rm [12288, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:15.715590Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 14336, batch.n_tokens = 2048, progress = 0.153215 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:17.660470Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 14336, memory_seq_rm [14336, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:17.660611Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 16384, batch.n_tokens = 2048, progress = 0.175103 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:19.637728Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 16384, memory_seq_rm [16384, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:19.637965Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 8192, creating new checkpoint during processing at position 18432 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:19.638069Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 18432, batch.n_tokens = 2048, progress = 0.196990 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:19.895779Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 2 of 24 (pos_min = 16383, pos_max = 16383, n_tokens = 16384, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:21.916800Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 18432, memory_seq_rm [18432, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:21.916947Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 20480, batch.n_tokens = 2048, progress = 0.218878 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:23.976467Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 20480, memory_seq_rm [20480, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:23.976621Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 22528, batch.n_tokens = 2048, progress = 0.240766 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:26.071378Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 22528, memory_seq_rm [22528, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:26.071520Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 24576, batch.n_tokens = 2048, progress = 0.262654 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:28.201604Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 24576, memory_seq_rm [24576, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:28.201808Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 16384, creating new checkpoint during processing at position 26624 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:28.201924Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 26624, batch.n_tokens = 2048, progress = 0.284542 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:28.469497Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 3 of 24 (pos_min = 24575, pos_max = 24575, n_tokens = 24576, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:30.636976Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 26624, memory_seq_rm [26624, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:30.637162Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 28672, batch.n_tokens = 2048, progress = 0.306430 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:32.846859Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 28672, memory_seq_rm [28672, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:32.847008Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 30720, batch.n_tokens = 2048, progress = 0.328317 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-[2026-04-14 20:48:33] [INFO] Checking service status...
-[2026-04-14 20:48:33] [INFO] rest_api (PID 57) is running
-2026-04-14T20:48:35.122988Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 30720, memory_seq_rm [30720, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:35.123146Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 32768, batch.n_tokens = 2048, progress = 0.350205 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:37.437400Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 32768, memory_seq_rm [32768, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:37.437531Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 24576, creating new checkpoint during processing at position 34816 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:37.437621Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 34816, batch.n_tokens = 2048, progress = 0.372093 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:37.727784Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 4 of 24 (pos_min = 32767, pos_max = 32767, n_tokens = 32768, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:40.045832Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 34816, memory_seq_rm [34816, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:40.046046Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 36864, batch.n_tokens = 2048, progress = 0.393981 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:42.403737Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 36864, memory_seq_rm [36864, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:42.403961Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 38912, batch.n_tokens = 2048, progress = 0.415869 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:44.819965Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 38912, memory_seq_rm [38912, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:44.820115Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 40960, batch.n_tokens = 2048, progress = 0.437757 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:47.263043Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 40960, memory_seq_rm [40960, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:47.263223Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 32768, creating new checkpoint during processing at position 43008 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:47.263311Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 43008, batch.n_tokens = 2048, progress = 0.459644 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:47.564884Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 5 of 24 (pos_min = 40959, pos_max = 40959, n_tokens = 40960, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:50.043234Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 43008, memory_seq_rm [43008, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:50.043451Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 45056, batch.n_tokens = 2048, progress = 0.481532 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:52.572298Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 45056, memory_seq_rm [45056, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:52.572455Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 47104, batch.n_tokens = 2048, progress = 0.503420 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:55.128192Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 47104, memory_seq_rm [47104, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:55.128393Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 49152, batch.n_tokens = 2048, progress = 0.525308 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:57.715109Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 49152, memory_seq_rm [49152, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:57.715258Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 40960, creating new checkpoint during processing at position 51200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:57.715347Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 51200, batch.n_tokens = 2048, progress = 0.547196 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:48:58.032668Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 6 of 24 (pos_min = 49151, pos_max = 49151, n_tokens = 49152, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:00.639110Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 51200, memory_seq_rm [51200, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:00.639684Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 53248, batch.n_tokens = 2048, progress = 0.569083 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:03.304522Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 53248, memory_seq_rm [53248, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:03.304776Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 55296, batch.n_tokens = 2048, progress = 0.590971 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:05.999142Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 55296, memory_seq_rm [55296, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:05.999287Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 57344, batch.n_tokens = 2048, progress = 0.612859 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:08.747910Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 57344, memory_seq_rm [57344, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:08.748108Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 49152, creating new checkpoint during processing at position 59392 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:08.748196Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 59392, batch.n_tokens = 2048, progress = 0.634747 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:09.083668Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 7 of 24 (pos_min = 57343, pos_max = 57343, n_tokens = 57344, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:11.844799Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 59392, memory_seq_rm [59392, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:11.844999Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 61440, batch.n_tokens = 2048, progress = 0.656635 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:14.653129Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 61440, memory_seq_rm [61440, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:14.653283Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 63488, batch.n_tokens = 2048, progress = 0.678523 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:17.511327Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 63488, memory_seq_rm [63488, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:17.511518Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 65536, batch.n_tokens = 2048, progress = 0.700410 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:20.412654Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 65536, memory_seq_rm [65536, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:20.412883Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 57344, creating new checkpoint during processing at position 67584 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:20.412977Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 67584, batch.n_tokens = 2048, progress = 0.722298 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:20.766797Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 8 of 24 (pos_min = 65535, pos_max = 65535, n_tokens = 65536, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:23.678099Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 67584, memory_seq_rm [67584, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:23.678264Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 69632, batch.n_tokens = 2048, progress = 0.744186 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:26.631379Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 69632, memory_seq_rm [69632, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:26.631523Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 71680, batch.n_tokens = 2048, progress = 0.766074 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:29.630970Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 71680, memory_seq_rm [71680, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:29.631160Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 73728, batch.n_tokens = 2048, progress = 0.787962 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:32.664325Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 73728, memory_seq_rm [73728, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:32.664541Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 65536, creating new checkpoint during processing at position 75776 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:32.664635Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 75776, batch.n_tokens = 2048, progress = 0.809850 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-[2026-04-14 20:49:33] [INFO] Checking service status...
-[2026-04-14 20:49:33] [INFO] rest_api (PID 57) is running
-2026-04-14T20:49:33.033553Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 9 of 24 (pos_min = 73727, pos_max = 73727, n_tokens = 73728, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:36.120112Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 75776, memory_seq_rm [75776, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:36.120278Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 77824, batch.n_tokens = 2048, progress = 0.831737 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:39.235532Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 77824, memory_seq_rm [77824, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:39.235747Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 79872, batch.n_tokens = 2048, progress = 0.853625 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:42.390462Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 79872, memory_seq_rm [79872, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:42.390678Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 81920, batch.n_tokens = 2048, progress = 0.875513 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:45.563872Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 81920, memory_seq_rm [81920, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:45.564038Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 73728, creating new checkpoint during processing at position 83968 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:45.564132Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 83968, batch.n_tokens = 2048, progress = 0.897401 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:45.948192Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 10 of 24 (pos_min = 81919, pos_max = 81919, n_tokens = 81920, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:49.161750Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 83968, memory_seq_rm [83968, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:49.161988Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 86016, batch.n_tokens = 2048, progress = 0.919289 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:52.433717Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 86016, memory_seq_rm [86016, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:52.433925Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 88064, batch.n_tokens = 2048, progress = 0.941176 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:55.731290Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 88064, memory_seq_rm [88064, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:55.731475Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 90112, batch.n_tokens = 2048, progress = 0.963064 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:59.071636Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 90112, memory_seq_rm [90112, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:59.071863Z [debug    ] slot update_slots: id  0 | task 0 | 8192 tokens since last checkpoint at 81920, creating new checkpoint during processing at position 92160 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:59.071967Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 92160, batch.n_tokens = 2048, progress = 0.984952 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:49:59.473890Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 11 of 24 (pos_min = 90111, pos_max = 90111, n_tokens = 90112, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:02.845681Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 92160, memory_seq_rm [92160, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:02.845882Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 92540, batch.n_tokens = 380, progress = 0.989013 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:03.719404Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 92540, memory_seq_rm [92540, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:03.719540Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 93564, batch.n_tokens = 1024, progress = 0.999957 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:03.934197Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 12 of 24 (pos_min = 92539, pos_max = 92539, n_tokens = 92540, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:05.644706Z [debug    ] slot update_slots: id  0 | task 0 | n_tokens = 93564, memory_seq_rm [93564, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:05.652993Z [debug    ] slot init_sampler: id  0 | task 0 | init sampler, took 8.25 ms, tokens: text = 93568, total = 93568 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:05.653122Z [debug    ] slot update_slots: id  0 | task 0 | prompt processing done, n_tokens = 93568, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:06.055401Z [debug    ] slot update_slots: id  0 | task 0 | created context checkpoint 13 of 24 (pos_min = 93563, pos_max = 93563, n_tokens = 93564, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:06.140822Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-WARNING:  Invalid HTTP request received.
-2026-04-14T20:50:10.194761Z [debug    ] slot print_timing: id  0 | task 0 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.194984Z [debug    ] prompt eval time =  121723.74 ms / 93568 tokens (    1.30 ms per token,   768.69 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.195085Z [debug    ]        eval time =    4059.14 ms /    80 tokens (   50.74 ms per token,    19.71 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.195201Z [debug    ]       total time =  125782.88 ms / 93648 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.196767Z [debug    ] slot      release: id  0 | task 0 | stop processing: n_tokens = 93647, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.196901Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:10.197495Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-14T20:50:10.199013Z [debug    ] State transition: None -> GenerationState.EXECUTING [llmmllab]
-2026-04-14T20:50:10.199102Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': False, 'contents_buffer_len': 0, 'has_end_tc': True, 'will_extract': False}
-2026-04-14T20:50:10.199170Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 0}
-2026-04-14T20:50:10.200757Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['WebSearch']
-2026-04-14T20:50:10.200860Z [warning  ] Failed to convert LangChain message ID 'lc_run--884ea6a3-910b-498a-bedb-867b59cb456f' to int [llmmllab] component=message_conversion
-2026-04-14T20:50:10.200936Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-14T20:50:10.201007Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-14T20:50:10.202731Z [info     ] Executing server-side tool calls [llmmllab] component=ServerToolNode extra={'tool_names': ['WebSearch'], 'count': 1}
-2026-04-14T20:50:10.202832Z [info     ] 🔍 Executing server-side web_search: openclaw plugins skills list 2026 [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:10.203849Z [debug    ] Using default web search config - ToolRuntime temporarily removed for testing [llmmllab] component=WebSearch
-2026-04-14T20:50:10.210800Z [debug    ] SearxNG initialized with engines: ['google', 'bing', 'duckduckgo', 'startpage'] [llmmllab]
+2026-04-14T21:03:04.275741Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
+2026-04-14T21:03:04.275943Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
+2026-04-14T21:03:04.276034Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
+2026-04-14T21:03:04.276104Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
+2026-04-14T21:03:04.285998Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
+2026-04-14T21:03:04.286110Z [debug    ] Authentication successful      [llmmllab] component=app
+2026-04-14T21:03:04.303480Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 29, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'ScheduleWakeup', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 29, 'tool_choice': None}
+2026-04-14T21:03:04.304198Z [info     ] Detected locally-executable client tools [llmmllab] component=anthropic_messages_router extra={'local_tools': ['WebSearch', 'WebFetch']}
+INFO:     10.42.0.0:39594 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+2026-04-14T21:03:04.483907Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:04.493940Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
+2026-04-14T21:03:04.494102Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
+2026-04-14T21:03:04.494183Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_122B_A10B operation=miss success=True
+2026-04-14T21:03:04.494260Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_122B_A10B original_model=? user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:04.494467Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_122B_A10B model_arg=Qwen3_5_122B_A10B user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:04.494548Z [debug    ] Requesting pipeline for model_id: Qwen3_5_122B_A10B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
+2026-04-14T21:03:04.494609Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_122B_A10B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
+Starting new HTTP connection (1): 127.0.0.1:8001
+http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
+2026-04-14T21:03:04.496128Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-122B-A10B [llmmllab] component=LocalPipelineCacheManager
+2026-04-14T21:03:04.496350Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
+2026-04-14T21:03:04.498434Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:04.499546Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
+2026-04-14T21:03:04.506755Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=264 node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:04.506978Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:04.510035Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510165Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510264Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510353Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510441Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510536Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510665Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510749Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510849Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.510937Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511020Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511103Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511183Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511266Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511332Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511395Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511459Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511522Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511585Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511649Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511711Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511776Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511848Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511914Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.511979Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512042Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512105Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512266Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512381Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512490Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512599Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512708Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512826Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.512938Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513046Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513151Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513257Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513364Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513469Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513627Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513740Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.513860Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514002Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514263Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514388Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514508Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514632Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514754Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.514897Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515018Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515147Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515275Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515399Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515524Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515649Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515768Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.515911Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516031Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516157Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516282Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516415Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516538Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516669Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516793Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.516939Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517071Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517199Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517304Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517405Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517506Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517605Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.517702Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519327Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519455Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519559Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519658Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519763Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519869Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.519966Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520065Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520167Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520274Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520381Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520480Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520577Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520675Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520781Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520888Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.520992Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521090Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521187Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521284Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521382Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521523Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521626Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521729Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521840Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.521943Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522047Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522166Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522276Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522386Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522499Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522609Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522708Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522805Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.522913Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523021Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523120Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523208Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523311Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523409Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523520Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523620Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523709Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523796Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523903Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.523994Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524115Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524214Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524303Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524425Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524516Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524603Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:04.524741Z [debug    ] Running agent with 263 messages [llmmllab] component=PrimaryCodingAgent node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:05.104558Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.109647Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.999 (> 0.100 thold), f_keep = 0.999 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111410Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111542Z [debug    ] slot launch_slot_: id  0 | task 1939 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111631Z [debug    ] slot update_slots: id  0 | task 1939 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 97940 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111715Z [debug    ] slot update_slots: id  0 | task 1939 | n_past = 97819, slot.prompt.tokens.size() = 97950, seq_id = 0, pos_min = 97949, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111786Z [debug    ] slot update_slots: id  0 | task 1939 | Checking checkpoint with [97843, 97843] against 97819... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.111901Z [debug    ] slot update_slots: id  0 | task 1939 | Checking checkpoint with [96819, 96819] against 97819... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.138436Z [debug    ] slot update_slots: id  0 | task 1939 | restored context checkpoint (pos_min = 96819, pos_max = 96819, n_tokens = 96820, n_past = 96820, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.138568Z [debug    ] slot update_slots: id  0 | task 1939 | erased invalidated context checkpoint (pos_min = 97843, pos_max = 97843, n_tokens = 97844, n_swa = 0, pos_next = 96820, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.146122Z [debug    ] slot update_slots: id  0 | task 1939 | n_tokens = 96820, memory_seq_rm [96820, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.146349Z [debug    ] slot update_slots: id  0 | task 1939 | prompt processing progress, n_tokens = 96912, batch.n_tokens = 92, progress = 0.989504 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.531852Z [debug    ] slot update_slots: id  0 | task 1939 | n_tokens = 96912, memory_seq_rm [96912, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.531955Z [debug    ] slot update_slots: id  0 | task 1939 | prompt processing progress, n_tokens = 97936, batch.n_tokens = 1024, progress = 0.999959 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:05.635005Z [debug    ] slot update_slots: id  0 | task 1939 | created context checkpoint 15 of 24 (pos_min = 96911, pos_max = 96911, n_tokens = 96912, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:07.384034Z [debug    ] slot update_slots: id  0 | task 1939 | n_tokens = 97936, memory_seq_rm [97936, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:07.392736Z [debug    ] slot init_sampler: id  0 | task 1939 | init sampler, took 8.65 ms, tokens: text = 97940, total = 97940 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:07.392876Z [debug    ] slot update_slots: id  0 | task 1939 | prompt processing done, n_tokens = 97940, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:07.806787Z [debug    ] slot update_slots: id  0 | task 1939 | created context checkpoint 16 of 24 (pos_min = 97935, pos_max = 97935, n_tokens = 97936, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:07.869828Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.618271Z [debug    ] slot print_timing: id  0 | task 1939 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.618466Z [debug    ] prompt eval time =    2756.93 ms /  1120 tokens (    2.46 ms per token,   406.25 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.618557Z [debug    ]        eval time =    3749.70 ms /    73 tokens (   51.37 ms per token,    19.47 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.618631Z [debug    ]       total time =    6506.64 ms /  1193 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.620427Z [debug    ] slot      release: id  0 | task 1939 | stop processing: n_tokens = 98012, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.620585Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:11.621063Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
+2026-04-14T21:03:11.622526Z [debug    ] State transition: None -> GenerationState.EXECUTING [llmmllab]
+2026-04-14T21:03:11.622613Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': False, 'contents_buffer_len': 0, 'has_end_tc': True, 'will_extract': False}
+2026-04-14T21:03:11.622679Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 0}
+2026-04-14T21:03:11.624071Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['WebSearch']
+2026-04-14T21:03:11.624161Z [warning  ] Failed to convert LangChain message ID 'lc_run--a2e37112-3007-4e7c-bfc5-39daae87b2d7' to int [llmmllab] component=message_conversion
+2026-04-14T21:03:11.624235Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
+2026-04-14T21:03:11.624307Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
+2026-04-14T21:03:11.625799Z [info     ] Executing server-side tool calls [llmmllab] component=ServerToolNode extra={'tool_names': ['WebSearch'], 'count': 1}
+2026-04-14T21:03:11.625911Z [info     ] 🔍 Executing server-side web_search: openclaw plugins skills clawhub popular [llmmllab] component=ServerToolExecutor
+2026-04-14T21:03:11.626950Z [debug    ] Using default web search config - ToolRuntime temporarily removed for testing [llmmllab] component=WebSearch
+2026-04-14T21:03:11.633941Z [debug    ] SearxNG initialized with engines: ['google', 'bing', 'duckduckgo', 'startpage'] [llmmllab]
 Starting new HTTP connection (1): searxng.searxng.svc.cluster.local:8080
-http://searxng.searxng.svc.cluster.local:8080 "GET /?language=en&format=json&safesearch=1&time_range=&engines=google%2Cbing%2Cduckduckgo%2Cstartpage&categories=general&q=openclaw+plugins+skills+list+2026 HTTP/1.1" 308 551
-http://searxng.searxng.svc.cluster.local:8080 "GET /search?language=en&format=json&safesearch=1&time_range=&engines=google%2Cbing%2Cduckduckgo%2Cstartpage&categories=general&q=openclaw+plugins+skills+list+2026 HTTP/1.1" 200 17388
-2026-04-14T20:50:11.286362Z [info     ] ✅ Web search completed for: openclaw plugins skills list 2026 [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:11.287687Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=258 node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:11.287989Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:11.291456Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.291588Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.291696Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.291791Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.291891Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292002Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292227Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292313Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292406Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292498Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292580Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292663Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292744Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292835Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.292924Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293008Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293090Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293171Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293251Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293333Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293399Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293461Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293521Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293584Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293646Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293707Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293769Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293840Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293904Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.293968Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294031Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294093Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294154Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294215Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294276Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294336Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294441Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294503Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294597Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294660Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294721Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294781Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294851Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294913Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.294972Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295032Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295092Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295151Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295211Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295283Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295361Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295440Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295518Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295597Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295676Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295755Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295855Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.295938Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296018Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296098Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296178Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296266Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296371Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296479Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296584Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296688Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296792Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.296913Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297020Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297124Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297229Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297334Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297439Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297545Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297649Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297754Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297870Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.297979Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298085Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298189Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298293Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298444Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298552Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298659Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298763Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.298904Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299011Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299114Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299219Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299323Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299495Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299694Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.299851Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300015Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300130Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300239Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300344Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300449Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300552Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300656Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300760Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.300879Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301046Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301240Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301419Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301560Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301676Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301783Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.301904Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302011Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302114Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302221Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302325Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302430Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302532Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302659Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.302870Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303075Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303229Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303344Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303451Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303599Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:11.303690Z [debug    ] Running agent with 257 messages [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:11.894413Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.900800Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.994 (> 0.100 thold), f_keep = 0.999 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.904211Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.904322Z [debug    ] slot launch_slot_: id  0 | task 128 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.904412Z [debug    ] slot update_slots: id  0 | task 128 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 94126 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.904495Z [debug    ] slot update_slots: id  0 | task 128 | n_past = 93567, slot.prompt.tokens.size() = 93647, seq_id = 0, pos_min = 93646, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.904572Z [debug    ] slot update_slots: id  0 | task 128 | Checking checkpoint with [93563, 93563] against 93567... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.934422Z [debug    ] slot update_slots: id  0 | task 128 | restored context checkpoint (pos_min = 93563, pos_max = 93563, n_tokens = 93564, n_past = 93564, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.934527Z [debug    ] slot update_slots: id  0 | task 128 | n_tokens = 93564, memory_seq_rm [93564, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:11.934649Z [debug    ] slot update_slots: id  0 | task 128 | prompt processing progress, n_tokens = 94122, batch.n_tokens = 558, progress = 0.999958 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:13.027033Z [debug    ] slot update_slots: id  0 | task 128 | n_tokens = 94122, memory_seq_rm [94122, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:13.035471Z [debug    ] slot init_sampler: id  0 | task 128 | init sampler, took 8.29 ms, tokens: text = 94126, total = 94126 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:13.035594Z [debug    ] slot update_slots: id  0 | task 128 | prompt processing done, n_tokens = 94126, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:13.296643Z [debug    ] slot update_slots: id  0 | task 128 | created context checkpoint 14 of 24 (pos_min = 94121, pos_max = 94121, n_tokens = 94122, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:13.359720Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.349341Z [debug    ] slot print_timing: id  0 | task 128 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.349478Z [debug    ] prompt eval time =    1453.53 ms /   562 tokens (    2.59 ms per token,   386.65 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.349567Z [debug    ]        eval time =    3991.47 ms /    79 tokens (   50.52 ms per token,    19.79 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.349640Z [debug    ]       total time =    5445.00 ms /   641 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.351800Z [debug    ] slot      release: id  0 | task 128 | stop processing: n_tokens = 94204, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.351965Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:17.352448Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-14T20:50:17.353997Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': False, 'contents_buffer_len': 0, 'has_end_tc': True, 'will_extract': False}
-2026-04-14T20:50:17.354086Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 0}
-2026-04-14T20:50:17.355484Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['WebFetch']
-2026-04-14T20:50:17.355573Z [warning  ] Failed to convert LangChain message ID 'lc_run--5d02cdd7-918d-455b-ac68-20e6eb7f1e71' to int [llmmllab] component=message_conversion
-2026-04-14T20:50:17.355649Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-14T20:50:17.355724Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-14T20:50:17.357141Z [info     ] Executing server-side tool calls [llmmllab] component=ServerToolNode extra={'tool_names': ['WebFetch'], 'count': 1}
-2026-04-14T20:50:17.357233Z [info     ] 📖 Executing server-side web_fetch: https://github.com/VoltAgent/awesome-openclaw-skills [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:17.357958Z [info     ] 📖 Reading web content from: https://github.com/VoltAgent/awesome-openclaw-skills [llmmllab] component=WebReader
-2026-04-14T20:50:18.366423Z [info     ] ✅ Successfully read 8038 characters from: https://github.com/VoltAgent/awesome-openclaw-skills [llmmllab] component=WebReader
-2026-04-14T20:50:18.366891Z [info     ] ✅ Web fetch completed for: https://github.com/VoltAgent/awesome-openclaw-skills [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:18.367963Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=260 node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:18.368183Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:18.370488Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370575Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370654Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370732Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370807Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370896Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.370991Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371051Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371116Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371182Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371243Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371301Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371362Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371421Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371487Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371547Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371609Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371670Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371735Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371795Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371871Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.371939Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372096Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372162Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372224Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372283Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372345Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372407Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372472Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372536Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372597Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372655Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372719Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372782Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372855Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372920Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.372983Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373043Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373101Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373183Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373243Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373303Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373365Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373425Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373478Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373529Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373579Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373640Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373701Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373778Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373845Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373909Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.373963Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374021Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374080Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374136Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374195Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374255Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374312Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374378Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374436Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374500Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374555Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374606Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374665Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374727Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374787Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374854Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374908Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.374985Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375038Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375090Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375145Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375208Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375274Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375329Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375400Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375485Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375554Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375619Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375685Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375756Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375839Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375916Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.375989Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376062Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376208Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376280Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376351Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376425Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376486Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376538Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376596Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376688Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376748Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376818Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376890Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.376961Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377021Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377081Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377138Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377190Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377247Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377305Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377362Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377420Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377475Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377532Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377588Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377640Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377697Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377756Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377812Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377904Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.377961Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378013Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378064Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378114Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378165Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378215Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378266Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378338Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378390Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:18.378430Z [debug    ] Running agent with 259 messages [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:18.943915Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.948838Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.980 (> 0.100 thold), f_keep = 0.999 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.950619Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.950722Z [debug    ] slot launch_slot_: id  0 | task 209 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.950807Z [debug    ] slot update_slots: id  0 | task 209 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 96092 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.950970Z [debug    ] slot update_slots: id  0 | task 209 | n_past = 94125, slot.prompt.tokens.size() = 94204, seq_id = 0, pos_min = 94203, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.951056Z [debug    ] slot update_slots: id  0 | task 209 | Checking checkpoint with [94121, 94121] against 94125... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.977406Z [debug    ] slot update_slots: id  0 | task 209 | restored context checkpoint (pos_min = 94121, pos_max = 94121, n_tokens = 94122, n_past = 94122, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.977534Z [debug    ] slot update_slots: id  0 | task 209 | n_tokens = 94122, memory_seq_rm [94122, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:18.977628Z [debug    ] slot update_slots: id  0 | task 209 | prompt processing progress, n_tokens = 95064, batch.n_tokens = 942, progress = 0.989302 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:20.605024Z [debug    ] slot update_slots: id  0 | task 209 | n_tokens = 95064, memory_seq_rm [95064, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:20.605216Z [debug    ] slot update_slots: id  0 | task 209 | prompt processing progress, n_tokens = 96088, batch.n_tokens = 1024, progress = 0.999958 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:20.994964Z [debug    ] slot update_slots: id  0 | task 209 | created context checkpoint 15 of 24 (pos_min = 95063, pos_max = 95063, n_tokens = 95064, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:22.746735Z [debug    ] slot update_slots: id  0 | task 209 | n_tokens = 96088, memory_seq_rm [96088, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:22.755329Z [debug    ] slot init_sampler: id  0 | task 209 | init sampler, took 8.45 ms, tokens: text = 96092, total = 96092 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:22.755452Z [debug    ] slot update_slots: id  0 | task 209 | prompt processing done, n_tokens = 96092, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:23.167808Z [debug    ] slot update_slots: id  0 | task 209 | created context checkpoint 16 of 24 (pos_min = 96087, pos_max = 96087, n_tokens = 96088, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:23.230347Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.681524Z [debug    ] slot print_timing: id  0 | task 209 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.681685Z [debug    ] prompt eval time =    4278.87 ms /  1970 tokens (    2.17 ms per token,   460.40 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.681774Z [debug    ]        eval time =    4451.89 ms /    87 tokens (   51.17 ms per token,    19.54 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.681872Z [debug    ]       total time =    8730.76 ms /  2057 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.684039Z [debug    ] slot      release: id  0 | task 209 | stop processing: n_tokens = 96178, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.684172Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:27.685072Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-14T20:50:27.687205Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': False, 'contents_buffer_len': 0, 'has_end_tc': True, 'will_extract': False}
-2026-04-14T20:50:27.687323Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 0}
-2026-04-14T20:50:27.689188Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['WebFetch']
-2026-04-14T20:50:27.689307Z [warning  ] Failed to convert LangChain message ID 'lc_run--dbe63dcc-d8fe-44a9-ac17-f0069f50a6c0' to int [llmmllab] component=message_conversion
-2026-04-14T20:50:27.689420Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-14T20:50:27.689544Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-14T20:50:27.691481Z [info     ] Executing server-side tool calls [llmmllab] component=ServerToolNode extra={'tool_names': ['WebFetch'], 'count': 1}
-2026-04-14T20:50:27.691601Z [info     ] 📖 Executing server-side web_fetch: https://www.openclawplaybook.ai/guides/best-openclaw-plugins-2026/ [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:27.692469Z [info     ] 📖 Reading web content from: https://www.openclawplaybook.ai/guides/best-openclaw-plugins-2026/ [llmmllab] component=WebReader
-2026-04-14T20:50:28.075075Z [info     ] ✅ Successfully read 5687 characters from: https://www.openclawplaybook.ai/guides/best-openclaw-plugins-2026/ [llmmllab] component=WebReader
-2026-04-14T20:50:28.075324Z [info     ] ✅ Web fetch completed for: https://www.openclawplaybook.ai/guides/best-openclaw-plugins-2026/ [llmmllab] component=ServerToolExecutor
-2026-04-14T20:50:28.076602Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=262 node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:28.076872Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:28.081439Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.081616Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.081785Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082005Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082190Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082358Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082584Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082756Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.082939Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083101Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083261Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083418Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083577Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083732Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.083904Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084079Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084209Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084352Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084486Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084615Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084751Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.084911Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085043Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085184Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085317Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085443Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085565Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085692Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085830Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.085974Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086100Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086246Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086407Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086569Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086695Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086848Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.086986Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087125Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087246Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087422Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087547Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087672Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087828Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.087984Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088282Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088427Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088572Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088716Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.088875Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089020Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089250Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089391Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089533Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089677Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089833Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.089987Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090127Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090260Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090396Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090529Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090664Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090797Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.090945Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091076Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091207Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091338Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091467Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091599Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091728Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.091869Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092003Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092134Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092263Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092392Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092520Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092648Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092778Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.092921Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093052Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093178Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093307Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093436Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093564Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093694Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093838Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.093973Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094106Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094235Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094364Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094493Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094623Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094751Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.094896Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095077Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095210Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095385Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095519Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095652Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095784Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.095945Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096079Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096210Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096340Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096471Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096602Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096731Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.096873Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097005Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097262Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097392Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097523Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097653Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097781Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.097927Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098058Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098188Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098317Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098445Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098573Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098701Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.098882Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.099017Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.099148Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
-2026-04-14T20:50:28.099249Z [debug    ] Running agent with 261 messages [llmmllab] component=PrimaryCodingAgent node_id=e862c77506114dfab208ff221676bccf node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
-2026-04-14T20:50:28.666050Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.670554Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.986 (> 0.100 thold), f_keep = 0.999 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.672739Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.672856Z [debug    ] slot launch_slot_: id  0 | task 299 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.672956Z [debug    ] slot update_slots: id  0 | task 299 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 97490 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.673053Z [debug    ] slot update_slots: id  0 | task 299 | n_past = 96091, slot.prompt.tokens.size() = 96178, seq_id = 0, pos_min = 96177, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.673159Z [debug    ] slot update_slots: id  0 | task 299 | Checking checkpoint with [96087, 96087] against 96091... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.699314Z [debug    ] slot update_slots: id  0 | task 299 | restored context checkpoint (pos_min = 96087, pos_max = 96087, n_tokens = 96088, n_past = 96088, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.699405Z [debug    ] slot update_slots: id  0 | task 299 | n_tokens = 96088, memory_seq_rm [96088, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:28.699739Z [debug    ] slot update_slots: id  0 | task 299 | prompt processing progress, n_tokens = 96462, batch.n_tokens = 374, progress = 0.989455 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:29.572621Z [debug    ] slot update_slots: id  0 | task 299 | n_tokens = 96462, memory_seq_rm [96462, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:29.572729Z [debug    ] slot update_slots: id  0 | task 299 | prompt processing progress, n_tokens = 97486, batch.n_tokens = 1024, progress = 0.999959 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:29.786339Z [debug    ] slot update_slots: id  0 | task 299 | created context checkpoint 17 of 24 (pos_min = 96461, pos_max = 96461, n_tokens = 96462, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:31.544285Z [debug    ] slot update_slots: id  0 | task 299 | n_tokens = 97486, memory_seq_rm [97486, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:31.553215Z [debug    ] slot init_sampler: id  0 | task 299 | init sampler, took 8.60 ms, tokens: text = 97490, total = 97490 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:31.553344Z [debug    ] slot update_slots: id  0 | task 299 | prompt processing done, n_tokens = 97490, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:31.965696Z [debug    ] slot update_slots: id  0 | task 299 | created context checkpoint 18 of 24 (pos_min = 97485, pos_max = 97485, n_tokens = 97486, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:32.031001Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-[2026-04-14 20:50:33] [INFO] Checking service status...
-[2026-04-14 20:50:33] [INFO] rest_api (PID 57) is running
-2026-04-14T20:50:35.934316Z [debug    ] State transition: GenerationState.EXECUTING -> GenerationState.RESPONDING [llmmllab]
-2026-04-14T20:50:41.183940Z [debug    ] slot print_timing: id  0 | task 299 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.184119Z [debug    ] prompt eval time =    3354.95 ms /  1402 tokens (    2.39 ms per token,   417.89 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.184229Z [debug    ]        eval time =    9156.07 ms /   175 tokens (   52.32 ms per token,    19.11 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.184349Z [debug    ]       total time =   12511.02 ms /  1577 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.186570Z [debug    ] slot      release: id  0 | task 299 | stop processing: n_tokens = 97664, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.186706Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
-2026-04-14T20:50:41.187608Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'tool_calls'}
-2026-04-14T20:50:41.189872Z [debug    ] State transition: GenerationState.RESPONDING -> GenerationState.EXECUTING [llmmllab]
-2026-04-14T20:50:41.189988Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': True, 'contents_buffer_len': 242, 'has_end_tc': True, 'will_extract': False}
-2026-04-14T20:50:41.190074Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'tool_calls', 'has_tool_calls': True, 'content_len': 242}
-2026-04-14T20:50:41.191993Z [debug    ] Extracted tool call requests   [llmmllab] component=tool_call_extraction tool_calls_count=1 tool_names=['mcp__plugin_context7_context7__resolve-library-id']
-2026-04-14T20:50:41.192114Z [warning  ] Failed to convert LangChain message ID 'lc_run--4e69ac5f-af75-4a26-adc8-821af51e98b0' to int [llmmllab] component=message_conversion
-2026-04-14T20:50:41.192212Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
-2026-04-14T20:50:41.192300Z [info     ] Generated 1 tool calls         [llmmllab] component=Agent
-2026-04-14T20:50:41.194108Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
-2026-04-14T20:50:41.194216Z [info     ] Final message construction     [llmmllab] extra={'contents_buffer_len': 242, 'contents_buffer_preview': "I don't have web search capabilities available in this environment. However, I can search the OpenClaw documentation and community resources that are already accessible. Let me check what's available ", 'message_contents_len': 1, 'total_tool_calls': 7}
-2026-04-14T20:50:41.197217Z [debug    ] Stream complete                [llmmllab] component=anthropic_messages_router extra={'has_content': True, 'has_tool_calls': True, 'final_content_len': 242, 'stop_reason': 'tool_use', 'text_block_started': True}
+http://searxng.searxng.svc.cluster.local:8080 "GET /?language=en&format=json&safesearch=1&time_range=&engines=google%2Cbing%2Cduckduckgo%2Cstartpage&categories=general&q=openclaw+plugins+skills+clawhub+popular HTTP/1.1" 308 563
+http://searxng.searxng.svc.cluster.local:8080 "GET /search?language=en&format=json&safesearch=1&time_range=&engines=google%2Cbing%2Cduckduckgo%2Cstartpage&categories=general&q=openclaw+plugins+skills+clawhub+popular HTTP/1.1" 200 17189
+2026-04-14T21:03:12.752757Z [info     ] ✅ Web search completed for: openclaw plugins skills clawhub popular [llmmllab] component=ServerToolExecutor
+2026-04-14T21:03:12.755830Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=266 node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:12.756193Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:12.760799Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.760984Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761168Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761311Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761437Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761567Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761736Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.761880Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762001Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762115Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762228Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762342Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762450Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762559Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762711Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.762929Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763115Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763259Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763376Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763487Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763596Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763704Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763810Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.763931Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764042Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764151Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764259Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764369Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764532Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764733Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.764938Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765094Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765211Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765320Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765427Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765534Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765641Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765748Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.765866Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766033Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766148Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766258Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766414Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766611Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766802Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.766972Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767128Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767249Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767362Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767472Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767583Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767759Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.767900Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768013Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768203Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768397Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768536Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768647Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768754Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768873Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.768981Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769088Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769192Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769298Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769401Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769506Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769641Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.769849Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770042Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770170Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770281Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770389Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770495Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770601Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770704Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770807Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.770929Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771036Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771143Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771248Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771385Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771578Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771770Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.771974Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772136Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772251Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772359Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772465Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772570Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772674Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772778Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.772896Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773003Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773105Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773257Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773429Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773624Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773842Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.773965Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774092Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774201Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774307Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774412Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774518Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774624Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774727Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774841Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.774949Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775085Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775284Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775474Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775660Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775809Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.775943Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776051Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776156Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776263Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776369Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776471Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776574Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776679Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776781Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.776943Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.777056Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.777228Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.777514Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:12.777649Z [debug    ] Running agent with 265 messages [llmmllab] component=PrimaryCodingAgent node_id=f7fcad39b838496fa0004e646f732f1f node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:13.377118Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.381720Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.995 (> 0.100 thold), f_keep = 0.999 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.383474Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.383605Z [debug    ] slot launch_slot_: id  0 | task 2015 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.383705Z [debug    ] slot update_slots: id  0 | task 2015 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 98391 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.383797Z [debug    ] slot update_slots: id  0 | task 2015 | n_past = 97939, slot.prompt.tokens.size() = 98012, seq_id = 0, pos_min = 98011, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.383897Z [debug    ] slot update_slots: id  0 | task 2015 | Checking checkpoint with [97935, 97935] against 97939... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.410272Z [debug    ] slot update_slots: id  0 | task 2015 | restored context checkpoint (pos_min = 97935, pos_max = 97935, n_tokens = 97936, n_past = 97936, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.410384Z [debug    ] slot update_slots: id  0 | task 2015 | n_tokens = 97936, memory_seq_rm [97936, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:13.410481Z [debug    ] slot update_slots: id  0 | task 2015 | prompt processing progress, n_tokens = 98387, batch.n_tokens = 451, progress = 0.999959 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:14.405938Z [debug    ] slot update_slots: id  0 | task 2015 | n_tokens = 98387, memory_seq_rm [98387, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:14.414682Z [debug    ] slot init_sampler: id  0 | task 2015 | init sampler, took 8.69 ms, tokens: text = 98391, total = 98391 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:14.414829Z [debug    ] slot update_slots: id  0 | task 2015 | prompt processing done, n_tokens = 98391, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:14.652612Z [debug    ] slot update_slots: id  0 | task 2015 | created context checkpoint 17 of 24 (pos_min = 98386, pos_max = 98386, n_tokens = 98387, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:14.716536Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.334433Z [debug    ] slot print_timing: id  0 | task 2015 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.334631Z [debug    ] prompt eval time =    1331.11 ms /   455 tokens (    2.93 ms per token,   341.82 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.334727Z [debug    ]        eval time =    3619.69 ms /    69 tokens (   52.46 ms per token,    19.06 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.334833Z [debug    ]       total time =    4950.81 ms /   524 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.336676Z [debug    ] slot      release: id  0 | task 2015 | stop processing: n_tokens = 98459, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.336776Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.337303Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'stop'}
+2026-04-14T21:03:18.338716Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': False, 'contents_buffer_len': 0, 'has_end_tc': False, 'will_extract': False}
+2026-04-14T21:03:18.338807Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'stop', 'has_tool_calls': False, 'content_len': 0}
+2026-04-14T21:03:18.340227Z [warning  ] Failed to convert LangChain message ID 'lc_run--c0756d31-6ec9-4448-ab2a-b2bce22b981b' to int [llmmllab] component=message_conversion
+2026-04-14T21:03:18.340324Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
+2026-04-14T21:03:18.341642Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
+2026-04-14T21:03:18.341722Z [info     ] Final message construction     [llmmllab] extra={'contents_buffer_len': 0, 'contents_buffer_preview': '', 'message_contents_len': 0, 'total_tool_calls': 2}
+2026-04-14T21:03:18.342223Z [debug    ] Stream complete                [llmmllab] component=anthropic_messages_router extra={'has_content': True, 'has_tool_calls': True, 'final_content_len': 0, 'stop_reason': 'tool_use', 'text_block_started': False}
+2026-04-14T21:03:18.499622Z [debug    ] Processing request for path: /v1/messages [llmmllab] component=app
+2026-04-14T21:03:18.499719Z [debug    ] Authenticating request for path: /v1/messages [llmmllab] component=app
+2026-04-14T21:03:18.499788Z [debug    ] Authorization header present: True [llmmllab] component=auth_middleware
+2026-04-14T21:03:18.499858Z [debug    ] e97f708d05caf834c983a466fc2b29c51fb452868084cf6b6b515c184c1e4639 [llmmllab] component=auth_middleware
+2026-04-14T21:03:18.508324Z [debug    ] API key authentication successful for user CgNsc20SBGxkYXA [llmmllab] component=auth_middleware
+2026-04-14T21:03:18.508408Z [debug    ] Authentication successful      [llmmllab] component=app
+2026-04-14T21:03:18.522446Z [info     ] Anthropic request with tools   [llmmllab] component=anthropic_messages_router extra={'tool_count': 29, 'tool_names': ['Agent', 'AskUserQuestion', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'Edit', 'EnterPlanMode', 'EnterWorktree', 'ExitPlanMode', 'ExitWorktree', 'Glob', 'Grep', 'LSP', 'NotebookEdit', 'Read', 'ScheduleWakeup', 'Skill', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TaskUpdate', 'WebFetch', 'WebSearch', 'Write', 'mcp__plugin_context7_context7__query-docs', 'mcp__plugin_context7_context7__resolve-library-id'], 'client_tools_created': 29, 'tool_choice': None}
+2026-04-14T21:03:18.522972Z [info     ] Detected locally-executable client tools [llmmllab] component=anthropic_messages_router extra={'local_tools': ['WebSearch', 'WebFetch']}
+INFO:     10.42.0.0:39594 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+2026-04-14T21:03:18.685744Z [debug    ] srv  log_server_r: done request: POST /tokenize 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:18.695954Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
+2026-04-14T21:03:18.696110Z [debug    ] User config retrieved from memory cache: CgNsc20SBGxkYXA [llmmllab] component=userconfig_storage
+2026-04-14T21:03:18.696187Z [debug    ] Cache operation: miss          [llmmllab] cache_key=workflow_CgNsc20SBGxkYXA_Qwen3_5_122B_A10B operation=miss success=True
+2026-04-14T21:03:18.696279Z [info     ] Overriding primary profile model_name [llmmllab] component=IdeGraphBuilder new_model=Qwen3_5_122B_A10B original_model=? user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:18.696485Z [debug    ] Building workflow              [llmmllab] component=IdeGraphBuilder model=Qwen3_5_122B_A10B model_arg=Qwen3_5_122B_A10B user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:18.696567Z [debug    ] Requesting pipeline for model_id: Qwen3_5_122B_A10B, priority: PipelinePriority.NORMAL, grammar: None, metadata: {} [llmmllab] component=PipelineFactory
+2026-04-14T21:03:18.696637Z [info     ] 📦 Using LOCAL cached path for Qwen3_5_122B_A10B (provider: ModelProvider.LLAMA_CPP) [llmmllab] component=PipelineFactory
+Starting new HTTP connection (1): 127.0.0.1:8001
+http://127.0.0.1:8001 "GET /health HTTP/1.1" 200 15
+2026-04-14T21:03:18.697974Z [debug    ] 💾 Retrieved cached pipeline for 10000000-2000-3000-4000-500000000000_Qwen3.5-122B-A10B [llmmllab] component=LocalPipelineCacheManager
+2026-04-14T21:03:18.698145Z [debug    ] Initialized PrimaryCodingAgent [llmmllab] component=PrimaryCodingAgent
+2026-04-14T21:03:18.700001Z [debug    ] Bound new node metadata to agent [llmmllab] component=PrimaryCodingAgent node_id=39946ee71eef445ca45aee3e7010ee7e node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:18.701131Z [info     ] Master workflow composed successfully [llmmllab] component=ComposerService extra={'user_id': 'CgNsc20SBGxkYXA'}
+2026-04-14T21:03:18.709522Z [info     ] Starting create_agent_run      [llmmllab] component=PrimaryCodingAgent has_tools=False message_count=266 node_id=39946ee71eef445ca45aee3e7010ee7e node_name=Agent node_type=Primary operation=create_agent_run user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:18.709726Z [debug    ] Creating LangChain agent (pipeline will be reused) [llmmllab] component=PrimaryCodingAgent node_id=39946ee71eef445ca45aee3e7010ee7e node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:18.712786Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.712924Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713022Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713111Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713197Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713291Z [info     ] 🔧 AIMessage created with 5 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713409Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713495Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713578Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713660Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713742Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713833Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.713918Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714001Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714082Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714162Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714243Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714324Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714406Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714487Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714568Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714648Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714727Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714807Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714902Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.714983Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715133Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715216Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715297Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715379Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715460Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715542Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715623Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715710Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715789Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715880Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.715971Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716051Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716131Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716250Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716314Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716376Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716438Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716500Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716562Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716623Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716683Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716744Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716804Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716873Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716935Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.716996Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717057Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717118Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717179Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717241Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717302Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717360Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717420Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717479Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717537Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717596Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717654Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717713Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717771Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717839Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717901Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.717960Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718019Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718079Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718149Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718260Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718341Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718420Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718500Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718580Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718660Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718740Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718828Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.718914Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719011Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719098Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719179Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719259Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719340Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719420Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719499Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719578Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719657Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719735Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719839Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.719924Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720003Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720081Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720194Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720278Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720358Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720435Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720513Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720591Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720668Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720747Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720835Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720918Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.720996Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721074Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721152Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721230Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721292Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721351Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721409Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721467Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721528Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721586Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721644Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721703Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721762Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721854Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721918Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.721977Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722037Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722095Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722210Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722295Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722377Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722505Z [info     ] 🔧 AIMessage created with 1 tool calls [llmmllab] component=message_conversion
+2026-04-14T21:03:18.722576Z [debug    ] Running agent with 265 messages [llmmllab] component=PrimaryCodingAgent node_id=39946ee71eef445ca45aee3e7010ee7e node_name=Agent node_type=Primary user_id=CgNsc20SBGxkYXA
+2026-04-14T21:03:19.304378Z [debug    ] srv  params_from_: Chat format: peg-native [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.309059Z [debug    ] slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 0.995 (> 0.100 thold), f_keep = 0.995 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.310798Z [debug    ] slot launch_slot_: id  0 | task -1 | sampler chain: logits -> temp -> mirostat [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.310965Z [debug    ] slot launch_slot_: id  0 | task 2086 | processing task, is_child = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.311060Z [debug    ] slot update_slots: id  0 | task 2086 | new prompt, n_ctx_slot = 155136, n_keep = 0, task.n_tokens = 98426 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.311195Z [debug    ] slot update_slots: id  0 | task 2086 | n_past = 97942, slot.prompt.tokens.size() = 98459, seq_id = 0, pos_min = 98458, n_swa = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.311309Z [debug    ] slot update_slots: id  0 | task 2086 | Checking checkpoint with [98386, 98386] against 97942... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.311388Z [debug    ] slot update_slots: id  0 | task 2086 | Checking checkpoint with [97935, 97935] against 97942... [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.337606Z [debug    ] slot update_slots: id  0 | task 2086 | restored context checkpoint (pos_min = 97935, pos_max = 97935, n_tokens = 97936, n_past = 97936, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.337734Z [debug    ] slot update_slots: id  0 | task 2086 | erased invalidated context checkpoint (pos_min = 98386, pos_max = 98386, n_tokens = 98387, n_swa = 0, pos_next = 97936, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.344888Z [debug    ] slot update_slots: id  0 | task 2086 | n_tokens = 97936, memory_seq_rm [97936, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:19.345080Z [debug    ] slot update_slots: id  0 | task 2086 | prompt processing progress, n_tokens = 98422, batch.n_tokens = 486, progress = 0.999959 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:20.382956Z [debug    ] slot update_slots: id  0 | task 2086 | n_tokens = 98422, memory_seq_rm [98422, end) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:20.391726Z [debug    ] slot init_sampler: id  0 | task 2086 | init sampler, took 8.69 ms, tokens: text = 98426, total = 98426 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:20.391867Z [debug    ] slot update_slots: id  0 | task 2086 | prompt processing done, n_tokens = 98426, batch.n_tokens = 4 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:20.636555Z [debug    ] slot update_slots: id  0 | task 2086 | created context checkpoint 17 of 24 (pos_min = 98421, pos_max = 98421, n_tokens = 98422, size = 149.063 MiB) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:20.700768Z [debug    ] srv  log_server_r: done request: POST /v1/chat/completions 127.0.0.1 200 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:22.917479Z [debug    ] State transition: None -> GenerationState.RESPONDING [llmmllab]
+[2026-04-14 21:03:33] [INFO] Checking service status...
+[2026-04-14 21:03:33] [INFO] rest_api (PID 57) is running
+2026-04-14T21:03:34.087839Z [debug    ] slot print_timing: id  0 | task 2086 | [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.088005Z [debug    ] prompt eval time =    1387.61 ms /   490 tokens (    2.83 ms per token,   353.12 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.088059Z [debug    ]        eval time =   13389.30 ms /   254 tokens (   52.71 ms per token,    18.97 tokens per second) [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.088102Z [debug    ]       total time =   14776.92 ms /   744 tokens [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.090361Z [debug    ] slot      release: id  0 | task 2086 | stop processing: n_tokens = 98679, truncated = 0 [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.090492Z [debug    ] srv  update_slots: all slots are idle [llmmllab] component=LlamaCppServerManager model=Qwen3.5-122B-A10B
+2026-04-14T21:03:34.091649Z [debug    ] Stream finished                [llmmllab] component=LangChainChatOpenAIPipeline extra={'finish_reason': 'stop'}
+2026-04-14T21:03:34.094557Z [debug    ] on_llm_end event               [llmmllab] extra={'has_output_content': True, 'contents_buffer_len': 849, 'has_end_tc': False, 'will_extract': False}
+2026-04-14T21:03:34.094675Z [debug    ] Model generation completed     [llmmllab] extra={'finish_reason': 'stop', 'has_tool_calls': False, 'content_len': 849}
+2026-04-14T21:03:34.096444Z [warning  ] Failed to convert LangChain message ID 'lc_run--e4770ab3-83aa-422d-9842-db648b7e57b4' to int [llmmllab] component=message_conversion
+2026-04-14T21:03:34.096568Z [debug    ] Converted LC message to Message: role=MessageRole.ASSISTANT, content_count=1 [llmmllab] component=message_conversion
+2026-04-14T21:03:34.098330Z [info     ] Workflow execution completed. Producing final output. [llmmllab]
+2026-04-14T21:03:34.098440Z [info     ] Final message construction     [llmmllab] extra={'contents_buffer_len': 849, 'contents_buffer_preview': "I don't have access to WebSearch or WebFetch tools in this environment. The tools available to me are limited to:\n\n- **Glob** - File pattern matching\n- **Grep** - Content search in files\n- **Read/Edit", 'message_contents_len': 1, 'total_tool_calls': 0}
+2026-04-14T21:03:34.098601Z [info     ] Model produced text without tool calls — sending single continuation check [llmmllab] component=anthropic_messages_router extra={'content_len': 849, 'content_preview': "I don't have access to WebSearch or WebFetch tools in this environment. The tools available to me are limited to:\n\n- **Glob** - File pattern matching\n- **Grep** - Content search in files\n- **Read/Edit"}
