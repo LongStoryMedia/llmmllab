@@ -1,12 +1,15 @@
 """
 IDE GraphBuilder with Dependency Injection.
-Supports two tool modes:
+Supports three tool modes:
   - Proxy mode: client_tools are bound to the LLM via bind_tools() so it generates
     tool_calls that the client executes. No ToolNode in the graph.
-  - Server-side mode: server_tools are added with a ToolNode and feedback loop.
+  - Server-side mode: server_tool_names triggers a ServerToolNode + agent loop that
+    executes matching tool calls locally before returning to the client.
+  - Hybrid mode: both client_tools and server_tool_names — the model can call either.
+    Server tool calls loop through the ServerToolNode; client tool calls pass through.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Type, Union, cast
 
 import uuid
 
@@ -47,6 +50,10 @@ from utils.logging import llmmllogger
 from composer.agents.chat import ChatAgent
 from composer.graph.workflows.base import GraphBuilder, should_continue_tool_calls
 from composer.graph.nodes.agent import AgentNode
+from composer.graph.nodes.server_tools import (
+    ServerToolNode,
+    make_should_continue_server_tools,
+)
 from composer.graph.state import WorkflowState
 
 if TYPE_CHECKING:
@@ -331,6 +338,7 @@ class IdeGraphBuilder(GraphBuilder):
         response_format: Optional[Type[BaseModel]] = None,
         client_tools: Optional[List[Union[BaseTool, Dict[str, Any]]]] = None,
         server_tools: Optional[List[BaseTool]] = None,
+        server_tool_names: Optional[Set[str]] = None,
         tool_choice: Optional[str] = None,
         model_name: Optional[str] = None,
     ) -> CompiledStateGraph:
@@ -344,6 +352,10 @@ class IdeGraphBuilder(GraphBuilder):
                 (passed straight through to bind_tools, no lossy conversion)
                 or LangChain BaseTool instances.
             server_tools: Tools for server-side execution (adds ToolNode + loop)
+            server_tool_names: Names of tools to execute server-side via
+                ServerToolNode. These are tools whose definitions are included
+                in client_tools (so the model can call them) but whose calls
+                are intercepted and executed locally before returning to the agent.
             tool_choice: Optional tool_choice parameter for bind_tools
 
         Returns:
@@ -405,7 +417,24 @@ class IdeGraphBuilder(GraphBuilder):
             workflow.add_node(AGENT_NODE_NAME, chat_node)
             workflow.add_edge(START, AGENT_NODE_NAME)
 
-            if server_tools:
+            if server_tool_names:
+                # Hybrid mode: ServerToolNode executes server-side tool calls,
+                # client tool calls pass through to END for proxy back to client.
+                # Graph: Agent -> (has server tool calls?) -> ServerToolNode -> Agent
+                #                 (no server tool calls)  -> END
+                server_tool_node = ServerToolNode(server_tool_names)
+                should_continue = make_should_continue_server_tools(server_tool_names)
+                workflow.add_node(TOOL_NODE_NAME, server_tool_node)
+                workflow.add_conditional_edges(
+                    AGENT_NODE_NAME,
+                    should_continue,
+                    {
+                        "server_tools": TOOL_NODE_NAME,
+                        "end": END,
+                    },
+                )
+                workflow.add_edge(TOOL_NODE_NAME, AGENT_NODE_NAME)
+            elif server_tools:
                 # Server-side tool execution mode: Agent -> ToolNode -> Agent loop
                 tool_node = ToolNode(server_tools)
                 workflow.add_node(TOOL_NODE_NAME, tool_node)

@@ -32,6 +32,12 @@ from composer import (
     get_graph_builder,
 )
 from composer.graph.workflows.factory import WorkFlowType
+from composer.tools.server_tool_executor import (
+    separate_server_tools,
+    get_server_tool_names,
+    make_server_tool_definitions,
+    find_locally_executable_tools,
+)
 from runner import pipeline_factory
 from runner.pipelines.llamacpp.chat import ChatLlamaCppPipeline
 from utils.logging import llmmllogger
@@ -384,7 +390,47 @@ async def stream_message(
     If the model produces text indicating intent to use a tool but does not
     actually emit any tool_use blocks (common with smaller local models), a
     single retry is attempted with a continuation prompt to coax the tool call.
+
+    Server-side tools (web_search, web_fetch) are intercepted and executed
+    locally rather than being passed back to the client.
     """
+    # ----------------------------------------------------------------
+    # Separate server-side tools from client tools. Server tools are
+    # executed locally; their definitions are added to bind_tools() so
+    # the model knows they exist.
+    # Also detect client tools that should be executed locally by name
+    # (e.g., Claude Code's WebSearch/WebFetch wrappers).
+    # ----------------------------------------------------------------
+    server_tool_names: set[str] = set()
+    if client_tools:
+        only_client, server_tools = separate_server_tools(client_tools)
+        if server_tools:
+            server_tool_names = get_server_tool_names(server_tools)
+            server_defs = make_server_tool_definitions(server_tools)
+            # Replace client_tools: keep real client tools + add server tool
+            # definitions so the model can call them
+            client_tools = only_client + server_defs
+            logger.info(
+                "Separated server-side tools for local execution",
+                extra={
+                    "server_tools": list(server_tool_names),
+                    "client_tool_count": len(only_client),
+                    "server_def_count": len(server_defs),
+                },
+            )
+
+        # Also detect client tools like WebSearch/WebFetch that should be
+        # executed locally.  These keep their original definitions (they
+        # already have input_schema) but their names are added to
+        # server_tool_names so ServerToolNode intercepts their calls.
+        local_names = find_locally_executable_tools(client_tools)
+        if local_names:
+            server_tool_names |= local_names
+            logger.info(
+                "Detected locally-executable client tools",
+                extra={"local_tools": list(local_names)},
+            )
+
     builder = await get_graph_builder(WorkFlowType.IDE, user_id)
     workflow = await compose_workflow(
         user_id=user_id,
@@ -392,6 +438,7 @@ async def stream_message(
         model_name=model_name,
         client_tools=client_tools,
         tool_choice=tool_choice,
+        server_tool_names=server_tool_names or None,
     )
     initial_state = await create_initial_state(user_id, 0, builder, messages)
 
@@ -488,6 +535,15 @@ async def stream_message(
                         },
                     )
 
+    # After the graph's server tool loop, filter out any remaining server
+    # tool calls from final_tool_calls — only client tool calls should be
+    # emitted to the client.
+    if server_tool_names and final_tool_calls:
+        final_tool_calls = [
+            tc for tc in final_tool_calls if tc.name not in server_tool_names
+        ]
+        has_tool_calls = bool(final_tool_calls)
+
     # ----------------------------------------------------------------
     # Single continuation check: if the model produced text but no tool
     # calls and tools were provided, ask it once whether it intended to
@@ -534,6 +590,7 @@ async def stream_message(
             model_name=model_name,
             client_tools=client_tools,
             tool_choice="auto",
+            server_tool_names=server_tool_names or None,
         )
         retry_state = await create_initial_state(
             user_id, 0, retry_builder, continuation_messages
@@ -584,6 +641,7 @@ async def stream_message(
             model_name=model_name,
             client_tools=client_tools,
             tool_choice=tool_choice,
+            server_tool_names=server_tool_names or None,
         )
         retry_state = await create_initial_state(user_id, 0, retry_builder, messages)
 
@@ -650,6 +708,7 @@ async def stream_message(
                 model_name=model_name,
                 client_tools=client_tools,
                 tool_choice="auto",
+                server_tool_names=server_tool_names or None,
             )
             nudge_state = await create_initial_state(
                 user_id, 0, nudge_builder, nudge_messages
@@ -805,8 +864,15 @@ async def createMessage(
 
         client_tools = None
         tool_choice = None
+        server_tool_names: set[str] = set()
         if body.tools:
-            client_tools = [tool.model_dump(exclude_none=True) for tool in body.tools]
+            # Raw tool dicts — stream_message does its own processing so
+            # keep an unmodified copy for the streaming path.
+            raw_client_tools = [
+                tool.model_dump(exclude_none=True) for tool in body.tools
+            ]
+            client_tools = raw_client_tools
+
             if body.tool_choice:
                 if body.tool_choice.type == "any":
                     tool_choice = "required"
@@ -824,18 +890,21 @@ async def createMessage(
                 },
             )
         else:
+            raw_client_tools = None
             logger.debug(
                 f"Anthropic request without tools: {body.model_dump_json(indent=2)}"
             )
             # body.stream = True
 
         if body.stream:
+            # Pass raw (unprocessed) tools — stream_message handles
+            # server-tool separation and local-tool detection itself.
             return StreamingResponse(
                 stream_message(
                     user_id,
                     internal_messages,
                     body.model,
-                    client_tools=client_tools,
+                    client_tools=raw_client_tools,
                     tool_choice=tool_choice,
                 ),
                 media_type="text/event-stream",
@@ -846,6 +915,29 @@ async def createMessage(
                 },
             )
 
+        # Non-streaming path: do server-tool separation here
+        if client_tools:
+            only_client, server_tools = separate_server_tools(client_tools)
+            if server_tools:
+                server_tool_names = get_server_tool_names(server_tools)
+                server_defs = make_server_tool_definitions(server_tools)
+                client_tools = only_client + server_defs
+                logger.info(
+                    "Separated server-side tools for local execution",
+                    extra={
+                        "server_tools": list(server_tool_names),
+                        "client_tool_count": len(only_client),
+                        "server_def_count": len(server_defs),
+                    },
+                )
+            local_names = find_locally_executable_tools(client_tools)
+            if local_names:
+                server_tool_names |= local_names
+                logger.info(
+                    "Detected locally-executable client tools",
+                    extra={"local_tools": list(local_names)},
+                )
+
         # Non-streaming response
         builder = await get_graph_builder(WorkFlowType.IDE, user_id)
         workflow = await compose_workflow(
@@ -854,6 +946,7 @@ async def createMessage(
             model_name=body.model,
             client_tools=client_tools,
             tool_choice=tool_choice,
+            server_tool_names=server_tool_names or None,
         )
         initial_state = await create_initial_state(
             user_id,
@@ -869,6 +962,18 @@ async def createMessage(
             raise HTTPException(
                 status_code=500, detail="Workflow did not produce a response"
             )
+
+        # Filter out any remaining server tool calls from the response
+        if (
+            server_tool_names
+            and chat_response.message
+            and chat_response.message.tool_calls
+        ):
+            chat_response.message.tool_calls = [
+                tc
+                for tc in chat_response.message.tool_calls
+                if tc.name not in server_tool_names
+            ]
 
         # Single continuation check for non-streaming path
         has_tool_calls = bool(
@@ -920,6 +1025,7 @@ async def createMessage(
                     model_name=body.model,
                     client_tools=client_tools,
                     tool_choice="auto",
+                    server_tool_names=server_tool_names or None,
                 )
                 retry_state = await create_initial_state(
                     user_id, 0, retry_builder, continuation_messages
@@ -956,6 +1062,7 @@ async def createMessage(
                 model_name=body.model,
                 client_tools=client_tools,
                 tool_choice=tool_choice,
+                server_tool_names=server_tool_names or None,
             )
             retry_state = await create_initial_state(
                 user_id, 0, retry_builder, internal_messages
@@ -1000,6 +1107,7 @@ async def createMessage(
                     model_name=body.model,
                     client_tools=client_tools,
                     tool_choice="auto",
+                    server_tool_names=server_tool_names or None,
                 )
                 nudge_state = await create_initial_state(
                     user_id, 0, nudge_builder, nudge_messages
