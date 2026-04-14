@@ -71,6 +71,44 @@ _EMPTY_RESPONSE_NUDGE = (
     "and nothing else."
 )
 
+# Content block types that we inject into the SSE stream for server-side tool
+# execution.  When the client sends these back on subsequent turns they will
+# fail Pydantic validation (the request models don't know them).  We strip
+# them from incoming messages before validation.
+_SERVER_TOOL_BLOCK_TYPES = frozenset(
+    {
+        "server_tool_use",
+        "web_search_tool_result",
+        "web_fetch_tool_result",
+    }
+)
+
+
+def _strip_server_tool_blocks(req_body: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove server-tool content blocks that the client echoed back."""
+    messages = req_body.get("messages")
+    if not messages:
+        return req_body
+
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        filtered = [
+            block
+            for block in content
+            if not (
+                isinstance(block, dict)
+                and block.get("type") in _SERVER_TOOL_BLOCK_TYPES
+            )
+        ]
+        if not filtered:
+            # Don't leave an empty content list — replace with placeholder text.
+            filtered = [{"type": "text", "text": "(server tool results omitted)"}]
+        msg["content"] = filtered
+
+    return req_body
+
 
 def _get_num_ctx() -> int:
     """Get num_ctx from the active pipeline's model profile."""
@@ -958,6 +996,7 @@ async def createMessage(
         raise HTTPException(status_code=401, detail="User ID not found in request")
 
     try:
+        req_body = _strip_server_tool_blocks(req_body)
         body = CreateMessageRequest.model_validate(req_body)
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
         claude_regex = regex.compile(r"claude|haiku|sonnet|opus", regex.IGNORECASE)
