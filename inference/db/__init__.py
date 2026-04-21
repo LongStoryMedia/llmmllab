@@ -22,7 +22,6 @@ from .memory_storage import MemoryStorage
 from .search_storage import SearchStorage
 from .dynamic_tool_storage import DynamicToolStorage
 from .thought_storage import ThoughtStorage
-from .analysis_storage import AnalysisStorage
 from .tool_call_storage import ToolCallStorage
 from .message_content_storage import MessageContentStorage
 from .document_storage import DocumentStorage
@@ -59,7 +58,6 @@ class Storage:
         self.search = None
         self.dynamic_tool = None
         self.thought = None
-        self.analysis = None
         self.tool_call = None
         self.message_content = None
         self.document = None
@@ -108,7 +106,6 @@ class Storage:
             self.search = SearchStorage(self.pool, get_query)
             self.dynamic_tool = DynamicToolStorage(self.pool, get_query)
             self.thought = ThoughtStorage(self.pool, get_query)
-            self.analysis = AnalysisStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
             self.message_content = MessageContentStorage(self.pool, get_query)
             self.document = DocumentStorage(self.pool, get_query)
@@ -121,7 +118,6 @@ class Storage:
                 self.thought,
                 self.tool_call,
                 self.message_content,
-                self.analysis,
                 self.document,
             )
 
@@ -156,7 +152,6 @@ class Storage:
             self.memory = None
             self.search = None
             self.thought = None
-            self.analysis = None
             self.tool_call = None
             self.message_content = None
             self.todo = None

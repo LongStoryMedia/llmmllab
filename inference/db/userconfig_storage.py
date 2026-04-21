@@ -15,14 +15,12 @@ from models.default_configs import (
     DEFAULT_PREFERENCES_CONFIG,
     DEFAULT_MEMORY_CONFIG,
     DEFAULT_SUMMARIZATION_CONFIG,
-    DEFAULT_REFINEMENT_CONFIG,
     DEFAULT_WEB_SEARCH_CONFIG,
     DEFAULT_IMAGE_GENERATION_CONFIG,
     DEFAULT_CIRCUIT_BREAKER_CONFIG,
     DEFAULT_GPU_CONFIG,
     DEFAULT_WORKFLOW_CONFIG,
     DEFAULT_TOOL_CONFIG,
-    DEFAULT_CONTEXT_WINDOW_CONFIG,
     create_default_user_config,
 )
 
@@ -252,34 +250,27 @@ class UserConfigStorage:
 
     def _ensure_required_fields(self, config_data: dict) -> None:
         """Ensure all required fields have valid defaults"""
-        # Ensure all model components have at least empty dictionaries
         for field in [
             "preferences",
             "memory",
             "summarization",
             "web_search",
-            "refinement",
             "image_generation",
             "model_profiles",
             "circuit_breaker",
             "gpu_config",
             "workflow",
             "tool",
-            "context_window",  # Added missing context_window field
         ]:
             if field not in config_data or not isinstance(config_data[field], dict):
                 config_data[field] = {}
 
-        # Apply defaults from predefined config objects
         self._apply_defaults(
             config_data["preferences"], DEFAULT_PREFERENCES_CONFIG.dict()
         )
         self._apply_defaults(config_data["memory"], DEFAULT_MEMORY_CONFIG.dict())
         self._apply_defaults(
             config_data["summarization"], DEFAULT_SUMMARIZATION_CONFIG.dict()
-        )
-        self._apply_defaults(
-            config_data["refinement"], DEFAULT_REFINEMENT_CONFIG.dict()
         )
         self._apply_defaults(
             config_data["web_search"], DEFAULT_WEB_SEARCH_CONFIG.dict()
@@ -296,9 +287,6 @@ class UserConfigStorage:
         self._apply_defaults(config_data["gpu_config"], DEFAULT_GPU_CONFIG.dict())
         self._apply_defaults(config_data["workflow"], DEFAULT_WORKFLOW_CONFIG.dict())
         self._apply_defaults(config_data["tool"], DEFAULT_TOOL_CONFIG.dict())
-        self._apply_defaults(
-            config_data["context_window"], DEFAULT_CONTEXT_WINDOW_CONFIG.dict()
-        )
 
     def _apply_defaults(self, target_dict: dict, defaults_dict: dict) -> None:
         """Apply default values from a defaults dictionary to a target dictionary"""

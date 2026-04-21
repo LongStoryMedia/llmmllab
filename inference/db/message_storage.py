@@ -13,20 +13,12 @@ from models.message_content_type import MessageContentType
 from models.tool_call import ToolCall
 from models.thought import Thought
 from models.resource_usage import ResourceUsage
-from models.intent_analysis import IntentAnalysis
-from models.workflow_type import WorkflowType
-from models.complexity_level import ComplexityLevel
-from models.required_capability import RequiredCapability
-from models.response_format import ResponseFormat
-from models.technical_domain import TechnicalDomain
-from models.computational_requirement import ComputationalRequirement
 from models.document import Document
 from db.cache_storage import cache_storage
 from db.db_utils import TypedConnection, typed_pool
 from db.thought_storage import ThoughtStorage
 from db.tool_call_storage import ToolCallStorage
 from db.message_content_storage import MessageContentStorage
-from db.analysis_storage import AnalysisStorage
 from db.document_storage import DocumentStorage
 from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from utils.logging import llmmllogger
@@ -42,7 +34,6 @@ class MessageStorage:
         thought_storage: ThoughtStorage,
         tool_call_storage: ToolCallStorage,
         message_content_storage: MessageContentStorage,
-        analysis_storage: AnalysisStorage,
         document_storage: DocumentStorage,
     ):
         self.pool = pool
@@ -54,7 +45,6 @@ class MessageStorage:
         self.thought_storage = thought_storage
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
-        self.analysis_storage = analysis_storage
         self.document_storage = document_storage
 
         # Initialize connection recovery manager
@@ -343,18 +333,6 @@ class MessageStorage:
             Thought(**dict(thought_row)) for thought_row in thoughts_rows
         ]
 
-        # Get analyses using separate query with recovery
-        async def _get_analyses():
-            return await conn.fetch(
-                self.get_query("analysis.get_by_message"), message_id
-            )
-
-        analyses_rows = await self.recovery_manager.execute_with_recovery(_get_analyses)
-        message_data["analyses"] = [
-            self._parse_analysis_row(dict(analysis_row))
-            for analysis_row in analyses_rows
-        ]
-
         # Get documents using separate query with recovery
         async def _get_documents():
             return await conn.fetch(
@@ -430,115 +408,6 @@ class MessageStorage:
             execution_time_ms=row.get("execution_time_ms"),
             resource_usage=resource_usage,
             created_at=created_at,
-        )
-
-    def _parse_analysis_row(self, row: Dict[str, Any]) -> IntentAnalysis:
-        """
-        Parse an individual analysis row from database into IntentAnalysis object.
-
-        Args:
-            row: Database row containing analysis data
-
-        Returns:
-            IntentAnalysis object
-        """
-        # Parse required_capabilities from JSONB to List[RequiredCapability]
-        required_capabilities_data = row.get("required_capabilities", [])
-        if isinstance(required_capabilities_data, str):
-            required_capabilities_data = json.loads(required_capabilities_data)
-
-        required_capabilities = []
-        for cap in required_capabilities_data:
-            if isinstance(cap, str):
-                try:
-                    required_capabilities.append(RequiredCapability(cap))
-                except ValueError:
-                    self.logger.warning(f"Unknown required capability: {cap}")
-            elif hasattr(cap, "value"):  # Enum object
-                required_capabilities.append(cap)
-
-        # Parse computational_requirements (stored as simple enum string)
-        comp_req_raw = row.get("computational_requirements")
-        computational_requirements: ComputationalRequirement
-        if isinstance(comp_req_raw, str):
-            # Direct enum value stored
-            try:
-                computational_requirements = ComputationalRequirement(comp_req_raw)
-            except ValueError:
-                # Fallback to MINIMAL if invalid
-                computational_requirements = ComputationalRequirement.MINIMAL
-        elif hasattr(comp_req_raw, "value"):
-            # Already an enum instance
-            computational_requirements = comp_req_raw  # type: ignore
-        elif isinstance(comp_req_raw, dict):
-            # Legacy dict form {"computational_requirements": "MINIMAL"} or {"value": "MINIMAL"}
-            # Try common keys
-            val = comp_req_raw.get("computational_requirements") or comp_req_raw.get(
-                "value"
-            )
-            if isinstance(val, str):
-                try:
-                    computational_requirements = ComputationalRequirement(val)
-                except ValueError:
-                    computational_requirements = ComputationalRequirement.MINIMAL
-            else:
-                computational_requirements = ComputationalRequirement.MINIMAL
-        else:
-            # None or unexpected type
-            computational_requirements = ComputationalRequirement.MINIMAL
-
-        # Parse enum fields with fallback
-        workflow_type = row.get("workflow_type")
-        if isinstance(workflow_type, str):
-            try:
-                workflow_type = WorkflowType(workflow_type)
-            except ValueError:
-                workflow_type = WorkflowType.GENERAL  # Fallback
-
-        complexity_level = row.get("complexity_level")
-        if isinstance(complexity_level, str):
-            try:
-                complexity_level = ComplexityLevel(complexity_level)
-            except ValueError:
-                complexity_level = ComplexityLevel.SIMPLE  # Fallback
-
-        # Parse optional enum fields
-        response_format = row.get("response_format")
-        if response_format and isinstance(response_format, str):
-            try:
-                response_format = ResponseFormat(response_format)
-            except ValueError:
-                response_format = None
-
-        technical_domain = row.get("technical_domain")
-        if technical_domain and isinstance(technical_domain, str):
-            try:
-                technical_domain = TechnicalDomain(technical_domain)
-            except ValueError:
-                technical_domain = None
-
-        # Ensure required fields are not None
-        if workflow_type is None:
-            workflow_type = WorkflowType.GENERAL
-        if complexity_level is None:
-            complexity_level = ComplexityLevel.SIMPLE
-
-        return IntentAnalysis(
-            id=row.get("id"),
-            message_id=row.get("message_id"),
-            workflow_type=workflow_type,
-            complexity_level=complexity_level,
-            required_capabilities=required_capabilities,
-            domain_specificity=row.get("domain_specificity", 0.0),
-            reusability_potential=row.get("reusability_potential", 0.0),
-            confidence=row.get("confidence", 0.0),
-            response_format=response_format,
-            technical_domain=technical_domain,
-            requires_tools=row.get("requires_tools", False),
-            requires_custom_tools=row.get("requires_custom_tools", False),
-            tool_complexity_score=row.get("tool_complexity_score", 0.0),
-            computational_requirements=computational_requirements,
-            created_at=row.get("created_at"),
         )
 
     async def get_conversation_history(
@@ -851,21 +720,11 @@ class MessageStorage:
     def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """
         Parse a database row containing message data with aggregated JSON fields.
-        Handles contents, tool_calls, thoughts, analyses, and documents aggregation.
+        Handles contents, tool_calls, thoughts, and documents aggregation.
         """
-        # Parse message contents from JSON array
         contents = self._parse_contents(row.get("contents"))
-
-        # Parse tool_calls from JSON array
         tool_calls = self._parse_tool_calls(row.get("tool_calls"))
-
-        # Parse thoughts from JSON array
         thoughts = self._parse_thoughts(row.get("thoughts"))
-
-        # Parse analyses from JSON array
-        analyses = self._parse_analyses(row.get("analyses"))
-
-        # Parse documents from JSON array
         documents = self._parse_documents(row.get("documents"))
 
         return {
@@ -876,7 +735,6 @@ class MessageStorage:
             "content": contents,
             "tool_calls": tool_calls if tool_calls else None,
             "thoughts": thoughts if thoughts else None,
-            "analyses": analyses if analyses else None,
             "documents": documents if documents else None,
         }
 
@@ -964,70 +822,6 @@ class MessageStorage:
             )
 
         return thoughts if thoughts else None
-
-    def _parse_analyses(self, analyses_data: Any) -> Optional[List[IntentAnalysis]]:
-        """Parse analyses from JSON data."""
-        if not analyses_data:
-            return None
-
-        analyses = []
-        # Parse JSON data (could be string or already parsed)
-        if isinstance(analyses_data, str):
-            parsed_data = json.loads(analyses_data)
-        else:
-            parsed_data = analyses_data
-
-        for analysis_data in parsed_data:
-            try:
-
-                # Parse enums and JSON fields
-                workflow_type = WorkflowType(
-                    analysis_data.get("workflow_type", "UNKNOWN")
-                )
-                complexity_level = ComplexityLevel(
-                    analysis_data.get("complexity_level", "LOW")
-                )
-
-                required_capabilities = []
-                if analysis_data.get("required_capabilities"):
-                    for cap in analysis_data["required_capabilities"]:
-                        try:
-                            required_capabilities.append(RequiredCapability(cap))
-                        except (ValueError, TypeError):
-                            pass  # Skip invalid capabilities
-
-                computational_requirements = ComputationalRequirement(
-                    analysis_data.get("computational_requirements", "MINIMAL")
-                )
-
-                analysis = IntentAnalysis(
-                    workflow_type=workflow_type,
-                    complexity_level=complexity_level,
-                    required_capabilities=required_capabilities,
-                    domain_specificity=float(
-                        analysis_data.get("domain_specificity", 0.0)
-                    ),
-                    reusability_potential=float(
-                        analysis_data.get("reusability_potential", 0.0)
-                    ),
-                    confidence=float(analysis_data.get("confidence", 0.0)),
-                    response_format=analysis_data.get("response_format"),
-                    technical_domain=analysis_data.get("technical_domain"),
-                    requires_tools=bool(analysis_data.get("requires_tools", False)),
-                    requires_custom_tools=bool(
-                        analysis_data.get("requires_custom_tools", False)
-                    ),
-                    tool_complexity_score=float(
-                        analysis_data.get("tool_complexity_score", 0.0)
-                    ),
-                    computational_requirements=computational_requirements,
-                )
-                analyses.append(analysis)
-            except Exception as e:
-                self.logger.warning(f"Failed to parse analysis data: {e}")
-                continue
-
-        return analyses if analyses else None
 
     def _parse_documents(self, documents_data: Any) -> Optional[List[Document]]:
         """Parse documents from JSON data."""

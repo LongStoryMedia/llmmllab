@@ -57,8 +57,6 @@ class ChatAgent(BaseAgent):
         Returns:
             str: Generated conversation title (2-6 words)
 
-        Raises:
-            IntentAnalysisError: When title generation fails
         """
 
         try:

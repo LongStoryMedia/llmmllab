@@ -17,7 +17,6 @@ from .model_profile_config import ModelProfileConfig
 from .preferences_config import PreferencesConfig
 from .rabbitmq_config import RabbitmqConfig
 from .redis_config import RedisConfig
-from .refinement_config import RefinementConfig
 from .server_config import ServerConfig
 from .summarization_config import SummarizationConfig
 from .web_search_config import WebSearchConfig
@@ -38,7 +37,6 @@ class Config(BaseModel):
     web_search: Annotated[WebSearchConfig, Field(...)]
     preferences: Annotated[PreferencesConfig, Field(...)]
     model_profiles: Annotated[ModelProfileConfig, Field(...)]
-    refinement: Annotated[RefinementConfig, Field(...)]
     image_generation: Annotated[ImageGenerationConfig, Field(...)]
     circuit_breaker: Annotated[CircuitBreakerConfig, Field(...)]
     gpu_config: Annotated[GPUConfig, Field(...)]

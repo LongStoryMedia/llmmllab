@@ -6,7 +6,6 @@ import SummarizationSettings from './SummarizationSettings';
 import MemorySettings from './MemorySettings';
 import WebSearchSettings from './WebSearchSettings';
 import SecuritySettings from './SecuritySettings';
-import RefinementSettings from './RefinementSettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
 import CircuitBreakerSettings from './CircuitBreakerSettings';
 import GpuSettings from './GpuSettings';
@@ -104,12 +103,11 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
               <Tab label="Memory Retrieval" {...a11yProps(3)} />
               <Tab label="Web Search Settings" {...a11yProps(4)} />
               <Tab label="Security" {...a11yProps(5)} />
-              <Tab label="Refinement" {...a11yProps(6)} />
-              <Tab label="Image Generation" {...a11yProps(7)} />
-              <Tab label="GPU Configuration" {...a11yProps(8)} />
-              <Tab label="Parameter Optimization" {...a11yProps(9)} />
-              <Tab label="Circuit Breaker" {...a11yProps(10)} />
-              <Tab label="API Keys" {...a11yProps(11)} />
+              <Tab label="Image Generation" {...a11yProps(6)} />
+              <Tab label="GPU Configuration" {...a11yProps(7)} />
+              <Tab label="Parameter Optimization" {...a11yProps(8)} />
+              <Tab label="Circuit Breaker" {...a11yProps(9)} />
+              <Tab label="API Keys" {...a11yProps(10)} />
             </Tabs>
 
             <Box sx={{ p: 2 }}>
@@ -139,21 +137,18 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
                 <SecuritySettings />
               </TabPanel>
               <TabPanel value={tabValue} index={6}>
-                <RefinementSettings />
-              </TabPanel>
-              <TabPanel value={tabValue} index={7}>
                 <ImageGenerationSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={8}>
+              <TabPanel value={tabValue} index={7}>
                 <GpuSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={9}>
+              <TabPanel value={tabValue} index={8}>
                 <ParameterOptimizationSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={10}>
+              <TabPanel value={tabValue} index={9}>
                 <CircuitBreakerSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={11}>
+              <TabPanel value={tabValue} index={10}>
                 <ApiKeySettings />
               </TabPanel>
             </Box>

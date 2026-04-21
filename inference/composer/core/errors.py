@@ -52,12 +52,6 @@ class CircuitOpenError(ComposerError):
     pass
 
 
-class IntentAnalysisError(ComposerError):
-    """Intent analysis failed."""
-
-    pass
-
-
 class StateManagementError(ComposerError):
     """State management operation failed."""
 

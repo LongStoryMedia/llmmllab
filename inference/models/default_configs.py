@@ -11,7 +11,6 @@ import uuid
 from .preferences_config import PreferencesConfig
 from .memory_config import MemoryConfig
 from .summarization_config import SummarizationConfig
-from .refinement_config import RefinementConfig
 from .web_search_config import WebSearchConfig
 from .image_generation_config import ImageGenerationConfig
 from .circuit_breaker_config import CircuitBreakerConfig
@@ -25,12 +24,6 @@ from .parameter_optimization_config import (
     ParameterTuningStrategy,
 )
 from .crash_prevention import CrashPrevention
-from .context_window_config import (
-    ContextWindowConfig,
-    WindowConfig,
-    Prioritization,
-    Optimization,
-)
 from .model_profile_config import ModelProfileConfig
 
 # Removed circular import - DEFAULT_MODEL_PROFILE_CONFIG created inline below
@@ -60,11 +53,6 @@ DEFAULT_SUMMARIZATION_CONFIG = SummarizationConfig(
     embedding_dimension=1536,
     max_summary_levels=3,
     summary_weight_coefficient=0.5,
-)
-
-# Default refinement configuration
-DEFAULT_REFINEMENT_CONFIG = RefinementConfig(
-    enable_response_filtering=True, enable_response_critique=True
 )
 
 # Default web search configuration
@@ -163,32 +151,6 @@ DEFAULT_TOOL_CONFIG = ToolConfig(
     tool_cache_ttl=1800,
     enable_semantic_search=True,
     search_top_k=10,
-)
-
-DEFAULT_CONTEXT_WINDOW_CONFIG = ContextWindowConfig(
-    enabled=True,
-    window_config=WindowConfig(
-        max_tokens=8192, reserve_tokens=1024, overflow_strategy="truncate_oldest"
-    ),
-    prioritization=Prioritization(
-        priority_order=[
-            "recent_messages",
-            "retrieved_memories",
-            "summaries",
-            "search_results",
-            "tool_results",
-        ],
-        recent_messages_count=5,
-        memory_allocation=0.3,
-        summary_allocation=0.2,
-    ),
-    optimization=Optimization(
-        enable_compression=True,
-        deduplication=True,
-        smart_truncation=True,
-        cache_optimized_context=True,
-        token_counting_method="approximate",
-    ),
 )
 
 # Default parameter optimization configuration (disabled by default)

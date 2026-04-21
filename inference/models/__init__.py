@@ -10,21 +10,15 @@ warnings.filterwarnings("ignore", message=".*shadows an attribute in parent.*")
 
 # Import all model modules
 try:
-    from . import analysis_depth
     from . import api_key
     from . import api_key_request
     from . import api_key_response
     from . import auth_config
-    from . import capability_profile_mapping
     from . import chat_req
     from . import chat_response
     from . import circuit_breaker_config
-    from . import complexity_estimate
-    from . import complexity_level
-    from . import computational_requirement
     from . import config
     from . import config_utils
-    from . import context_window_config
     from . import conversation
     from . import conversation_ctx
     from . import crash_prevention
@@ -49,7 +43,6 @@ try:
     from . import inference_service
     from . import inference_service_config
     from . import intent
-    from . import intent_analysis
     from . import internal_config
     from . import lang_graph_node_state
     from . import lang_graph_state
@@ -91,11 +84,8 @@ try:
     from . import prediction_features
     from . import preferences_config
     from . import rabbitmq_config
-    from . import recovery_strategy
     from . import redis_config
-    from . import refinement_config
     from . import requests
-    from . import required_capability
     from . import research_plan
     from . import research_question
     from . import research_question_result
@@ -104,7 +94,6 @@ try:
     from . import research_task_status
     from . import resource_usage
     from . import response_format
-    from . import routing_strategy
     from . import search_result
     from . import search_result_content
     from . import search_topic_synthesis
@@ -123,7 +112,6 @@ try:
     from . import thought
     from . import todo_item
     from . import tool
-    from . import tool_analysis_request
     from . import tool_call
     from . import tool_config
     from . import tool_needs
@@ -139,21 +127,15 @@ except ImportError as e:
 
 # Define what gets imported with 'from models import *'
 __all__ = [
-    'analysis_depth',
     'api_key',
     'api_key_request',
     'api_key_response',
     'auth_config',
-    'capability_profile_mapping',
     'chat_req',
     'chat_response',
     'circuit_breaker_config',
-    'complexity_estimate',
-    'complexity_level',
-    'computational_requirement',
     'config',
     'config_utils',
-    'context_window_config',
     'conversation',
     'conversation_ctx',
     'crash_prevention',
@@ -178,7 +160,6 @@ __all__ = [
     'inference_service',
     'inference_service_config',
     'intent',
-    'intent_analysis',
     'internal_config',
     'lang_graph_node_state',
     'lang_graph_state',
@@ -220,11 +201,8 @@ __all__ = [
     'prediction_features',
     'preferences_config',
     'rabbitmq_config',
-    'recovery_strategy',
     'redis_config',
-    'refinement_config',
     'requests',
-    'required_capability',
     'research_plan',
     'research_question',
     'research_question_result',
@@ -233,7 +211,6 @@ __all__ = [
     'research_task_status',
     'resource_usage',
     'response_format',
-    'routing_strategy',
     'search_result',
     'search_result_content',
     'search_topic_synthesis',
@@ -252,7 +229,6 @@ __all__ = [
     'thought',
     'todo_item',
     'tool',
-    'tool_analysis_request',
     'tool_call',
     'tool_config',
     'tool_needs',
@@ -262,23 +238,14 @@ __all__ = [
     'web_socket_connection',
     'workflow_config',
     'workflow_type',
-    'AnalysisDepth',
     'ApiKey',
     'ApiKeyRequest',
     'ApiKeyResponse',
     'AuthConfig',
-    'CapabilityProfileMapping',
     'ChatReq',
     'ChatResponse',
     'CircuitBreakerConfig',
-    'ComplexityEstimate',
-    'ComplexityLevel',
-    'ComputationalRequirement',
     'Config',
-    'ContextWindowConfig',
-    'Optimization',
-    'Prioritization',
-    'WindowConfig',
     'Conversation',
     'ConversationCtx',
     'CrashPrevention',
@@ -301,7 +268,6 @@ __all__ = [
     'InferenceService',
     'InferenceServiceConfig',
     'Intent',
-    'IntentAnalysis',
     'InternalConfig',
     'LangGraphNodeState',
     'LangGraphState',
@@ -343,16 +309,13 @@ __all__ = [
     'PredictionFeatures',
     'PreferencesConfig',
     'RabbitmqConfig',
-    'RecoveryStrategy',
     'RedisConfig',
-    'RefinementConfig',
     'LoraListResponse',
     'LoraWeightRequest',
     'Malloc',
     'ModelRequest',
     'ModelsListResponse',
     'PromptRequest',
-    'RequiredCapability',
     'ResearchPlan',
     'ResearchQuestion',
     'ResearchQuestionResult',
@@ -361,9 +324,6 @@ __all__ = [
     'ResearchTaskStatus',
     'ResourceUsage',
     'ResponseFormat',
-    'AlternativeStrategy',
-    'Metadata',
-    'RoutingStrategy',
     'SearchResult',
     'SearchResultContent',
     'SearchTopicSynthesis',
@@ -382,7 +342,6 @@ __all__ = [
     'Thought',
     'TodoItem',
     'Tool',
-    'ToolAnalysisRequest',
     'ToolCall',
     'ToolConfig',
     'ToolNeeds',
@@ -395,9 +354,6 @@ __all__ = [
 ]
 
 # Re-export all model classes for easy importing and IDE autocompletion
-from .analysis_depth import (
-    AnalysisDepth,
-)
 from .api_key import (
     ApiKey,
 )
@@ -410,9 +366,6 @@ from .api_key_response import (
 from .auth_config import (
     AuthConfig,
 )
-from .capability_profile_mapping import (
-    CapabilityProfileMapping,
-)
 from .chat_req import (
     ChatReq,
 )
@@ -422,23 +375,8 @@ from .chat_response import (
 from .circuit_breaker_config import (
     CircuitBreakerConfig,
 )
-from .complexity_estimate import (
-    ComplexityEstimate,
-)
-from .complexity_level import (
-    ComplexityLevel,
-)
-from .computational_requirement import (
-    ComputationalRequirement,
-)
 from .config import (
     Config,
-)
-from .context_window_config import (
-    ContextWindowConfig,
-    Optimization,
-    Prioritization,
-    WindowConfig,
 )
 from .conversation import (
     Conversation,
@@ -505,9 +443,6 @@ from .inference_service_config import (
 )
 from .intent import (
     Intent,
-)
-from .intent_analysis import (
-    IntentAnalysis,
 )
 from .internal_config import (
     InternalConfig,
@@ -632,14 +567,8 @@ from .preferences_config import (
 from .rabbitmq_config import (
     RabbitmqConfig,
 )
-from .recovery_strategy import (
-    RecoveryStrategy,
-)
 from .redis_config import (
     RedisConfig,
-)
-from .refinement_config import (
-    RefinementConfig,
 )
 from .requests import (
     LoraListResponse,
@@ -648,9 +577,6 @@ from .requests import (
     ModelRequest,
     ModelsListResponse,
     PromptRequest,
-)
-from .required_capability import (
-    RequiredCapability,
 )
 from .research_plan import (
     ResearchPlan,
@@ -675,11 +601,6 @@ from .resource_usage import (
 )
 from .response_format import (
     ResponseFormat,
-)
-from .routing_strategy import (
-    AlternativeStrategy,
-    Metadata,
-    RoutingStrategy,
 )
 from .search_result import (
     SearchResult,
@@ -734,9 +655,6 @@ from .todo_item import (
 )
 from .tool import (
     Tool,
-)
-from .tool_analysis_request import (
-    ToolAnalysisRequest,
 )
 from .tool_call import (
     ToolCall,
