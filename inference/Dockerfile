@@ -1,66 +1,50 @@
-# Multi-stage build to minimize final image size
-# Build stage - includes full CUDA toolkit for compilation
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 as builder
+# syntax=docker/dockerfile:1.7
 
-# Install build dependencies
+# ---------------------------------------------------------------------------
+# Stage 1 — compile llama.cpp with CUDA support
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 AS llama-builder
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-dev \
-    python3-venv \
-    git \
-    wget \
-    curl \
-    build-essential \
-    cmake \
-    g++ \
-    ninja-build \
-    libcurl4-openssl-dev \
-    pkg-config \
-    ccache \
-    zstd \
+        python3 python3-dev python3-venv \
+        git wget curl \
+        build-essential cmake g++ ninja-build \
+        libcurl4-openssl-dev pkg-config ccache zstd \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
-# Set up CUDA library paths for building
 ENV CUDA_HOME=/usr/local/cuda \
-    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs
+    LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64/stubs
 
-# Create symlink for CUDA driver stub (needed for linking during build)
 RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-
-RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
-    cd llama.cpp && \
-    git checkout tags/b8863 && \
-    git checkout -b llmmll
+ARG LLAMA_CPP_TAG=b8863
+RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
+    && cd /llama.cpp \
+    && git checkout tags/${LLAMA_CPP_TAG} -b llmmll
 
 WORKDIR /llama.cpp
 RUN cmake -B build \
-    -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES="86" \
-    -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release -j6
+        -DGGML_CUDA=ON \
+        -DCMAKE_CUDA_ARCHITECTURES="86" \
+        -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release -j6
 
-# Install ollama binary
-# RUN curl -fsSL https://ollama.com/install.sh | sh
-
-# Runtime stage - minimal CUDA runtime
+# ---------------------------------------------------------------------------
+# Stage 2 — runtime image
+# ---------------------------------------------------------------------------
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
-# Set environment variables - using shared environment approach
+# Pull the uv binary from the official image (pinned)
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
-    RUNNER_DIR="/app/runner" \
-    SERVER_DIR="/app/server" \
-    COMPOSER_DIR="/app/composer" \
     SHARED_VENV="/opt/venv/shared" \
-    # Set all service environments to use shared venv
-    EVALUATION_VENV="/opt/venv/shared" \
-    SERVER_VENV="/opt/venv/shared" \
-    RUNNER_VENV="/opt/venv/shared" \
-    COMPOSER_VENV="/opt/venv/shared" \
+    UV_PROJECT_ENVIRONMENT="/opt/venv/shared" \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1 \
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib:/usr/local/cuda/lib64" \
     DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
@@ -69,12 +53,9 @@ ENV PYTHONUNBUFFERED=1 \
     BNB_CUDA_VERSION=128 \
     TOKENIZERS_PARALLELISM=true \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-    # TORCH_CUDA_ARCH_LIST="8.6" \
     CUDA_DEVICE_ORDER=PCI_BUS_ID \
     CUDA_CACHE_PATH=/tmp/cuda_cache \
     CUDA_LAUNCH_BLOCKING=0 \
-    # CUDA_SCALE_LAUNCH_QUEUES=4x \
-    # GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 \
     PORT=8000 \
     IMAGE_DIR="/root/images" \
     IMAGE_GENERATION_ENABLED="true" \
@@ -87,79 +68,51 @@ ENV PYTHONUNBUFFERED=1 \
     GRPC_MAX_CONCURRENT_RPCS=100 \
     GRPC_ENABLE_REFLECTION=true \
     GRPC_SECURITY_ENABLED=false \
-    GRPC_USE_TLS=false 
+    GRPC_USE_TLS=false
 
-# Install only runtime dependencies (no build tools!)
+# Runtime-only apt deps (no compilers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-venv \
-    curl \
-    libglib2.0-0 \
-    libgomp1 \
-    ffmpeg \
-    binutils \
+        python3 python3-venv \
+        curl libglib2.0-0 libgomp1 ffmpeg binutils \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
+# Compiled llama.cpp binaries
+COPY --from=llama-builder /llama.cpp /llama.cpp
 
-# Copy only the compiled llama.cpp from builder (no wheels needed)
-COPY --from=builder /llama.cpp /llama.cpp
-
-# Copy ollama binary from builder
-# COPY --from=builder /usr/local/bin/ollama /usr/local/bin/ollama
-
-# Set working directory
 WORKDIR /app
 
-# Create single shared virtual environment instead of 4 separate ones
-RUN python3 -m venv ${SHARED_VENV}
+# Create the shared venv uv will manage
+RUN uv venv --python 3.12 ${SHARED_VENV}
 
-# Install all dependencies in shared environment to avoid duplication (before copying source code)
-RUN . ${SHARED_VENV}/bin/activate && pip install --upgrade pip setuptools wheel && deactivate
-# Install PyTorch runtime directly (much smaller than pre-built wheels)
-RUN . ${SHARED_VENV}/bin/activate && pip install --no-cache-dir torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu121 && deactivate
-# Install llama-cpp-python dependencies first
-RUN . ${SHARED_VENV}/bin/activate && pip install --no-cache-dir diskcache>=5.6.1 typing-extensions>=4.5.0 numpy>=1.20.0 jinja2>=2.11.3  && deactivate
-# Install our custom llama-cpp-python from wheels
-# Cleanup wheels and pip cache
-# RUN deactivate
+# Install torch from the CUDA 12.1 index (special index, separate from uv sync).
+# Kept as its own layer so python changes don't re-download torch wheels.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${SHARED_VENV}/bin/python \
+        torch torchaudio torchvision \
+        --index-url https://download.pytorch.org/whl/cu121
 
+# Copy only the dep manifests first so editing source doesn't bust the deps layer
+COPY pyproject.toml uv.lock .python-version ./
 
-# Copy application code AFTER installing base dependencies
+# Resolve and install the rest of the deps into the shared venv
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# Now copy application source
 COPY . .
 
-# Install all requirements files to ensure correct dependency versions
-RUN . ${SHARED_VENV}/bin/activate && \
-    pip install --no-cache-dir -r /app/requirements.txt && \
-    deactivate
+# Make scripts executable; prepare cuda cache dir
+RUN chmod +x /app/startup.sh /app/run_with_env.sh /app/run.sh /app/setup_cuda_runtime.sh \
+    && mkdir -p /tmp/cuda_cache
 
-# Install service packages in development mode (these will rebuild when code changes)
-RUN . ${SHARED_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/runner -e /app/server -e /app/composer && \
-    deactivate
+# Trim venv weight: drop bytecode/test trees that pip/uv install ships with packages
+RUN find ${SHARED_VENV} -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find ${SHARED_VENV} -type d \( -name "tests" -o -name "test" \) -prune -exec rm -rf {} + \
+    && find ${SHARED_VENV} \( -name "*.pyc" -o -name "*.pyo" \) -delete \
+    && rm -rf /tmp/* /var/tmp/* \
+    && echo "source /app/run_with_env.sh" >> /root/.bashrc
 
-# Make scripts executable and setup CUDA runtime
-RUN chmod +x /app/startup.sh /app/run_with_env.sh /app/run.sh /app/setup_cuda_runtime.sh && \
-    mkdir -p /tmp/cuda_cache
-
-
-# Final cleanup - comprehensive cleanup to minimize image size
-RUN find ${SHARED_VENV} -name "*.pyc" -delete && \
-    find ${SHARED_VENV} -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find ${SHARED_VENV} -name "*.pyo" -delete && \
-    find ${SHARED_VENV} -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find ${SHARED_VENV} -name "test" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    rm -rf /tmp/* /var/tmp/* && \
-    echo "# Auto-source run_with_env.sh" >> /root/.bashrc && \
-    echo "source /app/run_with_env.sh" >> /root/.bashrc && \
-    echo 'echo -e "\033[1;32m=== Inference Environment Ready (Shared) ===\033[0m"' >> /root/.bashrc && \
-    echo 'echo -e "\033[1;33mUsing shared environment for all services\033[0m"' >> /root/.bashrc && \
-    echo 'echo "Use: v <environment> <command>"' >> /root/.bashrc
-
-# Expose ports  
 EXPOSE 8000
 
-# Default command - use startup.sh which runs both services
 CMD ["/app/startup.sh"]

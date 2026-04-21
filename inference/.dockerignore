@@ -76,6 +76,23 @@ datasets/
 # Kubernetes configs (already there)
 k8s/
 
+# Deleted / local-only sub-projects and data dirs
+evaluation/
+benchmark_data/
+debug/out/
+.egg-info
+*.egg-info/
+
+# Auto-generated / session scratch
+openapi.json
+copilot-out.json
+routing_test_output.txt
+res*.md
+res*.log
+io.md
+*-session.txt
+*-logs.txt
+
 # Temporary files
 *.tmp
 *.temp
