@@ -13,7 +13,6 @@ const Navigation: React.FC = () => {
     { text: 'Chat', icon: <ChatIcon />, path: '/' },
     { text: 'Images', icon: <ImageIcon />, path: '/images' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
-    { text: 'Model Profiles', icon: <HandymanIcon />, path: '/model-profiles' }
   ];
 
   return (

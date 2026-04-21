@@ -8,7 +8,6 @@ import WebSearchSettings from './WebSearchSettings';
 import SecuritySettings from './SecuritySettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
 import GpuSettings from './GpuSettings';
-import ParameterOptimizationSettings from './ParameterOptimizationSettings';
 import ApiKeySettings from './ApiKeySettings';
 
 interface TabPanelProps {
@@ -104,8 +103,7 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
               <Tab label="Security" {...a11yProps(5)} />
               <Tab label="Image Generation" {...a11yProps(6)} />
               <Tab label="GPU Configuration" {...a11yProps(7)} />
-              <Tab label="Parameter Optimization" {...a11yProps(8)} />
-              <Tab label="API Keys" {...a11yProps(9)} />
+              <Tab label="API Keys" {...a11yProps(8)} />
             </Tabs>
 
             <Box sx={{ p: 2 }}>
@@ -141,9 +139,6 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
                 <GpuSettings />
               </TabPanel>
               <TabPanel value={tabValue} index={8}>
-                <ParameterOptimizationSettings />
-              </TabPanel>
-              <TabPanel value={tabValue} index={9}>
                 <ApiKeySettings />
               </TabPanel>
             </Box>

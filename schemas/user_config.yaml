@@ -16,8 +16,6 @@ properties:
     $ref: image_generation_config.yaml
   gpu_config:
     $ref: gpu_config.yaml
-  parameter_optimization:
-    $ref: parameter_optimization_config.yaml
   workflow:
     $ref: workflow_config.yaml
   tool:
@@ -28,4 +26,3 @@ required:
   - user_id
   - gpu_config
   - workflow
-  - parameter_optimization

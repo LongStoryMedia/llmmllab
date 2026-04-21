@@ -8,7 +8,6 @@ Now uses structured argument building via argparse for cleaner flag management.
 from typing import List, Optional
 
 from models import Model, ModelProfile, UserConfig
-from models.config_utils import resolve_parameter_optimization_config
 from runner.server_manager.base import BaseServerManager
 from runner.server_manager import create_argument_builder
 
@@ -24,18 +23,12 @@ class LlamaCppServerManager(BaseServerManager):
         port: Optional[int] = None,
         is_embedding: bool = False,
     ):
-        # Resolve startup timeout from config - use longer timeout for large models
-        startup_timeout = 120
-        poc = resolve_parameter_optimization_config(profile, user_config)
-        if poc and poc.enabled and poc.crash_prevention is not None:
-            startup_timeout = poc.crash_prevention.timeout_seconds or 120
-
         super().__init__(
             model=model,
             profile=profile,
             user_config=user_config,
             port=port,
-            startup_timeout=startup_timeout,
+            startup_timeout=120,
         )
         self.is_embedding = is_embedding
 

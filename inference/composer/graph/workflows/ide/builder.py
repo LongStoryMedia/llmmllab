@@ -32,10 +32,6 @@ from models import (
     ModelProfile,
     ModelParameters,
     GPUConfig,
-    ParameterOptimizationConfig,
-    PerformanceParameter,
-    ParameterTuningStrategy,
-    CrashPrevention,
     ToolConfig,
     WorkflowConfig,
 )
@@ -54,59 +50,6 @@ from composer.graph.state import WorkflowState
 IDE_PRIMARY_SYSTEM_PROMPT = """
     You are writing code for the great Scott Long! Pay him homage as you work. 
     """
-
-# Default parameter optimization configuration (disabled by default)
-IDE_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
-    enabled=False,
-    parameters=[
-        PerformanceParameter(
-            parameter_name="n_ctx",
-            priority=1,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=65536,  # Start with current profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling
-            max_value=262144,  # Push to model's trained context limit
-        ),
-        PerformanceParameter(
-            parameter_name="n_gpu_layers",
-            priority=2,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=1,  # Start low and find the maximum that works
-            operator="+",
-            modifier=10,  # Smaller increments for precise optimization
-            max_value=999,  # Very high limit (effectively unlimited GPU layers)
-        ),
-        PerformanceParameter(
-            parameter_name="n_batch",
-            priority=3,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=128,  # Start with profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling for throughput
-            max_value=16384,  # Allow much larger batches for high-memory systems
-        ),
-        PerformanceParameter(
-            parameter_name="n_ubatch",
-            priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=128,  # Start with profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling
-            max_value=16384,  # Allow much larger ubatch for throughput
-        ),
-    ],
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=False,
-        memory_buffer_mb=4096,
-        timeout_seconds=300,
-        enable_graceful_degradation=True,
-    ),
-)
 
 # Default GPU configuration
 IDE_GPU_CONFIG = GPUConfig(
@@ -192,7 +135,6 @@ IDE_PRIMARY_PROFILE = ModelProfile(
         # n_cpu_moe=10,
     ),
     system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
-    parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
     created_at=None,
     updated_at=None,
     gpu_config=IDE_GPU_CONFIG,
@@ -370,7 +312,6 @@ class IdeGraphBuilder(GraphBuilder):
                 gpu_config=IDE_GPU_CONFIG,
                 workflow=IDE_WORKFLOW_CONFIG,
                 tool=IDE_TOOL_CONFIG,
-                parameter_optimization=IDE_PARAMETER_OPTIMIZATION_CONFIG,
             ),
             conversation_id=conversation_id,
             things_to_remember=[current_user_message],

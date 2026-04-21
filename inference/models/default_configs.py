@@ -17,12 +17,6 @@ from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
-from .parameter_optimization_config import (
-    ParameterOptimizationConfig,
-    PerformanceParameter,
-    ParameterTuningStrategy,
-)
-from .crash_prevention import CrashPrevention
 from .model_profile_config import ModelProfileConfig
 
 # Removed circular import - DEFAULT_MODEL_PROFILE_CONFIG created inline below
@@ -132,59 +126,6 @@ DEFAULT_TOOL_CONFIG = ToolConfig(
     search_top_k=10,
 )
 
-# Default parameter optimization configuration (disabled by default)
-DEFAULT_PARAMETER_OPTIMIZATION_CONFIG = ParameterOptimizationConfig(
-    enabled=False,
-    parameters=[
-        PerformanceParameter(
-            parameter_name="n_ctx",
-            priority=1,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=65536,  # Start with current profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling
-            max_value=262144,  # Push to model's trained context limit
-        ),
-        PerformanceParameter(
-            parameter_name="n_gpu_layers",
-            priority=2,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=10,
-            floor=1,  # Start low and find the maximum that works
-            operator="+",
-            modifier=10,  # Smaller increments for precise optimization
-            max_value=999,  # Very high limit (effectively unlimited GPU layers)
-        ),
-        PerformanceParameter(
-            parameter_name="n_batch",
-            priority=3,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=128,  # Start with profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling for throughput
-            max_value=16384,  # Allow much larger batches for high-memory systems
-        ),
-        PerformanceParameter(
-            parameter_name="n_ubatch",
-            priority=4,
-            tuning_strategy=ParameterTuningStrategy.BINARY_SEARCH,
-            max_search_attempts=15,
-            floor=128,  # Start with profile setting and push higher
-            operator="*",
-            modifier=2,  # More aggressive scaling
-            max_value=16384,  # Allow much larger ubatch for throughput
-        ),
-    ],
-    crash_prevention=CrashPrevention(
-        enable_preallocation_test=False,
-        memory_buffer_mb=4096,
-        timeout_seconds=120,
-        enable_graceful_degradation=False,
-    ),
-)
-
 # Default model profile configuration (inline to avoid circular import)
 DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
     primary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
@@ -223,5 +164,4 @@ def create_default_user_config(user_id: str) -> UserConfig:
         gpu_config=DEFAULT_GPU_CONFIG,
         workflow=DEFAULT_WORKFLOW_CONFIG,
         tool=DEFAULT_TOOL_CONFIG,
-        parameter_optimization=DEFAULT_PARAMETER_OPTIMIZATION_CONFIG,
     )

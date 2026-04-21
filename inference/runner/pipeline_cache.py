@@ -30,7 +30,6 @@ from runner.pipelines.base import BasePipeline
 from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .utils.resizer import Resizer
-from .utils.intelligent_oom_recovery import IntelligentOOMRecovery
 
 
 class _PipelineCacheEntry:
@@ -133,28 +132,7 @@ class LocalPipelineCacheManager:
         self._cleanup_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
-        # Initialize the resizer and OOM recovery components
         self._resizer = Resizer()
-        try:
-            # Use a local directory for development, /app for production
-            import os
-
-            if os.path.exists("/app"):
-                self._oom_recovery = IntelligentOOMRecovery()
-            else:
-                # Development environment - use local directory
-                import tempfile
-
-                local_data_dir = os.path.join(
-                    tempfile.gettempdir(), "oom_recovery_data"
-                )
-                self._oom_recovery = IntelligentOOMRecovery(data_dir=local_data_dir)
-        except Exception as e:
-            self.logger.warning(
-                f"Failed to initialize OOM recovery: {e}, disabling graceful degradation"
-            )
-            self._oom_recovery = None
-
         self._start_cleanup_thread()
 
     # ---- Public API ----
@@ -211,67 +189,12 @@ class LocalPipelineCacheManager:
                 self._cache.pop(profile_id, None)
 
         self.logger.info(f"🆕 Creating new pipeline for {profile_id}")
-        # Estimate memory requirement for this model/profile
         required = self.estimate_memory(model, profile)
 
-        # Check if graceful degradation is enabled and try OOM recovery if needed
         if not self._ensure_memory(required, exclude=profile_id):
-            # Check if we should try intelligent OOM recovery
-            if (
-                user_config
-                and user_config.parameter_optimization
-                and user_config.parameter_optimization.crash_prevention
-                and user_config.parameter_optimization.crash_prevention.enable_graceful_degradation
-                and self._oom_recovery is not None
-            ):
-
-                self.logger.info(
-                    f"🔄 Insufficient memory for {model.name} ({required/1e9:.2f}GB), "
-                    f"attempting graceful degradation via OOM recovery"
-                )
-
-                try:
-                    # Use OOM recovery to get optimized parameters for the current hardware
-                    optimized_params = (
-                        self._oom_recovery.predict_optimal_parameters_from_profile(
-                            model, profile
-                        )
-                    )
-
-                    for param, value in optimized_params.model_dump().items():
-                        setattr(profile.parameters, param, value)
-
-                    # Re-estimate memory with optimized parameters
-                    optimized_required = self.estimate_memory(model, profile)
-
-                    self.logger.info(
-                        f"🎯 OOM recovery optimized memory requirement from {required/1e9:.2f}GB to {optimized_required/1e9:.2f}GB"
-                    )
-
-                    # Try again with optimized parameters
-                    if self._ensure_memory(optimized_required, exclude=profile_id):
-                        required = optimized_required
-                        self.logger.info(
-                            "✅ OOM recovery successful, proceeding with optimized parameters"
-                        )
-                    else:
-                        self.logger.error(
-                            "❌ OOM recovery failed - still insufficient memory even after optimization"
-                        )
-                        raise RuntimeError(
-                            f"Insufficient memory for local model {model.name}: need {optimized_required/1e9:.2f}GB even after optimization"
-                        )
-
-                except Exception as e:
-                    self.logger.error(f"❌ OOM recovery failed with error: {e}")
-                    raise RuntimeError(
-                        f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB, OOM recovery failed: {e}"
-                    ) from e
-            else:
-                # No graceful degradation, raise error immediately
-                raise RuntimeError(
-                    f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
-                )
+            raise RuntimeError(
+                f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
+            )
 
         pipeline = create_fn(model, profile, grammar, metadata)
         if not pipeline:
