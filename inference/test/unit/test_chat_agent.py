@@ -18,7 +18,6 @@ from models import (
     MessageContent,
     MessageContentType,
     NodeMetadata,
-    CircuitBreakerConfig,
 )
 from composer.core.errors import NodeExecutionError
 
@@ -280,38 +279,6 @@ class TestChatAgent:
             # Verify tools were passed
             mock_run_pipeline.assert_called_once_with(messages, mock_pipeline, tools)
             assert result.message.tool_calls is not None
-
-    @pytest.mark.asyncio
-    async def test_chat_completion_with_circuit_breaker(self):
-        """Test chat completion with circuit breaker."""
-        # Setup
-        pipeline_factory = Mock()
-        profile = create_test_model_profile()
-        agent = create_test_chat_agent(pipeline_factory, profile)
-
-        circuit_breaker = CircuitBreakerConfig(
-            failure_threshold=5, timeout_seconds=60, retry_delay_seconds=10
-        )
-
-        # Mock pipeline context manager
-        mock_pipeline = Mock()
-        pipeline_factory.pipeline.return_value.__enter__ = Mock(
-            return_value=mock_pipeline
-        )
-        pipeline_factory.pipeline.return_value.__exit__ = Mock(return_value=None)
-
-        with patch("runner.run_pipeline") as mock_run_pipeline:
-            test_response = create_test_chat_response()
-            mock_run_pipeline.return_value = test_response
-
-            # Execute
-            messages = create_test_langchain_messages()
-            result = await agent.chat_completion(messages)
-
-            # Verify circuit breaker was passed to pipeline factory
-            pipeline_factory.pipeline.assert_called_once_with(
-                profile, ChatResponse, PipelinePriority.MEDIUM, circuit_breaker
-            )
 
     @patch("composer.agents.chat_agent.message_to_lc_message")
     def test_convert_to_langchain_message(self, mock_convert):

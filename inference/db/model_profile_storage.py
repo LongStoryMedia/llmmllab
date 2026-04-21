@@ -63,20 +63,6 @@ class ModelProfileStorage:
                             f"Failed to parse parameters JSON for profile {profile_id}: {e}"
                         )
 
-                # Parse circuit_breaker if stored as JSON string
-                if isinstance(profile_data.get("circuit_breaker"), str):
-                    try:
-                        circuit_breaker_data = json.loads(
-                            profile_data["circuit_breaker"]
-                        )
-                        # Keep as dictionary - let Pydantic deserialize it
-                        profile_data["circuit_breaker"] = circuit_breaker_data
-                    except (json.JSONDecodeError, TypeError, ValueError) as e:
-                        logger.error(
-                            f"Failed to parse circuit_breaker JSON for profile {profile_id}: {e}"
-                        )
-                        profile_data["circuit_breaker"] = None
-
                 # Parse gpu_config if stored as JSON string
                 if isinstance(profile_data.get("gpu_config"), str):
                     try:
@@ -141,20 +127,6 @@ class ModelProfileStorage:
                             )
                             continue
 
-                    # Parse circuit_breaker if stored as JSON string
-                    if isinstance(profile_data.get("circuit_breaker"), str):
-                        try:
-                            circuit_breaker_data = json.loads(
-                                profile_data["circuit_breaker"]
-                            )
-                            # Keep as dictionary - let Pydantic deserialize it
-                            profile_data["circuit_breaker"] = circuit_breaker_data
-                        except (json.JSONDecodeError, TypeError, ValueError) as e:
-                            logger.error(
-                                f"Failed to parse circuit_breaker JSON for profile: {e}"
-                            )
-                            profile_data["circuit_breaker"] = None
-
                     # Parse gpu_config if stored as JSON string
                     if isinstance(profile_data.get("gpu_config"), str):
                         try:
@@ -193,13 +165,6 @@ class ModelProfileStorage:
         else:
             params_json = "{}"
 
-        # Serialize circuit_breaker to JSON if provided
-        if profile.circuit_breaker:
-            circuit_breaker_dict = profile.circuit_breaker.model_dump()
-            circuit_breaker_json = serialize_to_json(circuit_breaker_dict)
-        else:
-            circuit_breaker_json = None
-
         # Serialize GPU config
         if profile.gpu_config:
             gpu_config_dict = profile.gpu_config.model_dump()
@@ -221,7 +186,6 @@ class ModelProfileStorage:
                     profile.system_prompt,
                     profile.model_version,
                     profile.type,
-                    circuit_breaker_json,
                     gpu_config_json,
                     profile.draft_model,
                 )
@@ -250,13 +214,6 @@ class ModelProfileStorage:
         else:
             params_json = "{}"
 
-        # Serialize circuit_breaker to JSON if provided
-        if profile.circuit_breaker:
-            circuit_breaker_dict = profile.circuit_breaker.model_dump()
-            circuit_breaker_json = serialize_to_json(circuit_breaker_dict)
-        else:
-            circuit_breaker_json = None
-
         # Serialize GPU config
         if profile.gpu_config:
             gpu_config_dict = profile.gpu_config.model_dump()
@@ -277,7 +234,6 @@ class ModelProfileStorage:
                     profile.system_prompt,
                     profile.model_version,
                     profile.type,
-                    circuit_breaker_json,
                     gpu_config_json,
                     profile.draft_model,
                     profile.user_id,

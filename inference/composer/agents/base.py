@@ -416,7 +416,6 @@ The current date is {current_date}."""
             messages: Input messages for the agent
             user_id: User identifier
             tools: Optional tools for the agent
-            circuit_breaker: Optional circuit breaker configuration
             priority: Pipeline execution priority (affects model selection)
 
         Returns:

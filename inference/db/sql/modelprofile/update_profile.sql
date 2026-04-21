@@ -9,10 +9,9 @@ SET
   system_prompt = $6,
   model_version = $7,
   type = $8,
-  circuit_breaker = $9,
-  gpu_config = $10,
-  draft_model = $11,
+  gpu_config = $9,
+  draft_model = $10,
   updated_at = NOW()
 WHERE
   id = $1
-  AND user_id = $12
+  AND user_id = $11

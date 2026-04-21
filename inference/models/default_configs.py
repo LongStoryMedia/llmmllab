@@ -13,7 +13,6 @@ from .memory_config import MemoryConfig
 from .summarization_config import SummarizationConfig
 from .web_search_config import WebSearchConfig
 from .image_generation_config import ImageGenerationConfig
-from .circuit_breaker_config import CircuitBreakerConfig
 from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
@@ -93,26 +92,6 @@ DEFAULT_IMAGE_GENERATION_CONFIG = ImageGenerationConfig(
     guidance_scale=7.5,
     low_memory_mode=False,
     negative_prompt="blurry, distorted, low quality, pixelated",
-)
-
-# Default circuit breaker configuration
-DEFAULT_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
-    base_timeout=60.0,
-    deep_research_timeout=120.0,
-    max_retries=2,
-    cooldown_period=30.0,
-    enable_perplexity_guard=False,  # Disabled by default to prevent cutting off web search formatting
-    perplexity_window=40,
-    perplexity_threshold=10.0,
-    avg_logprob_floor=-6.0,
-    enable_repetition_detection=False,  # Disabled by default to reduce false positives
-    repetition_ngram=6,
-    repetition_threshold=6,
-    min_tokens_for_eval=20,
-    perplexity_log_interval_tokens=20,
-    log_repetition_events=True,
-    tool_gen_repetition_ngram=4,
-    tool_gen_repetition_threshold=3,
 )
 
 # Default GPU configuration
@@ -241,7 +220,6 @@ def create_default_user_config(user_id: str) -> UserConfig:
         summarization=DEFAULT_SUMMARIZATION_CONFIG,
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
         model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
-        circuit_breaker=DEFAULT_CIRCUIT_BREAKER_CONFIG,
         gpu_config=DEFAULT_GPU_CONFIG,
         workflow=DEFAULT_WORKFLOW_CONFIG,
         tool=DEFAULT_TOOL_CONFIG,

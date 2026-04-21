@@ -14,8 +14,6 @@ properties:
     $ref: model_profile_config.yaml
   image_generation:
     $ref: image_generation_config.yaml
-  circuit_breaker:
-    $ref: circuit_breaker_config.yaml
   gpu_config:
     $ref: gpu_config.yaml
   parameter_optimization:
@@ -28,7 +26,6 @@ properties:
     $ref: event_stream_config.yaml
 required:
   - user_id
-  - circuit_breaker
   - gpu_config
   - workflow
   - parameter_optimization

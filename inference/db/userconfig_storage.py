@@ -17,7 +17,6 @@ from models.default_configs import (
     DEFAULT_SUMMARIZATION_CONFIG,
     DEFAULT_WEB_SEARCH_CONFIG,
     DEFAULT_IMAGE_GENERATION_CONFIG,
-    DEFAULT_CIRCUIT_BREAKER_CONFIG,
     DEFAULT_GPU_CONFIG,
     DEFAULT_WORKFLOW_CONFIG,
     DEFAULT_TOOL_CONFIG,
@@ -257,7 +256,6 @@ class UserConfigStorage:
             "web_search",
             "image_generation",
             "model_profiles",
-            "circuit_breaker",
             "gpu_config",
             "workflow",
             "tool",
@@ -280,9 +278,6 @@ class UserConfigStorage:
         )
         self._apply_defaults(
             config_data["model_profiles"], DEFAULT_MODEL_PROFILE_CONFIG.dict()
-        )
-        self._apply_defaults(
-            config_data["circuit_breaker"], DEFAULT_CIRCUIT_BREAKER_CONFIG.dict()
         )
         self._apply_defaults(config_data["gpu_config"], DEFAULT_GPU_CONFIG.dict())
         self._apply_defaults(config_data["workflow"], DEFAULT_WORKFLOW_CONFIG.dict())

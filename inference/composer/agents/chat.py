@@ -52,7 +52,6 @@ class ChatAgent(BaseAgent):
 
         Args:
             messages: List of conversation messages to analyze
-            circuit_breaker: Optional circuit breaker configuration
 
         Returns:
             str: Generated conversation title (2-6 words)

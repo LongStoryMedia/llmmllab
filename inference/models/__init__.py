@@ -16,7 +16,6 @@ try:
     from . import auth_config
     from . import chat_req
     from . import chat_response
-    from . import circuit_breaker_config
     from . import config
     from . import config_utils
     from . import conversation
@@ -133,7 +132,6 @@ __all__ = [
     'auth_config',
     'chat_req',
     'chat_response',
-    'circuit_breaker_config',
     'config',
     'config_utils',
     'conversation',
@@ -244,7 +242,6 @@ __all__ = [
     'AuthConfig',
     'ChatReq',
     'ChatResponse',
-    'CircuitBreakerConfig',
     'Config',
     'Conversation',
     'ConversationCtx',
@@ -371,9 +368,6 @@ from .chat_req import (
 )
 from .chat_response import (
     ChatResponse,
-)
-from .circuit_breaker_config import (
-    CircuitBreakerConfig,
 )
 from .config import (
     Config,

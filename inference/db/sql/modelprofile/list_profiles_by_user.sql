@@ -11,7 +11,6 @@ SELECT
   updated_at,
   model_version,
   type,
-  circuit_breaker,
   gpu_config,
   draft_model
 FROM

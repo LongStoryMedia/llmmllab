@@ -38,7 +38,6 @@ from models import (
     CrashPrevention,
     ToolConfig,
     WorkflowConfig,
-    CircuitBreakerConfig,
 )
 from runner import pipeline_factory
 
@@ -147,27 +146,6 @@ IDE_WORKFLOW_CONFIG = WorkflowConfig(
     context_trim_threshold=0.8,
     enable_streaming=True,
     stream_buffer_size=1024,
-)
-
-
-# Default circuit breaker configuration
-IDE_CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
-    base_timeout=60.0,
-    deep_research_timeout=120.0,
-    max_retries=2,
-    cooldown_period=30.0,
-    enable_perplexity_guard=False,  # Disabled by default to prevent cutting off web search formatting
-    perplexity_window=40,
-    perplexity_threshold=10.0,
-    avg_logprob_floor=-6.0,
-    enable_repetition_detection=False,  # Disabled by default to reduce false positives
-    repetition_ngram=6,
-    repetition_threshold=6,
-    min_tokens_for_eval=20,
-    perplexity_log_interval_tokens=20,
-    log_repetition_events=True,
-    tool_gen_repetition_ngram=4,
-    tool_gen_repetition_threshold=3,
 )
 
 
@@ -389,7 +367,6 @@ class IdeGraphBuilder(GraphBuilder):
                 summarization=None,
                 image_generation=None,
                 model_profiles=None,
-                circuit_breaker=IDE_CIRCUIT_BREAKER_CONFIG,
                 gpu_config=IDE_GPU_CONFIG,
                 workflow=IDE_WORKFLOW_CONFIG,
                 tool=IDE_TOOL_CONFIG,

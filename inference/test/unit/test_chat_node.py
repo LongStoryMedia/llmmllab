@@ -140,7 +140,6 @@ class TestChatNode:
                 messages=[LangChainMessage(type="human", content="Test message")],
                 user_id="test-user",
                 tools=None,  # When available_tools is empty, it passes None
-                circuit_breaker=state.user_config.circuit_breaker,
                 stream=None,
             )
 
@@ -185,7 +184,6 @@ class TestChatNode:
                 messages=[LangChainMessage(type="human", content="Test message")],
                 user_id="test-user",
                 tools=[test_tool],
-                circuit_breaker=state.user_config.circuit_breaker,
                 stream=None,
             )
 

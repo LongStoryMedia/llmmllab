@@ -4,7 +4,6 @@
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
 from .auth_config import AuthConfig
-from .circuit_breaker_config import CircuitBreakerConfig
 from .database_config import DatabaseConfig
 from .event_stream_config import EventStreamConfig
 from .gpu_config import GPUConfig
@@ -38,7 +37,6 @@ class Config(BaseModel):
     preferences: Annotated[PreferencesConfig, Field(...)]
     model_profiles: Annotated[ModelProfileConfig, Field(...)]
     image_generation: Annotated[ImageGenerationConfig, Field(...)]
-    circuit_breaker: Annotated[CircuitBreakerConfig, Field(...)]
     gpu_config: Annotated[GPUConfig, Field(...)]
     log_level: Annotated[str, Field(..., description="Log level")]
     """Log level"""

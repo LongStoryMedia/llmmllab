@@ -7,11 +7,10 @@ import { ImageGenerationConfig } from '../types/ImageGenerationConfig';
 import { ModelProfileConfig } from '../types/ModelProfileConfig';
 import { PreferencesConfig } from '../types/PreferencesConfig';
 import { MemoryConfig } from '../types/MemoryConfig';
-import { CircuitBreakerConfig } from '../types/CircuitBreakerConfig';
 import { GPUConfig } from '../types/GpuConfig';
 
 
-export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig | MemoryConfig | CircuitBreakerConfig | GPUConfig;
+export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig | MemoryConfig | GPUConfig;
 interface ConfigContextType {
   config: UserConfig | null;
   isLoading: boolean;

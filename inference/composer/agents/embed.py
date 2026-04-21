@@ -237,7 +237,6 @@ class EmbeddingAgent:
         Args:
             messages: Input messages for embedding
             user_id: User identifier
-            circuit_breaker: Optional circuit breaker configuration
             priority: Pipeline execution priority (affects model selection)
 
         Returns:
