@@ -4,7 +4,7 @@ Uses clean factories and strategies with proper dependency injection pattern.
 All agents, storage services, and model profiles are instantiated upfront and injected.
 """
 
-from typing import TYPE_CHECKING, Optional, Type, cast
+from typing import Optional, Type, cast
 import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
@@ -23,7 +23,6 @@ from composer.constants import (
 )
 from models import (
     ModelProfileType,
-    UserConfig,
     NodeMetadata,
     MessageRole,
     Message,
@@ -33,12 +32,15 @@ from models import (
 from runner import pipeline_factory
 
 from utils.model_profile import get_model_profile_for_task
-from utils.logging import llmmllogger
 
 from composer.agents.chat import ChatAgent
 from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.embed import EmbeddingAgent
-from composer.graph.workflows.base import GraphBuilder, should_continue_tool_calls, should_generate_title
+from composer.graph.workflows.base import (
+    GraphBuilder,
+    should_continue_tool_calls,
+    should_generate_title,
+)
 from composer.graph.nodes.agent import AgentNode
 from composer.graph.nodes.memory import (
     MemorySearchNode,
@@ -47,18 +49,6 @@ from composer.graph.nodes.memory import (
 )
 from composer.tools.registry import registry_manager
 from composer.graph.state import WorkflowState, assemble_context_messages
-
-if TYPE_CHECKING:
-    from db import Storage
-    from db.userconfig_storage import UserConfigStorage
-    from db.conversation_storage import ConversationStorage
-    from db.message_storage import MessageStorage
-    from db.model_profile_storage import ModelProfileStorage
-    from db.memory_storage import MemoryStorage
-    from db.summary_storage import SummaryStorage
-    from db.search_storage import SearchStorage
-    from db.dynamic_tool_storage import DynamicToolStorage
-    from db.checkpoint_storage import CheckpointStorage
 
 
 class DialogGraphBuilder(GraphBuilder):
@@ -78,43 +68,6 @@ class DialogGraphBuilder(GraphBuilder):
     - Circuit breaking (separate concern)
     - Tool orchestration (separate nodes)
     """
-
-    def __init__(
-        self,
-        storage: "Storage",
-        user_config: UserConfig,
-    ):
-        """
-        Initialize GraphBuilder with dependency injection.
-
-        Args:
-            storage: Storage instance for dependency injection
-            pipeline_factory: PipelineFactory
-        """
-        # Core dependencies
-        self.user_config = user_config
-        self.logger = llmmllogger.logger.bind(component="GraphBuilder")
-
-        # Use storage.get_service for type safety and linter warnings avoidance
-        self.user_config_storage: "UserConfigStorage" = storage.get_service(
-            storage.user_config
-        )
-        self.conversation_storage: "ConversationStorage" = storage.get_service(
-            storage.conversation
-        )
-        self.message_storage: "MessageStorage" = storage.get_service(storage.message)
-        self.model_profile_storage: "ModelProfileStorage" = storage.get_service(
-            storage.model_profile
-        )
-        self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
-        self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
-        self.search_storage: "SearchStorage" = storage.get_service(storage.search)
-        self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
-            storage.dynamic_tool
-        )
-        self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
-            storage.checkpoint
-        )
 
     async def build_workflow(
         self,

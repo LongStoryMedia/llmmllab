@@ -9,7 +9,7 @@ Supports three tool modes:
     Server tool calls loop through the ServerToolNode; client tool calls pass through.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Type, Union, cast
+from typing import Any, Dict, List, Optional, Set, Type, Union, cast
 
 import uuid
 
@@ -19,10 +19,7 @@ from langchain.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
-from composer.constants import (
-    AGENT_NODE_NAME,
-    TOOL_NODE_NAME,
-)
+from composer.constants import AGENT_NODE_NAME, TOOL_NODE_NAME
 
 from models import (
     ModelProfileType,
@@ -45,8 +42,6 @@ from models import (
 )
 from runner import pipeline_factory
 
-from utils.logging import llmmllogger
-
 from composer.agents.chat import ChatAgent
 from composer.graph.workflows.base import GraphBuilder, should_continue_tool_calls
 from composer.graph.nodes.agent import AgentNode
@@ -55,18 +50,6 @@ from composer.graph.nodes.server_tools import (
     make_should_continue_server_tools,
 )
 from composer.graph.state import WorkflowState
-
-if TYPE_CHECKING:
-    from db import Storage
-    from db.userconfig_storage import UserConfigStorage
-    from db.conversation_storage import ConversationStorage
-    from db.message_storage import MessageStorage
-    from db.model_profile_storage import ModelProfileStorage
-    from db.memory_storage import MemoryStorage
-    from db.summary_storage import SummaryStorage
-    from db.search_storage import SearchStorage
-    from db.dynamic_tool_storage import DynamicToolStorage
-    from db.checkpoint_storage import CheckpointStorage
 
 
 IDE_PRIMARY_SYSTEM_PROMPT = """
@@ -248,34 +231,6 @@ class IdeGraphBuilder(GraphBuilder):
     Server-side mode (server_tools): adds ToolNode + feedback loop.
     Graph: START -> Agent -> (tools? -> ToolNode -> Agent) | END.
     """
-
-    def __init__(
-        self,
-        storage: "Storage",
-        user_config: UserConfig,
-    ):
-        self.user_config = user_config
-        self.logger = llmmllogger.logger.bind(component="IdeGraphBuilder")
-
-        self.user_config_storage: "UserConfigStorage" = storage.get_service(
-            storage.user_config
-        )
-        self.conversation_storage: "ConversationStorage" = storage.get_service(
-            storage.conversation
-        )
-        self.message_storage: "MessageStorage" = storage.get_service(storage.message)
-        self.model_profile_storage: "ModelProfileStorage" = storage.get_service(
-            storage.model_profile
-        )
-        self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
-        self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
-        self.search_storage: "SearchStorage" = storage.get_service(storage.search)
-        self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
-            storage.dynamic_tool
-        )
-        self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
-            storage.checkpoint
-        )
 
     async def build_workflow(
         self,
