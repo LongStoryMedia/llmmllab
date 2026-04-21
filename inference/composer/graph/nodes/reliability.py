@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import re
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
@@ -32,32 +31,12 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 from composer.graph.state import WorkflowState
 from utils.logging import llmmllogger
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _text(msg: BaseMessage) -> str:
-    """Extract plain text from any message type."""
-    if isinstance(msg.content, str):
-        return msg.content
-    if isinstance(msg.content, list):
-        parts = []
-        for block in msg.content:
-            if isinstance(block, dict):
-                parts.append(block.get("text", ""))
-            elif isinstance(block, str):
-                parts.append(block)
-        return " ".join(parts)
-    return ""
+from utils.message_conversion import extract_text_from_message
+from utils.tool_call_types import extract_tool_call_requests
 
 
 def _tool_call_names(msg: BaseMessage) -> List[str]:
-    """Return list of tool call names from an AIMessage."""
-    if not isinstance(msg, AIMessage):
-        return []
-    return [tc.get("name", "") for tc in (msg.tool_calls or [])]
+    return [req["name"] for req in extract_tool_call_requests(msg)]
 
 
 # ---------------------------------------------------------------------------
@@ -95,13 +74,13 @@ def _extract_features(messages: Sequence[BaseMessage], window: int) -> List[floa
     if not tail:
         return [0.0] * 5
 
-    lengths = [len(_text(m)) for m in tail if isinstance(m, AIMessage)] or [0]
+    lengths = [len(extract_text_from_message(m)) for m in tail if isinstance(m, AIMessage)] or [0]
     tool_calls = [n for m in tail for n in _tool_call_names(m)]
     tool_msgs = [m for m in tail if isinstance(m, ToolMessage)]
     errors = sum(
         1
         for m in tool_msgs
-        if "error" in _text(m).lower() or (getattr(m, "status", None) == "error")
+        if "error" in extract_text_from_message(m).lower() or (getattr(m, "status", None) == "error")
     )
 
     mean_len = sum(lengths) / len(lengths)
@@ -396,7 +375,7 @@ def _simhash(text: str, bits: int = 64) -> int:
 
 
 def _hamming_distance(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+    return (a ^ b).bit_count()
 
 
 class LoopDetectorNode:
@@ -448,7 +427,7 @@ class LoopDetectorNode:
         ai_msgs = [m for m in messages if isinstance(m, AIMessage)]
         if not ai_msgs:
             return False
-        last_text = _text(ai_msgs[-1])
+        last_text = extract_text_from_message(ai_msgs[-1])
         if not last_text.strip():
             return False
         h = _simhash(last_text)
@@ -514,6 +493,4 @@ def should_stop_after_loop_check(state: WorkflowState) -> str:
     When hard_stop is desired, route to END on loop detection.
     """
     flags = state.get("reliability_flags") or {}
-    return (
-        "end" if flags.get("loop_detected") else "end"
-    )  # always ends; extend to re-route
+    return "end" if flags.get("loop_detected") else "agent"

@@ -11,8 +11,10 @@ Tests cover:
 
 import sys
 
+import aiohttp
 import pytest
 import asyncio
+from aioresponses import aioresponses
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Check if Playwright is available for conditional test skipping
@@ -27,6 +29,13 @@ from composer.tools.static.web_reader_tool import (
     _is_spa_detected,
     _extract_text_from_html,
 )
+
+
+@pytest.fixture
+def aioresponses_fixture():
+    """Yield an aioresponses context for mocking aiohttp requests."""
+    with aioresponses() as m:
+        yield m
 
 
 # =============================================================================
@@ -293,12 +302,13 @@ class TestReadWebContent:
         """Test handling of network errors."""
         aioresponses_fixture.get(
             "https://example.com/offline",
-            exception=asyncio.TimeoutError(),
+            exception=aiohttp.ClientError("connection refused"),
         )
 
         result = await read_web_content.ainvoke({"url": "https://example.com/offline"})
 
         assert "Error" in result
+        assert "Network error" in result
 
     @pytest.mark.asyncio
     async def test_render_js_parameter(self):

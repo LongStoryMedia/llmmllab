@@ -1,6 +1,5 @@
 import json
 import os
-import string
 import uuid
 from collections.abc import AsyncIterator
 from typing import Dict, Union, Any
@@ -971,12 +970,7 @@ async def createMessage(
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
         claude_regex = regex.compile(r"claude|haiku|sonnet|opus", regex.IGNORECASE)
         if claude_regex.search(body.model):
-            # if "haiku" in body.model.lower():?
             body.model = "Qwen3_6_35B_A3B"
-            # elif "sonnet" in body.model.lower():
-            #     body.model = "Qwen3_6_35B_A3B"
-            # elif "opus" in body.model.lower():
-            #     body.model = "Qwen3_5_122B_A10B"
 
         client_tools = None
         tool_choice = None
