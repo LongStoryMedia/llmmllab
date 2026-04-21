@@ -34,7 +34,6 @@ from runner import pipeline_factory
 from utils.model_profile import get_model_profile_for_task
 
 from composer.agents.chat import ChatAgent
-from composer.agents.engineering_agent import EngineeringAgent
 from composer.agents.embed import EmbeddingAgent
 from composer.graph.workflows.base import (
     GraphBuilder,
@@ -95,11 +94,6 @@ class DialogGraphBuilder(GraphBuilder):
                 ModelProfileType.Primary,
                 self.user_config.user_id,
             )
-            engineering_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Engineering,
-                self.user_config.user_id,
-            )
             embedding_profile = await get_model_profile_for_task(
                 self.user_config.model_profiles,
                 ModelProfileType.Embedding,
@@ -113,11 +107,6 @@ class DialogGraphBuilder(GraphBuilder):
                 model=cast(BaseChatModel, primary_model),
                 profile=primary_profile,
                 component_name="PrimaryChatAgent",
-            )
-            engineering_agent = EngineeringAgent(
-                model=cast(BaseChatModel, primary_model),
-                profile=engineering_profile,
-                tool_storage=self.dynamic_tool_storage,
             )
             embedding_agent = EmbeddingAgent(
                 model=cast(Embeddings, embedding_model),
@@ -141,10 +130,7 @@ class DialogGraphBuilder(GraphBuilder):
             )
             memory_storage_node = MemoryStorageNode(self.memory_storage)
 
-            # create tool registry
-            tool_registry = await registry_manager.get_user_registry(
-                user_id, engineering_agent
-            )
+            tool_registry = await registry_manager.get_user_registry(user_id)
             tools = tool_registry.get_all_executable_tools()
 
             tool_node = ToolNode(tools)

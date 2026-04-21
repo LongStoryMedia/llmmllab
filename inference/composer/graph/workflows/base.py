@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from db.memory_storage import MemoryStorage
     from db.summary_storage import SummaryStorage
     from db.search_storage import SearchStorage
-    from db.dynamic_tool_storage import DynamicToolStorage
     from db.checkpoint_storage import CheckpointStorage
 
 
@@ -68,9 +67,6 @@ class GraphBuilder(ABC):
         self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
         self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
         self.search_storage: "SearchStorage" = storage.get_service(storage.search)
-        self.dynamic_tool_storage: "DynamicToolStorage" = storage.get_service(
-            storage.dynamic_tool
-        )
         self.checkpoint_storage: "CheckpointStorage" = storage.get_service(
             storage.checkpoint
         )

@@ -20,7 +20,6 @@ from .model_storage import ModelStorage
 from .summary_storage import SummaryStorage
 from .memory_storage import MemoryStorage
 from .search_storage import SearchStorage
-from .dynamic_tool_storage import DynamicToolStorage
 from .thought_storage import ThoughtStorage
 from .tool_call_storage import ToolCallStorage
 from .message_content_storage import MessageContentStorage
@@ -56,7 +55,6 @@ class Storage:
         self.summary = None
         self.memory = None
         self.search = None
-        self.dynamic_tool = None
         self.thought = None
         self.tool_call = None
         self.message_content = None
@@ -104,7 +102,6 @@ class Storage:
             self.summary = SummaryStorage(self.pool, get_query)
             self.memory = MemoryStorage(self.pool, get_query)
             self.search = SearchStorage(self.pool, get_query)
-            self.dynamic_tool = DynamicToolStorage(self.pool, get_query)
             self.thought = ThoughtStorage(self.pool, get_query)
             self.tool_call = ToolCallStorage(self.pool, get_query)
             self.message_content = MessageContentStorage(self.pool, get_query)
