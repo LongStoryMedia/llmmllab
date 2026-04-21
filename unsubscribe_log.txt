@@ -1,2 +1,0 @@
-# Unsubscribe Log
-# Format: [Date] sender | status

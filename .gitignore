@@ -7,33 +7,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node / frontend
 node_modules
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.idea/
 .env*
 
-test-manifest.yaml
-.idea/
+# Secrets / local config
 .secrets/
 .config*
-
+test-manifest.yaml
 *.ldif
 
-venv/
-
+# Python
 __pycache__
 *.pyc
 *.pyo
@@ -49,19 +48,44 @@ __pycache__
 .coverage
 .coverage.*
 .tox
-.venv/
 .fake
 
+# Virtual envs
+venv/
+.venv/
+
+# Downloads / models
 dl/
 .dl/
-
 .models.json
 .models.yaml
 .maistro/
+
+# Scratch / session dumps (commonly generated during debugging)
 res*.md
+res*.log
 io.md
 CHAT_COMPLETION*.md
-.*.json
-res2.md
+compaction_req.txt
+*-session.txt
+*-logs.txt
+claude-req*.json
+.intent.json
+abrupt-end.txt
+completion-logs.txt
+error.txt
+todo.md
+
+# Auto-generated
+inference/openapi.json
+inference/copilot-out.json
+inference/routing_test_output.txt
+inference/benchmark_data/
+inference/evaluation/
+
+# Screenshots at repo root only (not tracked assets)
+/*.png
+
+# Misc
 .playwright*/
 .sync_state/
