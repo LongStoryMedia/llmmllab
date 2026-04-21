@@ -33,7 +33,7 @@ RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/li
 
 RUN cd / && git clone https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-    git checkout tags/b8464 && \
+    git checkout tags/b8863 && \
     git checkout -b llmmll
 
 WORKDIR /llama.cpp
@@ -54,7 +54,6 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
     RUNNER_DIR="/app/runner" \
     SERVER_DIR="/app/server" \
-    EVALUATION_DIR="/app/evaluation" \
     COMPOSER_DIR="/app/composer" \
     SHARED_VENV="/opt/venv/shared" \
     # Set all service environments to use shared venv
@@ -131,9 +130,14 @@ RUN . ${SHARED_VENV}/bin/activate && pip install --no-cache-dir diskcache>=5.6.1
 # Copy application code AFTER installing base dependencies
 COPY . .
 
+# Install all requirements files to ensure correct dependency versions
+RUN . ${SHARED_VENV}/bin/activate && \
+    pip install --no-cache-dir -r /app/requirements.txt && \
+    deactivate
+
 # Install service packages in development mode (these will rebuild when code changes)
 RUN . ${SHARED_VENV}/bin/activate && \
-    pip install --no-cache-dir -e /app/runner -e /app/server -e /app/evaluation -e /app/composer && \
+    pip install --no-cache-dir -e /app/runner -e /app/server -e /app/composer && \
     deactivate
 
 # Make scripts executable and setup CUDA runtime

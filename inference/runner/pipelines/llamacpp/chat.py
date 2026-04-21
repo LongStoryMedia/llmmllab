@@ -279,10 +279,6 @@ class ChatLlamaCppPipeline(BasePipeline):
 
         messages = self._sanitize_messages(messages)
 
-        self._logger.debug(
-            f"Streaming with messages: {json.dumps([m.model_dump() for m in messages], indent=4)}"
-        )
-
         # Use protected method with type ignore for compatibility
         return self.chat_model._stream(  # type: ignore[attr-defined]
             messages=messages,

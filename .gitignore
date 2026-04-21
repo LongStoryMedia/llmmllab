@@ -63,3 +63,5 @@ io.md
 CHAT_COMPLETION*.md
 .*.json
 res2.md
+.playwright*/
+.sync_state/
