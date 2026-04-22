@@ -275,7 +275,8 @@ class DynamicFlagParser:
 
                 # Determine argument type (now that we know if it's a negation flag)
                 arg_type = self._infer_argument_type(
-                    description, takes_value, value_type, is_negation
+                    description, takes_value, value_type, is_negation,
+                    flag_name=base_name,
                 )
 
                 flag_info = {
@@ -307,6 +308,7 @@ class DynamicFlagParser:
         takes_value: bool,
         value_type: Optional[str] = None,
         is_negation: bool = False,
+        flag_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Infer argument type from description and value requirement.
 
@@ -323,6 +325,12 @@ class DynamicFlagParser:
         the action only indicates presence.
         """
         desc_lower = description.lower()
+        # Combine description and flag name for keyword matching so that
+        # flags like --repeat-penalty (desc: "penalize repeat sequence of
+        # tokens") are correctly classified as float via the flag name.
+        search_text = desc_lower
+        if flag_name:
+            search_text = f"{flag_name.replace('-', ' ')} {desc_lower}"
 
         # Boolean flags (no value) - only for flags that actually don't take values
         if not takes_value:
@@ -373,9 +381,28 @@ class DynamicFlagParser:
         ]:
             return {"type": str, "action": "store"}
 
+        # Float flags - be more specific to avoid false positives but include sampling parameters.
+        # Check BEFORE the generic "N" integer inference so that flags like
+        # --repeat-penalty N whose descriptions contain "penalty" are
+        # correctly typed as float rather than int.
+        float_keywords = [
+            "temperature",
+            "probability",
+            "factor",
+            "threshold",
+            "penalty",
+            "learning rate",
+            "ratio",
+            "sampling",
+            "typical",
+            "multiplier",
+        ]
+        if value_type == "P" or any(word in search_text for word in float_keywords):
+            return {"type": float, "action": "store"}
+
         # Integer flags based on value type indicator
         if value_type == "N" or any(
-            word in desc_lower
+            word in search_text
             for word in [
                 "number",
                 "size",
@@ -388,24 +415,6 @@ class DynamicFlagParser:
             ]
         ):
             return {"type": int, "action": "store"}
-
-        # Float flags - be more specific to avoid false positives but include sampling parameters
-        if value_type == "P" or any(
-            word in desc_lower
-            for word in [
-                "temperature",
-                "probability",
-                "factor",
-                "threshold",
-                "penalty",
-                "learning rate",
-                "ratio",
-                "sampling",
-                "typical",
-                "multiplier",
-            ]
-        ):
-            return {"type": float, "action": "store"}
 
         # String flags (default for value-taking flags)
         return {"type": str, "action": "store"}
