@@ -1,5 +1,4 @@
 export HELM_KUBECONTEXT=lsnet
-# export PYTHONPATH=$(CURDIR)/interence:$(PYTHONPATH)
 
 .SILENT:
 
@@ -53,7 +52,7 @@ validate:
 	@cd ui && npx tsc --noEmit
 	@echo "Validating Python syntax in inference project..."
 	@python -m compileall -q -x '(venv|\.venv)' ./inference
-	@echo "Checking for Python type errors using Pyright (VSCode's Pylance engine)..."
+	@echo "Checking for Python type errors using Pyright..."
 	@if command -v pyright >/dev/null 2>&1; then \
 		pyright -p ./pyrightconfig.json; \
 	else \
@@ -62,35 +61,10 @@ validate:
 	fi
 	@echo "Validation complete!"
 
-test:
-	@echo "Running tests for inference and UI"
-	cd inference && pytest test/
-	cd ui && npm run test
-
 clean:
 	@echo "Cleaning artifacts..."
-	rm -rf ./inference/debug/out/
 	rm -rf ./ui/build/
 	rm -rf ./inference/models/
 	@echo "Artifacts cleaned."
 
-.PHONY: inference maistro ui validate test clean
-
-e2e-%:
-	kubectl exec -it -n llmmll $$(kubectl get pods -n llmmll -o jsonpath='{.items[0].metadata.name}') -- /app/v.sh server python -m debug.test_real_end_to_end_pipeline $*
-
-clear-debug:
-	rm ./inference/debug/out/*.txt 
-	rm ./inference/debug/out/*.json
-	rm ./inference/debug/out/*.md
-	./inference/sync-code.sh -R
-
-clean:
-	@echo "Cleaning artifacts..."
-	rm -rf ./inference/debug/out/
-	rm -rf ./ui/build/
-	rm -rf ./inference/models/
-	@echo "Artifacts cleaned."
-
-.PHONY: inference maistro ui validate test clean
-
+.PHONY: inference maistro ui validate test clean deploy start start-maistro start-ui inference-dev gen
