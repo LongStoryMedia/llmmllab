@@ -2,12 +2,6 @@
 Shared utility modules for the inference system.
 """
 
-from .model_profile import (
-    get_model_profile_for_task,
-    get_profile_id_for_task,
-    get_model_profile,
-)
-
 from .message_conversion import (
     extract_text_from_message,
     create_text_message_content,
@@ -19,7 +13,6 @@ from .message_conversion import (
     convert_lc_message_content_to_message_format,
     get_most_recent_user_message_text,
     normalize_message_input,
-    MessageInput,
 )
 from .tool_call_types import (
     extract_tool_calls_as_models,
@@ -57,9 +50,6 @@ from .token_estimation import (
 from .response import create_streaming_chunk, create_error_response
 
 __all__ = [
-    "get_model_profile_for_task",
-    "get_profile_id_for_task",
-    "get_model_profile",
     "get_grammar_for_model",
     "parse_structured_output",
     "StructuredOutputError",
