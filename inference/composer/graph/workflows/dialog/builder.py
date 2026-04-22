@@ -103,7 +103,12 @@ class DialogGraphBuilder(GraphBuilder):
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
                 system_prompt=primary_model_def.system_prompt or "",
-                num_ctx=(primary_model_def.parameters.num_ctx if primary_model_def.parameters else None) or 100000,
+                num_ctx=(
+                    primary_model_def.parameters.num_ctx
+                    if primary_model_def.parameters
+                    else None
+                )
+                or 100000,
                 component_name="PrimaryChatAgent",
             )
             embedding_agent = EmbeddingAgent(
