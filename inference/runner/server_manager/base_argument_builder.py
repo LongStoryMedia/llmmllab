@@ -10,7 +10,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from models import Model, ModelProfile, UserConfig
+from models import Model, UserConfig
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="BaseArgumentBuilder")
@@ -22,13 +22,11 @@ class BaseArgumentBuilder(ABC):
     def __init__(
         self,
         model: Model,
-        profile: ModelProfile,
         user_config: Optional[UserConfig] = None,
         port: Optional[int] = None,
         is_embedding: bool = False,
     ):
         self.model = model
-        self.profile = profile
         self.user_config = user_config
         self.port = port
         self.is_embedding = is_embedding

@@ -14,7 +14,7 @@ from langchain_core.outputs import ChatResult, ChatGenerationChunk
 from langchain_core.language_models import BaseChatModel
 
 
-from models import Model, ModelProfile
+from models import Model
 
 
 # Enable HTTP logging for debugging
@@ -47,24 +47,14 @@ class BasePipeline(BaseChatModel, ABC):
         extra = "allow"
 
     model: Model
-    profile: ModelProfile
     grammar: Optional[Type[BaseModel]]
 
     def __init__(
         self,
         model: Model,
-        profile: ModelProfile,
         grammar: Optional[Type[BaseModel]],
         metadata: Optional[dict] = None,
     ):
-        """Base LlamaCpp pipeline implementation.
-
-        Experiment 4 adds optional single-GPU isolation to rule out mixed compute capability issues.
-        Enable with environment variable:
-            EXPERIMENT_SINGLE_GPU=true (forces CUDA_VISIBLE_DEVICES to EXPERIMENT_SINGLE_GPU_ID or '1')
-            EXPERIMENT_SINGLE_GPU_ID=1 (defaults to 1 if unset)
-        """
-
         # Pass the required fields to the parent constructor for Pydantic validation
         super().__init__(
             name=model.name,
@@ -76,12 +66,10 @@ class BasePipeline(BaseChatModel, ABC):
             ],
             metadata={
                 "model_id": model.id,
-                "profile_id": profile.id,
                 "grammar": grammar.__name__ if grammar else "None",
                 **(metadata or {}),
             },
             model=model,  # type: ignore
-            profile=profile,  # type: ignore
             grammar=grammar,  # type: ignore
         )
 

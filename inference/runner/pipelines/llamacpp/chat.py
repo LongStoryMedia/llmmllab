@@ -16,7 +16,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from models import Model, ModelProfile, ModelProfileType
+from models import Model
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
 from utils.logging import llmmllogger
@@ -86,12 +86,11 @@ class ChatLlamaCppPipeline(BasePipeline):
     def __init__(
         self,
         model: Model,
-        profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = None,
         **kwargs,
     ):
-        super().__init__(model, profile, grammar, metadata)
+        super().__init__(model, grammar, metadata)
         self.user_config = kwargs.get("user_config", None)
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
@@ -100,7 +99,6 @@ class ChatLlamaCppPipeline(BasePipeline):
         # Create server manager
         self.server_manager = LlamaCppServerManager(
             model=model,
-            profile=profile,
             user_config=self.user_config,
         )
 
@@ -160,7 +158,7 @@ class ChatLlamaCppPipeline(BasePipeline):
             # OpenAI SDK requires a positive int or omission.  llama.cpp
             # defaults to ctx_size when max_tokens is not sent, which is what
             # we want.
-            profile_max = self.profile.parameters.max_tokens
+            profile_max = self.model.parameters.max_tokens if self.model.parameters else None
             max_tokens = profile_max if (profile_max and profile_max > 0) else None
 
             self.chat_model = ReasoningChatOpenAI(
@@ -169,14 +167,14 @@ class ChatLlamaCppPipeline(BasePipeline):
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=1,
                 timeout=30000,
-                temperature=self.profile.parameters.temperature or 0.7,
+                temperature=(self.model.parameters.temperature if self.model.parameters else None) or 0.7,
                 # max_tokens=max_tokens,  # type: ignore[assignment]
-                top_p=self.profile.parameters.top_p or 0.9,
+                top_p=(self.model.parameters.top_p if self.model.parameters else None) or 0.9,
                 streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={
-                    "model_profile": self.profile.name,
-                    "task": ModelProfileType(self.profile.type).name,
+                    "model_name": self.model.name,
+                    "task": self.model.task.value,
                     **(self.metadata or {}),
                 },
             )

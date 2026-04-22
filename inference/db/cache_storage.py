@@ -30,7 +30,6 @@ import redis
 from models.message import Message
 from models.summary import Summary
 from models.conversation import Conversation
-from models.model_profile import ModelProfile
 from models.user_config import UserConfig
 
 # Set up logger
@@ -52,8 +51,6 @@ class CacheStorage:
     MESSAGES_LIST_PREFIX = "llmmll:messages:"
     SUMMARIES_LIST_PREFIX = "llmmll:summaries:"
     USERCONFIG_KEY_PREFIX = "llmmll:userconfig:"
-    MODELPROFILE_KEY_PREFIX = "llmmll:modelprofile:"
-    MODELPROFILES_LIST_PREFIX = "llmmll:modelprofiles:"
 
     def __init__(self, redis_url: Optional[str] = None, timeout: int = 5):
         """Initialize the CacheStorage instance."""
@@ -369,92 +366,6 @@ class CacheStorage:
     def invalidate_user_conversations_cache(self, user_id: str):
         """Invalidate all conversations cache for a user."""
         self._invalidate_cache(self.CONVERSATION_LIST_PREFIX, user_id)
-
-    # ========== ModelProfile Cache Operations ==========
-    def get_model_profile_from_cache(self, profile_id: UUID) -> Optional[ModelProfile]:
-        """Get a model profile from cache by ID."""
-        if not self.is_storage_cache_enabled():
-            return None
-        key = self.cache_key(self.MODELPROFILE_KEY_PREFIX, profile_id)
-        data = self._safe_redis_call("get", key)
-        if not data:
-            return None
-        try:
-            # Parse the raw JSON into a ModelProfile object
-            profile_data = data.decode() if isinstance(data, bytes) else str(data)
-            profile_dict = json.loads(profile_data)
-
-            # Ensure parameters is properly handled
-            if "parameters" in profile_dict and isinstance(
-                profile_dict["parameters"], str
-            ):
-                try:
-                    profile_dict["parameters"] = json.loads(profile_dict["parameters"])
-                except Exception as e:
-                    logger.error(
-                        f"Failed to parse parameters JSON from cache for profile {profile_id}: {e}"
-                    )
-
-            return ModelProfile.parse_obj(profile_dict)
-        except Exception as e:
-            logger.error(f"Error parsing model profile from cache: {str(e)}")
-            return None
-
-    def cache_model_profile(self, profile: ModelProfile):
-        """Cache a model profile."""
-        if not self.is_storage_cache_enabled() or not profile:
-            return
-        key = self.cache_key(self.MODELPROFILE_KEY_PREFIX, profile.id)
-        self._safe_redis_call("set", key, profile.json(), ex=86400)
-        # Also cache the profile ID in the user's profile list
-        if profile.user_id:
-            list_key = self.cache_key(self.MODELPROFILES_LIST_PREFIX, profile.user_id)
-            self._safe_redis_call("rpush", list_key, str(profile.id))
-
-    def invalidate_model_profile_cache(self, profile_id: UUID):
-        """Invalidate a model profile cache by ID."""
-        if not self.is_storage_cache_enabled():
-            return
-        key = self.cache_key(self.MODELPROFILE_KEY_PREFIX, profile_id)
-        self._safe_redis_call("delete", key)
-
-    def get_model_profiles_list_from_cache(
-        self, user_id: str
-    ) -> Optional[List[ModelProfile]]:
-        """Get all model profiles for a user from cache."""
-        if not self.is_storage_cache_enabled():
-            return None
-        list_key = self.cache_key(self.MODELPROFILES_LIST_PREFIX, user_id)
-        try:
-            ids = self._safe_redis_call("lrange", list_key, 0, -1)
-            if not ids:
-                return None
-            profiles = []
-            for pid in ids:
-                pid_val = UUID(pid.decode()) if isinstance(pid, bytes) else UUID(pid)
-                profile = self.get_model_profile_from_cache(pid_val)
-                if profile:
-                    profiles.append(profile)
-            return profiles if profiles else None
-        except Exception as e:
-            logger.error(f"Error getting model profiles from cache: {str(e)}")
-            return None
-
-    def cache_model_profiles_list(self, user_id: str, profiles: List[ModelProfile]):
-        """Cache all model profiles for a user."""
-        if not self.is_storage_cache_enabled() or not profiles:
-            return
-        list_key = self.cache_key(self.MODELPROFILES_LIST_PREFIX, user_id)
-        self._safe_redis_call("delete", list_key)
-        for profile in profiles:
-            self.cache_model_profile(profile)
-
-    def invalidate_model_profiles_list_cache(self, user_id: str):
-        """Invalidate all model profiles cache for a user."""
-        if not self.is_storage_cache_enabled():
-            return
-        list_key = self.cache_key(self.MODELPROFILES_LIST_PREFIX, user_id)
-        self._safe_redis_call("delete", list_key)
 
     # ========== UserConfig Cache Operations ==========
     def get_user_config_from_cache(self, user_id: str) -> Optional[UserConfig]:

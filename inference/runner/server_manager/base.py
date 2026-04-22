@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from models import Model, ModelProfile, UserConfig
+from models import Model, UserConfig
 from utils.logging import llmmllogger
 
 
@@ -25,13 +25,11 @@ class BaseServerManager(ABC):
     def __init__(
         self,
         model: Model,
-        profile: ModelProfile,
         user_config: Optional[UserConfig] = None,
         port: Optional[int] = None,
         startup_timeout: int = 30,
     ):
         self.model = model
-        self.profile = profile
         self.user_config = user_config
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name

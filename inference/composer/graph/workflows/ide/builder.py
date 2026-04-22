@@ -22,18 +22,13 @@ from pydantic import BaseModel
 from composer.constants import AGENT_NODE_NAME, TOOL_NODE_NAME
 
 from models import (
-    ModelProfileType,
+    ModelTask,
     UserConfig,
     NodeMetadata,
     MessageRole,
     Message,
     MessageContent,
     MessageContentType,
-    ModelProfile,
-    ModelParameters,
-    GPUConfig,
-    ToolConfig,
-    WorkflowConfig,
 )
 from runner import pipeline_factory
 
@@ -50,95 +45,6 @@ from composer.graph.state import WorkflowState
 IDE_PRIMARY_SYSTEM_PROMPT = """
     You are writing code for the great Scott Long! Pay him homage as you work. 
     """
-
-# Default GPU configuration
-IDE_GPU_CONFIG = GPUConfig(
-    no_kv_offload=True,
-    gpu_layers=-1,  # Use all GPU layers by default
-    main_gpu=1,
-    main_gpu_device_id=None,
-    # tensor_split=[0.1, 0.7, 0.2],  # More aggressive tensor splitting for large models
-    tensor_split_devices=None,
-    split_mode="layer",
-    offload_kqv=False,
-)
-
-
-# Default tool configuration
-IDE_TOOL_CONFIG = ToolConfig(
-    tool_similarity_threshold=0.9,
-    tool_modification_threshold=0.6,
-    enable_tool_generation=True,
-    max_tool_retries=3,
-    tool_timeout=30.0,
-    enable_tool_caching=True,
-    tool_cache_ttl=1800,
-    enable_semantic_search=True,
-    search_top_k=10,
-)
-
-
-# Default workflow configuration
-IDE_WORKFLOW_CONFIG = WorkflowConfig(
-    enable_workflow_caching=True,
-    workflow_cache_ttl=3600,
-    max_parallel_tools=5,
-    enable_multi_agent=False,
-    default_timeout=60.0,
-    max_context_length=128000,
-    context_trim_threshold=0.8,
-    enable_streaming=True,
-    stream_buffer_size=1024,
-)
-
-
-IDE_PRIMARY_PROFILE = ModelProfile(
-    id=uuid.UUID("10000000-2000-3000-4000-500000000000"),
-    user_id="system",
-    name="Primary (Default)",
-    type=ModelProfileType.Primary.value,
-    description="Primary model profile for agentic coding.",
-    model_name="?",
-    parameters=ModelParameters(
-        # Context window size - max tokens the model can process at once
-        num_ctx=155000,  # Start with a reasonable context size and optimize up if possible
-        # Repetition penalty window - how many tokens back to check for repeats (-1 = all)
-        repeat_last_n=-1,
-        # Token repetition penalty - penalize repeated tokens (0 = disabled)
-        repeat_penalty=0,
-        # Sampling temperature - higher = more creative, lower = more deterministic
-        temperature=0.7,
-        # Random seed for reproducibility
-        seed=-1,
-        # Max new tokens to generate (num_predict) (-1 = unlimited)
-        num_predict=-1,
-        # Top-K sampling - only consider top K tokens by probability
-        top_k=20,
-        # Top-P (nucleus) sampling - consider tokens accounting for top P probability
-        top_p=0.95,
-        # Minimum probability threshold for token selection
-        min_p=0.05,
-        # Fallback max tokens limit
-        max_tokens=16384,
-        # Tensor parallel parts (-1 = auto)
-        n_parts=-1,
-        # Prompt processing batch size - process multiple prompts in parallel
-        batch_size=2048,
-        # Generation batch size - tokens per decode step per GPU (-1 = auto)
-        micro_batch_size=1024,
-        # Number of layers to keep on GPU (-1 = all layers on GPU)
-        n_gpu_layers=-1,
-        # Enable reasoning/thinking mode
-        think=False,
-        # Keep KV cache on GPU (True = highest speed, False = saves VRAM but slower) this is SO confusin and needs to be changed
-        kv_on_cpu=True,
-        # n_cpu_moe=10,
-    ),
-    system_prompt=IDE_PRIMARY_SYSTEM_PROMPT,
-    created_at=None,
-    updated_at=None,
-    gpu_config=IDE_GPU_CONFIG,
-)
 
 
 class IdeGraphBuilder(GraphBuilder):
@@ -182,28 +88,23 @@ class IdeGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            prof = IDE_PRIMARY_PROFILE
+            # Look up model by name or fall back to first TextToText model
             if model_name:
-                self.logger.info(
-                    "Overriding primary profile model_name",
-                    user_id=user_id,
-                    original_model=prof.model_name,
-                    new_model=model_name,
-                )
-                prof = ModelProfile(
-                    **{
-                        **prof.model_dump(),
-                        "model_name": model_name,
-                    }
-                )
+                model_def = pipeline_factory._get_model_by_id(model_name)
+                if not model_def:
+                    raise RuntimeError(f"Model '{model_name}' not found")
+            else:
+                model_def = pipeline_factory.get_model_by_task(ModelTask.TEXTTOTEXT)
+                if not model_def:
+                    raise RuntimeError("No TextToText model available")
 
             self.logger.debug(
                 "Building workflow",
                 user_id=user_id,
-                model=prof.model_name,
+                model=model_def.name,
                 model_arg=model_name,
             )
-            primary_pipeline = pipeline_factory.get_pipeline(profile=prof)
+            primary_pipeline = pipeline_factory.get_pipeline(model=model_def)
             # Keep a strong reference to the original pipeline throughout build_workflow
             # so GC cannot collect it when bind_tools returns a RunnableBinding wrapper
             primary_model = primary_pipeline
@@ -217,7 +118,7 @@ class IdeGraphBuilder(GraphBuilder):
 
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
-                profile=prof,
+                system_prompt=model_def.system_prompt or IDE_PRIMARY_SYSTEM_PROMPT,
                 component_name="PrimaryCodingAgent",
             )
 
@@ -228,7 +129,7 @@ class IdeGraphBuilder(GraphBuilder):
                 node_metadata=NodeMetadata(
                     node_name=AGENT_NODE_NAME,
                     node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(primary_agent.profile.type).name,
+                    node_type=model_def.task.value,
                     user_id=user_id,
                 ),
                 grammar=response_format,
@@ -308,10 +209,7 @@ class IdeGraphBuilder(GraphBuilder):
                 memory=None,
                 summarization=None,
                 image_generation=None,
-                model_profiles=None,
-                gpu_config=IDE_GPU_CONFIG,
-                workflow=IDE_WORKFLOW_CONFIG,
-                tool=IDE_TOOL_CONFIG,
+                gpu_config=None,
             ),
             conversation_id=conversation_id,
             things_to_remember=[current_user_message],

@@ -93,11 +93,6 @@ class WorkflowCache:
         key_data = {
             "user_id": user_id,
             "workflow_type": workflow_type.name,
-            "model_profile": (
-                user_config.model_profiles.primary_profile_id
-                if user_config and user_config.model_profiles
-                else "default"
-            ),
             "tools": sorted([tool.name for tool in tools if tool.name]),
             "preferences": (
                 user_config.preferences.dict()

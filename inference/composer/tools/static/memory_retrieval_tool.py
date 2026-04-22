@@ -28,9 +28,8 @@ from langchain.tools import ToolRuntime
 from composer.graph.state import WorkflowState
 from runner import pipeline_factory
 from db import storage
-from models import ModelProfileType
+from models import ModelTask
 from models.default_configs import DEFAULT_MEMORY_CONFIG
-from utils.model_profile import get_model_profile
 from utils.logging import llmmllogger
 
 
@@ -93,15 +92,15 @@ async def memory_retrieval(
         # Generate embeddings for the query with fallback handling
         query_embeddings = None
 
-        # Try to get embedding model profile and generate embeddings
-        embedding_profile = await get_model_profile(
-            user_id=state["user_id"], task=ModelProfileType.Embedding
-        )
+        # Try to get embedding model and generate embeddings
+        embedding_model = pipeline_factory.get_model_by_task(ModelTask.TEXTTOEMBEDDINGS)
 
         # Get embedding pipeline from factory
         try:
+            if not embedding_model:
+                raise RuntimeError("No TextToEmbeddings model available")
             embedding_pipeline = pipeline_factory.get_embedding_pipeline(
-                profile=embedding_profile
+                model=embedding_model
             )
             # Generate embeddings for the query using Embeddings interface
             query_embeddings = embedding_pipeline.embed_documents([query])

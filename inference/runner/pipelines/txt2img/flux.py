@@ -14,7 +14,6 @@ from models import (
     Model,
     Message,
     ChatResponse,
-    ModelProfile,
     MessageRole,
     MessageContent,
     MessageContentType,
@@ -31,8 +30,8 @@ class FluxPipe(BasePipelineCore[ChatResponse]):
     Clean implementation with only essential methods.
     """
 
-    def __init__(self, model: Model, profile: ModelProfile):
-        super().__init__(model, profile)
+    def __init__(self, model: Model):
+        super().__init__(model)
         self.logger = logging.getLogger(__name__)
         self._pipeline: Optional[FluxPipeline] = None
 

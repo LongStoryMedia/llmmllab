@@ -17,9 +17,6 @@ from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
-from .model_profile_config import ModelProfileConfig
-
-# Removed circular import - DEFAULT_MODEL_PROFILE_CONFIG created inline below
 
 
 # Default preferences configuration
@@ -126,31 +123,6 @@ DEFAULT_TOOL_CONFIG = ToolConfig(
     search_top_k=10,
 )
 
-# Default model profile configuration (inline to avoid circular import)
-DEFAULT_MODEL_PROFILE_CONFIG = ModelProfileConfig(
-    primary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-    summarization_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
-    master_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000003"),
-    brief_summary_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000004"),
-    key_points_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000005"),
-    improvement_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000007"),
-    memory_retrieval_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000008"),
-    self_critique_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000006"),
-    analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000009"),
-    research_task_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000010"),
-    research_plan_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000011"),
-    research_consolidation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000012"),
-    research_analysis_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000013"),
-    embedding_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000014"),
-    formatting_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000015"),
-    image_generation_prompt_profile_id=uuid.UUID(
-        "00000000-0000-0000-0000-000000000016"
-    ),
-    image_generation_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000017"),
-    engineering_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000018"),
-    reranking_profile_id=uuid.UUID("00000000-0000-0000-0000-000000000019"),
-)
-
 
 # Function to create a default user config
 def create_default_user_config(user_id: str) -> UserConfig:
@@ -160,8 +132,5 @@ def create_default_user_config(user_id: str) -> UserConfig:
         memory=DEFAULT_MEMORY_CONFIG,
         summarization=DEFAULT_SUMMARIZATION_CONFIG,
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
-        model_profiles=DEFAULT_MODEL_PROFILE_CONFIG,
         gpu_config=DEFAULT_GPU_CONFIG,
-        workflow=DEFAULT_WORKFLOW_CONFIG,
-        tool=DEFAULT_TOOL_CONFIG,
     )

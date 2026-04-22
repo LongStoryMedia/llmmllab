@@ -12,7 +12,6 @@ from .inference_service import InferenceService
 from .inference_service_config import InferenceServiceConfig
 from .internal_config import InternalConfig
 from .memory_config import MemoryConfig
-from .model_profile_config import ModelProfileConfig
 from .preferences_config import PreferencesConfig
 from .rabbitmq_config import RabbitmqConfig
 from .redis_config import RedisConfig
@@ -35,7 +34,6 @@ class Config(BaseModel):
     memory: Annotated[MemoryConfig, Field(...)]
     web_search: Annotated[WebSearchConfig, Field(...)]
     preferences: Annotated[PreferencesConfig, Field(...)]
-    model_profiles: Annotated[ModelProfileConfig, Field(...)]
     image_generation: Annotated[ImageGenerationConfig, Field(...)]
     gpu_config: Annotated[GPUConfig, Field(...)]
     log_level: Annotated[str, Field(..., description="Log level")]

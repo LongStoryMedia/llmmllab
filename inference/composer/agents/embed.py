@@ -18,7 +18,6 @@ from langchain.chat_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 
 from models import (
-    ModelProfile,
     NodeMetadata,
 )
 
@@ -48,7 +47,6 @@ class EmbeddingAgent:
     def __init__(
         self,
         model: Embeddings,
-        profile: ModelProfile,
         component_name: Optional[str] = None,
         middleware: Optional[List[AgentMiddleware]] = None,
     ):
@@ -56,9 +54,7 @@ class EmbeddingAgent:
         Initialize base agent with required dependencies.
 
         Args:
-            model: Base chat model for agent operations
-            profile: Model profile for agent operations
-            node_metadata: Node metadata for workflow tracking
+            model: Embeddings model for agent operations
             component_name: Optional component name for logging. If not provided,
                           uses the class name.
         """
@@ -68,7 +64,6 @@ class EmbeddingAgent:
 
         # Store required dependencies
         self.model = model
-        self.profile = profile
 
         # Additional metadata for debugging and tracking
         self._execution_context: Dict[str, Any] = {}

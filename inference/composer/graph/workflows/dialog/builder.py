@@ -22,7 +22,7 @@ from composer.constants import (
     TOOL_NODE_NAME,
 )
 from models import (
-    ModelProfileType,
+    ModelTask,
     NodeMetadata,
     MessageRole,
     Message,
@@ -30,8 +30,6 @@ from models import (
     MessageContentType,
 )
 from runner import pipeline_factory
-
-from utils.model_profile import get_model_profile_for_task
 
 from composer.agents.chat import ChatAgent
 from composer.agents.embed import EmbeddingAgent
@@ -89,28 +87,24 @@ class DialogGraphBuilder(GraphBuilder):
             Compiled workflow ready for execution
         """
         try:
-            primary_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Primary,
-                self.user_config.user_id,
-            )
-            embedding_profile = await get_model_profile_for_task(
-                self.user_config.model_profiles,
-                ModelProfileType.Embedding,
-                self.user_config.user_id,
-            )
+            primary_model_def = pipeline_factory.get_model_by_task(ModelTask.TEXTTOTEXT)
+            embedding_model_def = pipeline_factory.get_model_by_task(ModelTask.TEXTTOEMBEDDINGS)
 
-            primary_model = pipeline_factory.get_pipeline(profile=primary_profile)
-            embedding_model = pipeline_factory.get_pipeline(profile=embedding_profile)
+            if not primary_model_def:
+                raise RuntimeError("No TextToText model available")
+            if not embedding_model_def:
+                raise RuntimeError("No TextToEmbeddings model available")
+
+            primary_model = pipeline_factory.get_pipeline(model=primary_model_def)
+            embedding_model = pipeline_factory.get_pipeline(model=embedding_model_def)
 
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
-                profile=primary_profile,
+                system_prompt=primary_model_def.system_prompt or "",
                 component_name="PrimaryChatAgent",
             )
             embedding_agent = EmbeddingAgent(
                 model=cast(Embeddings, embedding_model),
-                profile=embedding_profile,
                 component_name="EmbeddingAgent",
             )
 
@@ -120,7 +114,7 @@ class DialogGraphBuilder(GraphBuilder):
                 NodeMetadata(
                     node_name="MemoryCreationNode",
                     node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(embedding_agent.profile.type).name,
+                    node_type=embedding_model_def.task.value,
                     user_id=user_id,
                 ),
             )
@@ -145,7 +139,7 @@ class DialogGraphBuilder(GraphBuilder):
                 node_metadata=NodeMetadata(
                     node_name=AGENT_NODE_NAME,
                     node_id=uuid.uuid4().hex,
-                    node_type=ModelProfileType(primary_agent.profile.type).name,
+                    node_type=primary_model_def.task.value,
                     user_id=user_id,
                 ),
                 grammar=response_format,

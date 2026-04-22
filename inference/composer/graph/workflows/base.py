@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from db.userconfig_storage import UserConfigStorage
     from db.conversation_storage import ConversationStorage
     from db.message_storage import MessageStorage
-    from db.model_profile_storage import ModelProfileStorage
     from db.memory_storage import MemoryStorage
     from db.summary_storage import SummaryStorage
     from db.search_storage import SearchStorage
@@ -61,9 +60,6 @@ class GraphBuilder(ABC):
             storage.conversation
         )
         self.message_storage: "MessageStorage" = storage.get_service(storage.message)
-        self.model_profile_storage: "ModelProfileStorage" = storage.get_service(
-            storage.model_profile
-        )
         self.memory_storage: "MemoryStorage" = storage.get_service(storage.memory)
         self.summary_storage: "SummaryStorage" = storage.get_service(storage.summary)
         self.search_storage: "SearchStorage" = storage.get_service(storage.search)

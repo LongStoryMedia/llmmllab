@@ -19,7 +19,6 @@ from pydantic import BaseModel
 
 from models import (
     Model,
-    ModelProfile,
     ModelProvider,
     PipelinePriority,
     UserConfig,
@@ -145,21 +144,19 @@ class LocalPipelineCacheManager:
     def get_or_create(
         self,
         model: Model,
-        profile: ModelProfile,
         priority: PipelinePriority,
         create_fn: Callable[
-            [Model, ModelProfile, Optional[Type[BaseModel]], Optional[dict]],
+            [Model, Optional[Type[BaseModel]], Optional[dict]],
             Optional[BasePipeline | Embeddings],
         ],
         grammar: Optional[Type[BaseModel]] = None,
         user_config: Optional[UserConfig] = None,
         metadata: Optional[dict] = None,
     ) -> BasePipeline | Embeddings:
-        assert profile.id is not None, "ModelProfile must have a valid ID"
-        profile_id = f"{profile.id}_{model.name}"
+        cache_key = model.name
 
         with self._lock:
-            entry = self._cache.get(profile_id)
+            entry = self._cache.get(cache_key)
             if entry and entry.is_alive():
                 pipe = entry.pipeline
                 if pipe:
@@ -169,7 +166,7 @@ class LocalPipelineCacheManager:
                         sm = getattr(pipe, "server_manager", None)
                         if sm and hasattr(sm, "is_running") and not sm.is_running():
                             self.logger.warning(
-                                f"⚠️ Found cached pipeline for {profile_id} with dead server - evicting"
+                                f"⚠️ Found cached pipeline for {cache_key} with dead server - evicting"
                             )
                             is_healthy = False
 
@@ -178,7 +175,7 @@ class LocalPipelineCacheManager:
                         if isinstance(pipe, BasePipeline) and metadata:
                             pipe.bind_metadata(metadata)
                         self.logger.debug(
-                            f"💾 Retrieved cached pipeline for {profile_id}"
+                            f"💾 Retrieved cached pipeline for {cache_key}"
                         )
                         return pipe
 
@@ -186,29 +183,29 @@ class LocalPipelineCacheManager:
                 # 1. Dead (weakref is None)
                 # 2. Unhealthy (server is dead)
                 # So we remove it.
-                self._cache.pop(profile_id, None)
+                self._cache.pop(cache_key, None)
 
-        self.logger.info(f"🆕 Creating new pipeline for {profile_id}")
-        required = self.estimate_memory(model, profile)
+        self.logger.info(f"🆕 Creating new pipeline for {cache_key}")
+        required = self.estimate_memory(model)
 
-        if not self._ensure_memory(required, exclude=profile_id):
+        if not self._ensure_memory(required, exclude=cache_key):
             raise RuntimeError(
                 f"Insufficient memory for local model {model.name}: need {required/1e9:.2f}GB"
             )
 
-        pipeline = create_fn(model, profile, grammar, metadata)
+        pipeline = create_fn(model, grammar, metadata)
         if not pipeline:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
         with self._lock:
-            self._cache[profile_id] = _PipelineCacheEntry(pipeline, priority, required)
-            self.logger.debug(f"💾 Cached NEW pipeline for {profile_id}")
+            self._cache[cache_key] = _PipelineCacheEntry(pipeline, priority, required)
+            self.logger.debug(f"💾 Cached NEW pipeline for {cache_key}")
 
         # Auto-mark small models (likely embeddings) as persistent — they're tiny
         # and cheap to keep loaded indefinitely.
         if required < 2 * 1024 * 1024 * 1024:  # < 2GB
-            self.set_persistent(profile_id, True)
-            self.logger.info(f"🔒 Auto-marked small model {profile_id} as persistent")
+            self.set_persistent(cache_key, True)
+            self.logger.info(f"🔒 Auto-marked small model {cache_key} as persistent")
 
         hardware_manager.update_all_memory_stats()
         return pipeline
@@ -426,28 +423,20 @@ class LocalPipelineCacheManager:
         return count
 
     def cleanup_for_user(self, user_config: UserConfig) -> int:
-        """Cleanup all pipelines associated with a specific user."""
+        """Cleanup all cached pipelines."""
         cleaned_count = 0
         pids_to_cleanup = []
 
         with self._lock:
-            # First pass: collect all PIDs and clean up pipelines
-            # FIX: Iterate over ALL model fields, not just set ones
-            # This ensures default profile IDs (like Chat/Primary) are caught even if not explicitly set in DB
-            for model_profile_field in user_config.model_profiles.model_fields:  # type: ignore[attr-defined]
-                profile_id = getattr(user_config.model_profiles, model_profile_field)
-                if not profile_id:
-                    continue
-
-                profile_id = str(profile_id)
-                entry = self._cache.get(profile_id)
+            for cache_key in list(self._cache.keys()):
+                entry = self._cache.get(cache_key)
 
                 if entry and entry.pipeline:
                     # Unlock the pipeline before cleanup
                     if entry.in_use:
                         entry.unlock()
                         self.logger.info(
-                            f"Unlocked pipeline {profile_id} before cleanup"
+                            f"Unlocked pipeline {cache_key} before cleanup"
                         )
 
                     # Extract PID if it's a server-based pipeline
@@ -458,11 +447,11 @@ class LocalPipelineCacheManager:
                             if pid:
                                 pids_to_cleanup.append(pid)
                                 self.logger.info(
-                                    f"Collected PID {pid} for cleanup from pipeline {profile_id}"
+                                    f"Collected PID {pid} for cleanup from pipeline {cache_key}"
                                 )
 
                     # Now remove from cache
-                    self._cache.pop(profile_id, None)
+                    self._cache.pop(cache_key, None)
 
                     # Shutdown the pipeline (stops the server gracefully)
                     self._cleanup_pipeline(entry.pipeline)
@@ -517,10 +506,10 @@ class LocalPipelineCacheManager:
         )
 
     def estimate_memory(
-        self, model: Model, profile: Optional["ModelProfile"] = None
+        self, model: Model
     ) -> float:
         """Estimate memory usage using corrected formulas that match real-world llama.cpp usage."""
-        if not profile or not profile.parameters:
+        if not model.parameters:
             # Fallback to simple estimation if no profile provided
             base = 512 * 1024 * 1024  # 512MB base
             model_size = getattr(model, "size", 0)
@@ -542,7 +531,7 @@ class LocalPipelineCacheManager:
         try:
             # Use corrected memory estimation based on real-world data
             memory_breakdown = self._calculate_corrected_memory_breakdown(
-                profile.parameters, model
+                model.parameters, model
             )
 
             # Total GPU memory estimate

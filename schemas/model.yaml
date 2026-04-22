@@ -35,11 +35,25 @@ properties:
   provider:
     $ref: model_provider.yaml
     description: Provider or runtime of the model (e.g., "llama.cpp", "hf", "openai")
+  system_prompt:
+    type: string
+    description: System prompt to use when running this model
+  parameters:
+    $ref: model_parameters.yaml
+    description: Default inference parameters for this model
+  gpu_config:
+    $ref: gpu_config.yaml
+    description: GPU configuration for this model
+  image_settings:
+    $ref: model_profile_image_settings.yaml
+    description: Image generation settings (for image models)
+  draft_model:
+    type: string
+    description: Optional draft model for speculative decoding
 required:
   - name
   - model
   - modified_at
-  - size
   - digest
   - details
   - task
@@ -51,3 +65,9 @@ definitions:
     $ref: lora_weight.yaml
   ModelTask:
     $ref: model_task.yaml
+  ModelParameters:
+    $ref: model_parameters.yaml
+  GPUConfig:
+    $ref: gpu_config.yaml
+  ModelProfileImageSettings:
+    $ref: model_profile_image_settings.yaml

@@ -60,17 +60,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                         ("api_key.create_api_keys_table", []),
                     ],
                 ),
-                # Step 2: Create model tables
-                (
-                    "Creating model tables",
-                    [
-                        ("modelprofile.create_model_profiles_table", []),
-                        ("modelprofile.create_model_profiles_index", []),
-                        ("modelprofile.add_gpu_config_column", []),
-                        ("modelprofile.add_draft_model_column", []),
-                    ],
-                ),
-                # Step 3: Create conversation tables
+                # Step 2: Create conversation tables
                 (
                     "Creating conversation tables",
                     [

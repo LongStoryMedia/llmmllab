@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from models.config_utils import resolve_gpu_config
+from models.gpu_config import GPUConfig
+from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
 
 from .base_argument_builder import BaseArgumentBuilder
@@ -96,8 +97,9 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
 
     def _build_inference_config(self, config: Dict[str, Any]) -> None:
         """Build configuration for inference servers."""
-        params = self.profile.parameters
-        gcfg = resolve_gpu_config(self.profile, self.user_config)
+        params = self.model.parameters
+        # Resolve GPU config: model → user_config → default
+        gcfg = self.model.gpu_config or (self.user_config.gpu_config if self.user_config else None) or DEFAULT_GPU_CONFIG
 
         # Standard server features with performance optimizations
         config.update(
@@ -119,9 +121,8 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 # --reasoning: on/off/auto — whether the model should use <think> blocks
                 # --reasoning-format: how thought tags are extracted/returned
                 # --reasoning-budget: token budget for thinking (-1 = unlimited, 0 = disabled)
-                "reasoning": ("on" if self.profile.parameters.think else "off"),
-                # "reasoning_format": ("deepseek" if self.profile.parameters.think else "none"),
-                "reasoning_budget": (-1 if self.profile.parameters.think else 0),
+                "reasoning": ("on" if params.think else "off"),
+                "reasoning_budget": (-1 if params.think else 0),
                 "ctx_checkpoints": 24,
                 "timeout": 30000,
                 # "context_shift": True,
@@ -192,7 +193,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
             )
 
         # Draft model support for speculative decoding
-        if hasattr(self.profile, "draft_model") and self.profile.draft_model:
+        if hasattr(self.model, "draft_model") and self.model.draft_model:
             if mmproj_path and Path(mmproj_path).exists():
                 logger.warning(
                     f"Draft models are not supported with multimodal models. Ignoring draft model for {self.model.name}"
@@ -201,7 +202,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 from runner.utils.model_loader import ModelLoader
 
                 ml = ModelLoader()
-                dm = ml.get_model_by_id(self.profile.draft_model)
+                dm = ml.get_model_by_id(self.model.draft_model)
                 draft_gguf = dm.details.gguf_file if dm and dm.details else None
                 if draft_gguf:
                     config["model_draft"] = str(draft_gguf)

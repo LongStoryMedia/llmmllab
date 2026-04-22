@@ -4,7 +4,6 @@
 from __future__ import annotations
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
-from .model_profile_type import ModelProfileType
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
@@ -22,8 +21,8 @@ class NodeMetadata(BaseModel):
     """User identifier associated with this execution"""
     conversation_id: Annotated[Optional[int], Field(default=None, description="Conversation identifier for this execution context")] = None
     """Conversation identifier for this execution context"""
-    profile_type: Annotated[Optional[ModelProfileType], Field(default=None, description="Model profile type for pipeline execution")] = None
-    """Model profile type for pipeline execution"""
+    model_task: Annotated[Optional[str], Field(default=None, description="Model task type for pipeline execution")] = None
+    """Model task type for pipeline execution"""
     streaming: Annotated[Optional[bool], Field(default=None, description="Whether this execution uses streaming responses")] = None
     """Whether this execution uses streaming responses"""
     is_cached: Annotated[Optional[bool], Field(default=None, description="Whether this execution uses a cached pipeline")] = None

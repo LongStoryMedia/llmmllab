@@ -4,8 +4,11 @@
 from __future__ import annotations
 from typing import List, Dict, Optional, Any, Union, Annotated, Literal
 from datetime import datetime, date, time, timedelta
+from .gpu_config import GPUConfig
 from .lora_weight import LoraWeight
 from .model_details import ModelDetails
+from .model_parameters import ModelParameters
+from .model_profile_image_settings import ModelProfileImageSettings
 from .model_provider import ModelProvider
 from .model_task import ModelTask
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
@@ -34,5 +37,15 @@ class Model(BaseModel):
     """List of LoRA weights associated with the model"""
     provider: Annotated[ModelProvider, Field(..., description="Provider or runtime of the model (e.g., \"llama.cpp\", \"hf\", \"openai\")")]
     """Provider or runtime of the model (e.g., \"llama.cpp\", \"hf\", \"openai\")"""
+    system_prompt: Annotated[Optional[str], Field(default=None, description="System prompt to use when running this model")] = None
+    """System prompt to use when running this model"""
+    parameters: Annotated[Optional[ModelParameters], Field(default=None, description="Default inference parameters for this model")] = None
+    """Default inference parameters for this model"""
+    gpu_config: Annotated[Optional[GPUConfig], Field(default=None, description="GPU configuration for this model")] = None
+    """GPU configuration for this model"""
+    image_settings: Annotated[Optional[ModelProfileImageSettings], Field(default=None, description="Image generation settings (for image models)")] = None
+    """Image generation settings (for image models)"""
+    draft_model: Annotated[Optional[str], Field(default=None, description="Optional draft model for speculative decoding")] = None
+    """Optional draft model for speculative decoding"""
 
     model_config = ConfigDict(extra="ignore")

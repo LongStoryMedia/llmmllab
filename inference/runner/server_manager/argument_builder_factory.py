@@ -7,7 +7,7 @@ builders based on the server type.
 
 from typing import Optional
 
-from models import Model, ModelProfile, UserConfig
+from models import Model, UserConfig
 from .base_argument_builder import BaseArgumentBuilder
 from .llamacpp_argument_builder import LlamaCppArgumentBuilder
 
@@ -15,7 +15,6 @@ from .llamacpp_argument_builder import LlamaCppArgumentBuilder
 def create_argument_builder(
     server_type: str,
     model: Model,
-    profile: ModelProfile,
     user_config: Optional[UserConfig] = None,
     port: Optional[int] = None,
     is_embedding: bool = False,
@@ -32,7 +31,6 @@ def create_argument_builder(
 
     return builders[server_type](
         model=model,
-        profile=profile,
         user_config=user_config,
         port=port,
         is_embedding=is_embedding,

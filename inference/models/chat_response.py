@@ -10,7 +10,6 @@ from .message import Message
 from .message_content import MessageContent
 from .message_content_type import MessageContentType
 from .message_role import MessageRole
-from .model_profile_type import ModelProfileType
 from .node_metadata import NodeMetadata
 from .resource_usage import ResourceUsage
 from .thought import Thought

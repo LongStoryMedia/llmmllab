@@ -22,7 +22,6 @@ from models import (
     MessageContent,
     MessageContentType,
     MessageRole,
-    ModelProfile,
     NodeMetadata,
     ChatResponse,
     Message,
@@ -75,7 +74,7 @@ class BaseAgent:
     def __init__(
         self,
         model: BaseChatModel,
-        profile: ModelProfile,
+        system_prompt: str = "",
         component_name: Optional[str] = None,
         middleware: Optional[List[AgentMiddleware]] = None,
         tools: Optional[List[BaseTool]] = None,
@@ -85,8 +84,7 @@ class BaseAgent:
 
         Args:
             model: Base chat model for agent operations
-            profile: Model profile for agent operations
-            node_metadata: Node metadata for workflow tracking
+            system_prompt: System prompt for the agent
             component_name: Optional component name for logging. If not provided,
                           uses the class name.
         """
@@ -96,7 +94,7 @@ class BaseAgent:
 
         # Store required dependencies
         self.model = model
-        self.profile = profile
+        self.system_prompt = system_prompt
 
         self.agent_id = f"{id(self):x}"
         # Middleware list passed to create_agent for behaviors like TodoListMiddleware
@@ -267,7 +265,7 @@ class BaseAgent:
         msgs = normalize_message_input(messages)
         convo = []
 
-        system_prompt = self.profile.system_prompt
+        system_prompt = self.system_prompt
 
         for msg in msgs:
             if msg.role == MessageRole.SYSTEM:

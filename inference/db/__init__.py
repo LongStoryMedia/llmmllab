@@ -15,7 +15,6 @@ from .connection_recovery import init_recovery_manager
 from .conversation_storage import ConversationStorage
 from .message_storage import MessageStorage
 from .image_storage import ImageStorage
-from .model_profile_storage import ModelProfileStorage
 from .model_storage import ModelStorage
 from .summary_storage import SummaryStorage
 from .memory_storage import MemoryStorage
@@ -50,7 +49,6 @@ class Storage:
         self.conversation = None
         self.message = None
         self.image = None
-        self.model_profile = None
         self.model = None
         self.summary = None
         self.memory = None
@@ -97,7 +95,6 @@ class Storage:
                 self.pool, get_query, self.user_config
             )
             self.image = ImageStorage(self.pool, get_query)
-            self.model_profile = ModelProfileStorage(self.pool, get_query)
             self.model = ModelStorage(self.pool, get_query)
             self.summary = SummaryStorage(self.pool, get_query)
             self.memory = MemoryStorage(self.pool, get_query)
@@ -133,8 +130,6 @@ class Storage:
             await maintenance_service.initialize(self.pool, maintenance_interval)
             await maintenance_service.start_maintenance_schedule()
             logger.info("Database maintenance service started")
-            await self.model_profile.upsert_default_model_profiles()
-            logger.info("Default model profiles ensured in database")
 
         except Exception as e:
             # Reset all components to None to ensure they're not partially initialized
@@ -143,7 +138,6 @@ class Storage:
             self.conversation = None
             self.message = None
             self.image = None
-            self.model_profile = None
             self.model = None
             self.summary = None
             self.memory = None

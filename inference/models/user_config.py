@@ -8,7 +8,6 @@ from .event_stream_config import EventStreamConfig
 from .gpu_config import GPUConfig
 from .image_generation_config import ImageGenerationConfig
 from .memory_config import MemoryConfig
-from .model_profile_config import ModelProfileConfig
 from .summarization_config import SummarizationConfig
 from .tool_config import ToolConfig
 from .workflow_config import WorkflowConfig
@@ -22,7 +21,6 @@ class UserConfig(BaseModel):
     """User ID"""
     summarization: Annotated[Optional[SummarizationConfig], Field(default=None)] = None
     memory: Annotated[Optional[MemoryConfig], Field(default=None)] = None
-    model_profiles: Annotated[Optional[ModelProfileConfig], Field(default=None)] = None
     image_generation: Annotated[Optional[ImageGenerationConfig], Field(default=None)] = None
     gpu_config: Annotated[GPUConfig, Field(...)]
     workflow: Annotated[WorkflowConfig, Field(...)]

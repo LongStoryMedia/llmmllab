@@ -55,19 +55,6 @@ class SummaryStore(ABC):
     async def get_summary(self, summary_id: int) -> Optional[dict]: ...
 
 
-class ModelProfileStore(ABC):
-    @abstractmethod
-    async def create_model_profile(self, profile: dict) -> str: ...
-    @abstractmethod
-    async def get_model_profile(self, profile_id: str) -> Optional[dict]: ...
-    @abstractmethod
-    async def update_model_profile(self, profile: dict) -> None: ...
-    @abstractmethod
-    async def delete_model_profile(self, profile_id: str) -> None: ...
-    @abstractmethod
-    async def list_model_profiles_by_user(self, user_id: str) -> List[dict]: ...
-
-
 class ResearchTaskStore(ABC):
     @abstractmethod
     async def save_research_task(

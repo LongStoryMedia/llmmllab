@@ -11,7 +11,7 @@ import asyncio
 import requests
 from langchain_core.embeddings import Embeddings
 
-from models import Model, ModelProfile, UserConfig
+from models import Model, UserConfig
 from utils.logging import llmmllogger
 from runner.server_manager import LlamaCppServerManager
 
@@ -29,13 +29,11 @@ class EmbedLlamaCppPipeline(Embeddings):
     def __init__(
         self,
         model: Model,
-        profile: ModelProfile,
         user_config: Optional[UserConfig] = None,
         metadata: Optional[dict] = {},
     ):
         """Initialize embeddings with persistent server."""
         self.model = model
-        self.profile = profile
         self.user_config = user_config
         self._logger = llmmllogger.bind(
             component=self.__class__.__name__, model=model.name
@@ -44,7 +42,6 @@ class EmbedLlamaCppPipeline(Embeddings):
         # Use the new server manager architecture
         self.server_manager = LlamaCppServerManager(
             model=model,
-            profile=profile,
             user_config=user_config,
             is_embedding=True,  # Enable embedding mode
         )

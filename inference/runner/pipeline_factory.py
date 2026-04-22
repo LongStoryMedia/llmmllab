@@ -12,7 +12,6 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 from models import (
     Model,
-    ModelProfile,
     ModelProvider,
     ModelTask,
     PipelinePriority,
@@ -67,18 +66,15 @@ class PipelineFactory:
 
     def get_pipeline(
         self,
-        profile: ModelProfile,
+        model: Model,
         priority: PipelinePriority = PipelinePriority.NORMAL,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
     ) -> Union[BasePipeline, Embeddings]:
-        model_id = profile.model_name
+        model_id = model.name
         self.logger.debug(
             f"Requesting pipeline for model_id: {model_id}, priority: {priority}, grammar: {grammar}, metadata: {metadata}"
         )
-        model = self._get_model_by_id(model_id)
-        if not model:
-            raise RuntimeError(f"Model with ID '{model_id}' not found.")
 
         # DEBUG: Add provider detection logging
         provider = getattr(model, "provider", None)
@@ -94,15 +90,13 @@ class PipelineFactory:
             # Use a factory function that handles coordination internally
             def create_with_coordination(
                 m: Model,
-                p: ModelProfile,
                 g: Optional[Type[BaseModel]] = grammar,
                 metadata: Optional[dict] = {},
             ) -> Optional[Union[BasePipeline, Embeddings]]:
-                return self.create_pipeline(m, p, g, metadata)
+                return self.create_pipeline(m, g, metadata)
 
             pipeline = self.local_cache.get_or_create(
                 model,
-                profile,
                 priority,
                 create_with_coordination,
                 grammar,
@@ -119,7 +113,7 @@ class PipelineFactory:
         self.logger.info(
             f"🌐 Using REMOTE non-cached path for {model_id} (provider: {provider})"
         )
-        pipeline = self.create_pipeline(model, profile)
+        pipeline = self.create_pipeline(model)
         if not pipeline:
             raise RuntimeError(
                 f"Failed to create pipeline for model '{model.name}' (provider: {provider})"
@@ -129,73 +123,43 @@ class PipelineFactory:
         )
         return pipeline
 
-    def unlock_pipeline(self, profile: ModelProfile) -> bool:
-        """
-        Unlock a pipeline that was obtained with get_pipeline().
-
-        The pipeline remains cached and available for reuse by other components.
-        Only removes the exclusive lock, does not evict from cache.
-        """
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            return False
-
+    def unlock_pipeline(self, model: Model) -> bool:
+        model_id = model.name
         if self.local_cache.is_local(model):
             return self.local_cache.unlock_pipeline(model_id)
-
-        return True  # Remote pipelines don't need unlocking
+        return True
 
     def set_pipeline_persistent(
-        self, profile: ModelProfile, persistent: bool = True
+        self, model: Model, persistent: bool = True
     ) -> bool:
-        """Mark a pipeline as persistent to prevent eviction unless absolutely necessary."""
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            return False
-
+        model_id = model.name
         if self.local_cache.is_local(model):
             return self.local_cache.set_persistent(model_id, persistent)
-
-        return True  # Remote pipelines are always transient
+        return True
 
     def get_cache_stats(self) -> Dict[str, Any]:
-        """Get detailed cache statistics for monitoring."""
         return self.local_cache.get_cache_info()
 
-    def force_evict_pipeline(self, profile: ModelProfile) -> bool:
-        """Force eviction of a specific pipeline from cache."""
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            return False
-
+    def force_evict_pipeline(self, model: Model) -> bool:
+        model_id = model.name
         if self.local_cache.is_local(model):
             self.local_cache.clear_cache(model_id)
             return True
-
         return False
 
     def get_embedding_pipeline(
         self,
-        profile: ModelProfile,
+        model: Model,
         priority: PipelinePriority = PipelinePriority.NORMAL,
         metadata: Optional[dict] = None,
     ) -> Embeddings:
-        """Get specifically an embedding pipeline with proper typing."""
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            raise RuntimeError(f"Model with ID '{model_id}' not found.")
+        model_id = model.name
 
-        # For embedding models, require embedding-specific task
         if model.task != "TextToEmbeddings":
             raise ValueError(
                 f"Model '{model.name}' is not an embedding model (task: {model.task})"
             )
 
-        # Local providers -> managed cached path
         if getattr(model, "provider", None) in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
@@ -203,15 +167,13 @@ class PipelineFactory:
 
             def create_embedding_fn(
                 m: Model,
-                p: ModelProfile,
                 _g: Optional[Type[BaseModel]] = None,
                 metadata: Optional[dict] = None,
             ) -> Optional[Embeddings]:
-                # _g unused: embeddings creation does not use grammar
-                return self._create_embedding_pipeline(m, p, metadata=metadata)
+                return self._create_embedding_pipeline(m, metadata=metadata)
 
             pipeline = self.local_cache.get_or_create(
-                model, profile, priority, create_embedding_fn, None, metadata=metadata
+                model, priority, create_embedding_fn, None, metadata=metadata
             )
             if not pipeline:
                 raise RuntimeError(
@@ -222,7 +184,7 @@ class PipelineFactory:
             return pipeline
 
         # Remote / API providers -> create transient each call, no caching
-        pipeline = self._create_embedding_pipeline(model, profile)
+        pipeline = self._create_embedding_pipeline(model)
         if not pipeline:
             raise RuntimeError(
                 f"Failed to create embedding pipeline for model '{model.name}' (provider: {getattr(model, 'provider', 'unknown')})"
@@ -232,35 +194,24 @@ class PipelineFactory:
     @contextmanager
     def pipeline(
         self,
-        profile: ModelProfile,
+        model: Model,
         priority: PipelinePriority = PipelinePriority.NORMAL,
         grammar: Optional[Type[BaseModel]] = None,
     ):
-        """
-        Context manager for safe pipeline usage with automatic locking and unlocking.
-
-        get_pipeline() automatically locks local providers, this context manager
-        ensures proper unlocking when done.
-        """
-        model_id = profile.model_name
-        model = self._get_model_by_id(model_id)
-        if not model:
-            raise RuntimeError(f"Model with ID '{model_id}' not found.")
-
-        pipeline = self.get_pipeline(profile, priority, grammar)
+        model_id = model.name
         is_local = self.local_cache.is_local(model)
 
-        # Explicitly lock local pipelines to prevent eviction during use
+        pipe = self.get_pipeline(model, priority, grammar)
+
         if is_local:
             self.local_cache.lock_pipeline(model_id)
             with self._coord_cond:
                 self._active_local_uses += 1
 
         try:
-            yield pipeline
+            yield pipe
         finally:
             if is_local:
-                # Unlock the pipeline and update coordination
                 self.local_cache.unlock_pipeline(model_id)
                 with self._coord_cond:
                     self._active_local_uses = max(0, self._active_local_uses - 1)
@@ -277,45 +228,46 @@ class PipelineFactory:
             return None
         return self._available_models[model_id]
 
+    def get_model_by_task(self, task: ModelTask) -> Optional[Model]:
+        """Find the first available model matching the given task type."""
+        for model in self._available_models.values():
+            if model.task == task:
+                return model
+        self.logger.error(
+            f"No model found for task '{task}'. Available: {[(m.name, m.task) for m in self._available_models.values()]}"
+        )
+        return None
+
     def create_pipeline(
         self,
         model: Model,
-        profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
     ) -> Optional[Union[BasePipeline, Embeddings]]:
-        """
-        Create a pipeline instance based on model task and pipeline type.
-        Args:
-            model: Model configuration
-            profile: ModelProfile with runtime settings
-        Returns:
-            An instance of BaseChatModel or Embeddings
-        """
         try:
             if (
                 model.task == ModelTask.TEXTTOTEXT
                 or model.task == ModelTask.VISIONTEXTTOTEXT
             ):
                 self.logger.info(
-                    f"🎯 Routing to _create_text_pipeline for vision model {model.name}"
+                    f"🎯 Routing to _create_text_pipeline for model {model.name}"
                 )
-                return self._create_text_pipeline(model, profile, grammar, metadata)
+                return self._create_text_pipeline(model, grammar, metadata)
             if model.task == ModelTask.TEXTTOEMBEDDINGS:
                 self.logger.info(
                     f"🎯 Routing to _create_embedding_pipeline for {model.name}"
                 )
-                return self._create_embedding_pipeline(model, profile, metadata)
+                return self._create_embedding_pipeline(model, metadata)
             if model.task == ModelTask.TEXTTOIMAGE:
                 self.logger.info(
                     f"🎯 Routing to _create_image_pipeline for {model.name}"
                 )
-                return self._create_image_pipeline(model, profile, metadata)
+                return self._create_image_pipeline(model, metadata)
             if model.task == ModelTask.IMAGETOIMAGE:
                 self.logger.info(
                     f"🎯 Routing to _create_image_to_image_pipeline for {model.name}"
                 )
-                return self._create_image_to_image_pipeline(model, profile, metadata)
+                return self._create_image_to_image_pipeline(model, metadata)
             self.logger.error(f"Unsupported task type: {model.task}")
             raise RuntimeError(f"Unsupported task type: {model.task}")
         except Exception as e:
@@ -325,7 +277,6 @@ class PipelineFactory:
     def _create_text_pipeline(
         self,
         model: Model,
-        profile: ModelProfile,
         grammar: Optional[Type[BaseModel]] = None,
         metadata: Optional[dict] = {},
     ) -> BasePipeline:
@@ -339,7 +290,7 @@ class PipelineFactory:
                     ChatLlamaCppPipeline,
                 )  # pylint: disable=import-outside-toplevel
 
-                return ChatLlamaCppPipeline(model, profile, grammar, metadata)
+                return ChatLlamaCppPipeline(model, grammar, metadata)
             case ModelProvider.OPENAI:
                 import os
                 from langchain_openai import (
@@ -368,19 +319,17 @@ class PipelineFactory:
     def _create_embedding_pipeline(
         self,
         model: Model,
-        profile: ModelProfile,
         metadata: Optional[dict] = {},
     ) -> Optional[Embeddings]:
         from .pipelines.llamacpp.embed import (  # pylint: disable=import-outside-toplevel
             EmbedLlamaCppPipeline,
         )
 
-        return EmbedLlamaCppPipeline(model, profile, metadata=metadata)
+        return EmbedLlamaCppPipeline(model, metadata=metadata)
 
     def _create_image_pipeline(
         self,
         model: Model,
-        profile: ModelProfile,
         metadata: Optional[dict] = {},
     ) -> Optional[BasePipeline]:
         if model.pipeline == "FluxPipeline":
@@ -390,7 +339,7 @@ class PipelineFactory:
                 )
 
                 return FluxPipe(  # pylint: disable=abstract-class-instantiated
-                    model, profile
+                    model
                 )
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxPipe: {e}")
@@ -400,7 +349,6 @@ class PipelineFactory:
     def _create_image_to_image_pipeline(
         self,
         model: Model,
-        profile: ModelProfile,
         metadata: Optional[dict] = {},
     ) -> Optional[BasePipeline]:
         if model.pipeline == "FluxKontextPipeline":
@@ -410,7 +358,7 @@ class PipelineFactory:
                 )
 
                 return FluxKontextPipe(  # pylint: disable=abstract-class-instantiated
-                    model, profile
+                    model
                 )
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxKontextPipe: {e}")
