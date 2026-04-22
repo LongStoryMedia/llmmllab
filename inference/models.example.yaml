@@ -1,0 +1,400 @@
+- id: Qwen3_Coder_Next
+  name: "Qwen3-Coder-Next"
+  model: "Qwen3-Coder-Next"
+  task: TextToText
+  modified_at: "2026-03-23T02:32:32.073266+00:00"
+  digest: abf56d7fe8a0a99c15d220c13de4aa57b69cfba6ef4c2a007b56e34d7b40cd11
+  size: 38429272064
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3-coder-next/ud-iq4_xs.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 79.7B
+    quantization_level: IQ4_XS
+    precision: int4
+    dtype: int4
+    specialization: Text
+    size: 38429272064
+    original_ctx: 262144
+    n_layers: 48
+    hidden_size: 2048
+    n_heads: 16
+    n_kv_heads: 2
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_5_122B_A10B
+  name: "Qwen3.5-122B-A10B"
+  model: "Qwen3.5-122B-A10B"
+  task: TextToText
+  modified_at: "2026-03-23T02:33:33.866841+00:00"
+  digest: 5e810f890244ce3e3699f1e9a3611fa6567a8f50123523a9fcf9bf4175d89947
+  size: 46556959936
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.5/122-a10b/ud-iq3_s.gguf"
+    clip_model_path: "/models/qwen3.5/122-a10b/mmproj-f16.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 122.1B
+    quantization_level: IQ3_S
+    precision: int4
+    dtype: int4
+    specialization: Text
+    size: 46556959936
+    original_ctx: 262144
+    n_layers: 48
+    hidden_size: 3072
+    n_heads: 32
+    n_kv_heads: 2
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_5_27B
+  name: "Qwen3.5-27B"
+  model: "Qwen3.5-27B"
+  task: TextToText
+  modified_at: "2026-03-23T02:34:13.455246+00:00"
+  digest: 423ebe4779f784a2921da340a0fab0c372fbafb4b9eb502ae3768218de01597a
+  size: 20171253664
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.5/27b/qwopus/q6_k.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 26.9B
+    quantization_level: Q5_K_XL
+    precision: int4
+    dtype: int4
+    specialization: Text
+    size: 20171253664
+    original_ctx: 2048
+    clip_model_path: "/models/qwen3.5/27b/qwopus/mmproj.gguf"
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_5_35B_A3B
+  name: "Qwen3.5-35B-A3B"
+  model: "Qwen3.5-35B-A3B"
+  task: TextToText
+  modified_at: "2026-03-23T02:35:00.613642+00:00"
+  digest: 9812147c6c561c5229d72f14717618f9e1fc62f26a98e720569981891830b5d8
+  size: 28515105440
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.5/35b-a3b/ud-q6_k_s.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 34.7B
+    quantization_level: Q6_K_S
+    precision: int8
+    dtype: int8
+    specialization: Text
+    size: 28515105440
+    original_ctx: 262144
+    n_layers: 40
+    hidden_size: 2048
+    n_heads: 16
+    n_kv_heads: 2
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_5_4B
+  name: "Qwen3.5-4B"
+  model: "Qwen3.5-4B"
+  task: TextToText
+  modified_at: "2026-03-23T02:35:26.645732+00:00"
+  digest: 161be121617c45ea247eae0fd4477d26f287a368b52702e3fc99c9bc52f23061
+  size: 3024934048
+  details:
+    format: gguf
+    gguf_file: /models/qwen3.5/4b/q5_k_s.gguf
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 4.2B
+    quantization_level: Q5_K_S
+    precision: int4
+    dtype: int4
+    specialization: Text
+    size: 3024934048
+    original_ctx: 2048
+    clip_model_path: "/models/qwen3.5/4b/mmproj-bf16.gguf"
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: nomic_xlm
+  name: "nomic-embed-text-v2-moe"
+  model: "nomic-xlm"
+  task: TextToText
+  modified_at: "2026-03-23T02:31:38.901792+00:00"
+  digest: 06e7a7e594a26985523c18383aba4aad39fe6e14f08ffc6ab5b554e1ccdc3cff
+  size: 512225120
+  details:
+    format: gguf
+    gguf_file: "/models/nomic-embed-text-v2-moe/q8_0.gguf"
+    family: "nomic-bert"
+    families:
+      - "nomic-bert"
+    parameter_size: 475.3M
+    quantization_level: Q8_0
+    precision: int8
+    dtype: int8
+    specialization: Embedding
+    size: 512225120
+    original_ctx: 2048
+    n_layers: 12
+    hidden_size: 768
+    n_heads: 12
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_5_0_8B
+  name: "Qwen3.5-0.8B"
+  model: "Qwen3.5-0.8B"
+  task: TextToText
+  modified_at: "2026-04-03T17:42:00.692848+00:00"
+  digest: 8f0cb1e8e058e45c7d9676fcd4da2f08eb62ff537da747a6ffc7157c1f6a5684
+  size: 771092736
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.5/0.8b/ud-q6_k_xl.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 752.4M
+    quantization_level: Q6_K_XL
+    precision: int4
+    dtype: int4
+    specialization: Text
+    size: 771092736
+    original_ctx: 2048
+  parameters:
+    num_ctx: 155000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_6_35B_A3B
+  name: "Qwen3.6-35B-A3B"
+  model: "Qwen3.6-35B-A3B"
+  task: TextToText
+  modified_at: "2026-04-19T16:47:38.874251+00:00"
+  digest: b762215c5f507f4865df4ac3d1afa803828afa41e05ecac3fac431a67bbd88e8
+  size: 38451182560
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.6/35b-a3b/ud-q8_k_xl.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 34.7B
+    quantization_level: Q8_K_XL
+    precision: int8
+    dtype: int8
+    specialization: Text
+    size: 38451182560
+    original_ctx: 262144
+    n_layers: 40
+    hidden_size: 2048
+    n_heads: 16
+    n_kv_heads: 2
+  parameters:
+    num_ctx: 200000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
+
+- id: Qwen3_6_27B
+  name: "Qwen3.6-27B"
+  model: "Qwen3.6-27B"
+  task: TextToText
+  modified_at: "2026-04-22T15:59:03.844554+00:00"
+  digest: 19a2f4733a863088bc06665bf307dca95f7d4370b4d8690340cdff9992fe48c6
+  size: 35325163744
+  details:
+    format: gguf
+    gguf_file: "/models/qwen3.6/27b/ud-q8_k_xl.gguf"
+    family: qwen
+    families:
+      - qwen
+    parameter_size: 26.9B
+    quantization_level: Q8_K_XL
+    precision: int8
+    dtype: int8
+    specialization: Text
+    size: 35325163744
+    original_ctx: 2048
+    clip_model_path: /models/qwen3.6/27b/mmproj.gguf
+  parameters:
+    num_ctx: 200000
+    repeat_last_n: -1
+    repeat_penalty: 0
+    temperature: 0.7
+    seed: -1
+    num_predict: -1
+    top_k: 20
+    top_p: 0.95
+    min_p: 0.05
+    max_tokens: 16384
+    n_parts: -1
+    batch_size: 2048
+    micro_batch_size: 1024
+    n_gpu_layers: -1
+    think: False
+    kv_on_cpu: True
+    # n_cpu_moe: 10
+  pipeline: llama
+  lora_weights: []
+  provider: llama_cpp
