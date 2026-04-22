@@ -62,7 +62,7 @@ async def upload_document(
 
         # Store the document
         document = await storage.document.store_document(
-            conversation_id=conversation_id,
+            message_id=conversation_id,
             user_id=user_id,
             filename=filename,
             content_type=content_type,
@@ -117,7 +117,9 @@ async def upload_document(
 
     except Exception as e:
         logger.error(f"Failed to upload document: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload file: {str(e)}"
+        ) from e
 
 
 @router.get("/{document_id}", response_model=Document)
@@ -169,7 +171,9 @@ async def download_document(
         )
     except Exception as e:
         logger.error(f"Failed to decode document content: {e}")
-        raise HTTPException(status_code=500, detail="Failed to decode file content")
+        raise HTTPException(
+            status_code=500, detail="Failed to decode file content"
+        ) from e
 
 
 @router.get("/conversation/{conversation_id}", response_model=List[Document])

@@ -21,11 +21,11 @@ async def create_todo(todo: TodoItem, request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
 
     try:
-
         return await storage.get_service(storage.todo).add_todo(todo)
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating todo: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error creating todo: {str(e)}"
+        ) from e
 
 
 @router.get("/", response_model=List[TodoItem])
@@ -44,9 +44,10 @@ async def get_todos(request: Request, status: Optional[str] = None):
             todos = await storage.get_service(storage.todo).get_todos_by_user(user_id)
 
         return todos
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving todos: {str(e)}"
+        ) from e
 
 
 @router.get("/{todo_id}", response_model=TodoItem)
@@ -65,9 +66,11 @@ async def get_todo(request: Request, todo_id: int):
         return todo
 
     except HTTPException:
-        raise  # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving todo: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving todo: {str(e)}"
+        ) from e
 
 
 @router.put("/{todo_id}", response_model=TodoItem)
@@ -79,9 +82,10 @@ async def update_todo(todo: TodoItem, request: Request):
 
     try:
         return await storage.get_service(storage.todo).update_todo(todo)
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating todo: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error updating todo: {str(e)}"
+        ) from e
 
 
 @router.delete("/{todo_id}")
@@ -98,9 +102,12 @@ async def delete_todo(request: Request, todo_id: int):
             raise HTTPException(status_code=404, detail="Todo item not found")
 
         return {"message": "Todo item deleted successfully"}
-
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting todo: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error deleting todo: {str(e)}"
+        ) from e
 
 
 @router.get("/conversation/{conversation_id}", response_model=List[TodoItem])
@@ -115,9 +122,10 @@ async def get_todos_by_conversation(request: Request, conversation_id: int):
             user_id, conversation_id
         )
         return todos
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving todos: {str(e)}"
+        ) from e
 
 
 @router.get("/status/{status}", response_model=List[TodoItem])
@@ -131,6 +139,7 @@ async def get_todos_by_status(request: Request, status: str):
         return await storage.get_service(storage.todo).get_todos_by_status(
             user_id, status
         )
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving todos: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving todos: {str(e)}"
+        ) from e

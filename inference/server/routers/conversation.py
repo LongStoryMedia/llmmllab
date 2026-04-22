@@ -2,7 +2,7 @@
 Conversation router for managing user conversations and messages.
 """
 
-from typing import AsyncIterator, Optional
+from typing import Optional
 from datetime import datetime as dt
 
 from fastapi import HTTPException, Request
@@ -10,16 +10,13 @@ from fastapi.responses import StreamingResponse
 from models import (
     Conversation,
     Message,
-    MessageContent,
-    MessageContentType,
-    MessageRole,
 )
 from pydantic import BaseModel
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
+from db import storage
 from runner import local_pipeline_cache
 from composer import clear_workflow_cache
-from db import storage  # Import database storage
 from .chat import router, composer_chat_completion
 
 
@@ -181,7 +178,7 @@ async def cancel_conversation(request: Request):
     """
     Cancel the current conversation by clearing workflow cache and local pipeline cache.
     """
-    logger.info(f"Received cancel request")
+    logger.info("Received cancel request")
     user_id = get_user_id(request)
     logger.info(f"Received cancel request for user {user_id}")
     if not user_id:
@@ -334,7 +331,7 @@ async def create_conversation(request: Request):
 
     try:
         assert user_id, "User ID not found"
-        convo = storage.get_service(storage.conversation)
+        convo_service = storage.get_service(storage.conversation)
         # Create the conversation in the database
         conversation = Conversation(
             id=0,  # Will be set by database
@@ -343,13 +340,13 @@ async def create_conversation(request: Request):
             created_at=dt.now(),
             updated_at=dt.now(),
         )
-        conversation_id = await convo.create_conversation(conversation)
+        conversation_id = await convo_service.create_conversation(conversation)
 
         if not conversation_id:
             raise HTTPException(status_code=500, detail="Failed to create conversation")
 
         # Get the newly created conversation
-        return await convo.get_conversation(conversation_id)
+        return await convo_service.get_conversation(conversation_id)
     except HTTPException as e:
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors

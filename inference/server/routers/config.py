@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Request
 from server.middleware.auth import get_user_id
 from server.config import logger
 
-# Import storage layer
 from db import storage
 
 # Import models - use the same imports as storage layer
@@ -28,13 +27,8 @@ async def get_user_config(request: Request) -> UserConfig:
     user_id = get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if not storage.initialized:
+    if not storage.initialized or not storage.user_config:
         raise HTTPException(status_code=503, detail="Database not initialized")
-
-    if not storage.user_config:
-        raise HTTPException(
-            status_code=503, detail="User config storage not initialized"
-        )
 
     try:
         # This will now automatically create the user with default config if they don't exist
@@ -42,7 +36,7 @@ async def get_user_config(request: Request) -> UserConfig:
         return config
     except Exception as e:
         logger.error(f"Error getting user config: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
 
 
 @router.put("/")
@@ -52,13 +46,8 @@ async def update_config(config: UserConfig, request: Request) -> UserConfig:
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    if not storage.initialized:
+    if not storage.initialized or not storage.user_config:
         raise HTTPException(status_code=503, detail="Database not initialized")
-
-    if not storage.user_config:
-        raise HTTPException(
-            status_code=503, detail="User config storage not initialized"
-        )
 
     if config.user_id != user_id:
         raise HTTPException(
@@ -70,4 +59,4 @@ async def update_config(config: UserConfig, request: Request) -> UserConfig:
         return config
     except Exception as e:
         logger.error(f"Error updating user config: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e

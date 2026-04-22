@@ -4,7 +4,6 @@ Users router for handling user management and authentication.
 """
 
 from typing import List
-from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
 from db import storage
@@ -26,13 +25,8 @@ async def get_users(request: Request):
     if not is_admin(request):
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    if not storage.initialized:
+    if not storage.initialized or not storage.user_config:
         raise HTTPException(status_code=503, detail="Database not initialized")
-
-    if not storage.user_config:
-        raise HTTPException(
-            status_code=503, detail="User config storage not initialized"
-        )
 
     try:
         users = await storage.user_config.get_all_users()
@@ -54,7 +48,9 @@ async def get_users(request: Request):
 
         return transformed_users
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching users: {str(e)}"
+        ) from e
 
 
 @router.get("/{user_id}/conversations", response_model=List[Conversation])
@@ -71,12 +67,7 @@ async def get_conversations_for_user(user_id: str, request: Request):
             detail="Admin access required to view other users' conversations",
         )
 
-    if not storage.initialized:
+    if not storage.initialized or not storage.conversation:
         raise HTTPException(status_code=503, detail="Database not initialized")
-
-    if not storage.conversation:
-        raise HTTPException(
-            status_code=503, detail="Conversation storage not initialized"
-        )
 
     return await storage.conversation.get_user_conversations(user_id)

@@ -3,10 +3,8 @@ API Key Management Router
 Provides endpoints for creating, listing, revoking, and deleting API keys.
 """
 
-from re import A
-from typing import List, Optional
-from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Request, status, Depends, Path
+from typing import List
+from fastapi import APIRouter, HTTPException, Request, status, Path
 from pydantic import BaseModel, Field
 
 from server.middleware.auth import get_user_id
@@ -51,10 +49,10 @@ async def create_api_key(
         )
 
     try:
-        api_key_storage = storage.get_service(storage.api_key)
+        api_key_service = storage.get_service(storage.api_key)
 
         # Create the API key
-        plaintext_key, api_key_obj = await api_key_storage.create_api_key(
+        plaintext_key, api_key_obj = await api_key_service.create_api_key(
             user_id=user_id,
             name=body.name,
             scopes=body.scopes,
@@ -96,8 +94,9 @@ async def list_api_keys(request: Request) -> List[ApiKey]:
         )
 
     try:
-        api_key_storage = storage.get_service(storage.api_key)
-        keys = await api_key_storage.list_api_keys_for_user(user_id)
+        keys = await storage.get_service(storage.api_key).list_api_keys_for_user(
+            user_id
+        )
 
         logger.debug(f"Listed {len(keys)} API keys for user {user_id}")
         return keys
@@ -122,10 +121,10 @@ async def revoke_api_key(request: Request, body: RevokeApiKeyRequest):
         )
 
     try:
-        api_key_storage = storage.get_service(storage.api_key)
-
         # Revoke the key (will verify ownership)
-        success = await api_key_storage.revoke_api_key(body.key_id, user_id)
+        success = await storage.get_service(storage.api_key).revoke_api_key(
+            body.key_id, user_id
+        )
 
         if not success:
             raise HTTPException(
@@ -162,10 +161,10 @@ async def delete_api_key(request: Request, body: DeleteApiKeyRequest):
         )
 
     try:
-        api_key_storage = storage.get_service(storage.api_key)
-
         # Delete the key (will verify ownership)
-        success = await api_key_storage.delete_api_key(body.key_id, user_id)
+        success = await storage.get_service(storage.api_key).delete_api_key(
+            body.key_id, user_id
+        )
 
         if not success:
             raise HTTPException(
@@ -204,8 +203,9 @@ async def get_api_key_info(
         )
 
     try:
-        api_key_storage = storage.get_service(storage.api_key)
-        keys = await api_key_storage.list_api_keys_for_user(user_id)
+        keys = await storage.get_service(storage.api_key).list_api_keys_for_user(
+            user_id
+        )
 
         # Find the key with matching ID
         for key in keys:

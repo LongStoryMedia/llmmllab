@@ -2,12 +2,14 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, Literal, TypeAlias, Union
+from typing import Literal, TypeAlias, Union
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from server.middleware.auth import get_user_id
+from server.services import CompletionService
+from composer.graph.state import ServerToolEvent
 from models.openai.chat_completion_deleted import ChatCompletionDeleted
 from models.openai.chat_completion_list import ChatCompletionList
 from models.openai.chat_completion_message_list import ChatCompletionMessageList
@@ -60,8 +62,6 @@ from models.message import Message, MessageRole, MessageContent, MessageContentT
 from models.tool_call import ToolCall
 from models.chat_response import ChatResponse
 from utils.logging import llmmllogger
-
-import composer
 
 OAIFinishReason: TypeAlias = Literal[
     "stop", "length", "tool_calls", "content_filter", "function_call"
@@ -333,17 +333,10 @@ async def stream_chat_completion(
     client_tools: list[dict] | None = None,
     tool_choice: str | None = None,
 ) -> AsyncIterator[str]:
-    """Stream composer events as OpenAI SSE chat completion chunks."""
-    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
-    workflow = await composer.compose_workflow(
-        user_id=user_id,
-        builder=builder,
-        model_name=model_name,
-        client_tools=client_tools,
-        tool_choice=tool_choice,
-    )
-    initial_state = await builder.create_initial_state(user_id, 0, messages)
+    """Stream composer events as OpenAI SSE chat completion chunks.
 
+    Retry, continuation, and nudge logic is handled by CompletionService.
+    """
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
     created = int(datetime.now().timestamp())
 
@@ -368,16 +361,26 @@ async def stream_chat_completion(
     final_tool_calls: list[ToolCall] = []
     final_content: str = ""
 
-    async for event in composer.execute_workflow(initial_state, workflow):
-        # Final accumulated event - capture tool calls and fallback content
-        # but don't re-emit content that was already streamed.
+    from server.services import StreamAccumulator
+
+    acc = StreamAccumulator()
+
+    async for event, acc in CompletionService.stream_completion(
+        user_id=user_id,
+        messages=messages,
+        model_name=model_name,
+        client_tools=client_tools,
+        tool_choice=tool_choice,
+    ):
+        # Skip ServerToolEvents for OpenAI-compatible clients
+
+        if isinstance(event, ServerToolEvent):
+            continue
+
         if event.done:
             if event.message and event.message.tool_calls:
                 final_tool_calls = event.message.tool_calls
                 has_tool_calls = True
-            # Capture final content as fallback (e.g. when model produced
-            # only thinking with no streamed content, the executor promotes
-            # thoughts to content in the done event).
             if event.message and event.message.content:
                 parts = [
                     c.text
@@ -387,12 +390,7 @@ async def stream_chat_completion(
                 final_content = "".join(parts)
             continue
 
-        # Skip thinking/reasoning content entirely for OpenAI-compatible
-        # clients (e.g. GitHub Copilot). These clients don't understand
-        # thinking blocks and they appear as ugly nested markdown.
-        # Only stream actual content and tool calls.
-
-        # Stream text content deltas directly.
+        # Stream text content deltas directly (skip thinking blocks)
         if event.message and event.message.content:
             text_parts = [
                 c.text
@@ -419,8 +417,14 @@ async def stream_chat_completion(
                 )
                 yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
-    # Fallback: if no content was streamed but the final event has content
-    # (e.g. model only produced thinking, executor promoted it), emit it now.
+    # Use accumulator for final tool calls if not captured from done events
+    if not has_tool_calls and acc.has_tool_calls:
+        final_tool_calls = acc.final_tool_calls
+        has_tool_calls = True
+    if not final_content and acc.final_content:
+        final_content = acc.final_content
+
+    # Fallback: emit content if nothing was streamed
     if not has_content and not has_tool_calls and final_content:
         chunk = CreateChatCompletionStreamResponse(
             id=chunk_id,
@@ -554,29 +558,19 @@ async def createChatCompletion(
             },
         )
 
-    # Non-streaming response
-    builder = await composer.get_graph_builder(composer.WorkFlowType.IDE, user_id)
-    workflow = await composer.compose_workflow(
+    # Non-streaming response — delegate to CompletionService
+    result = await CompletionService.run_completion(
         user_id=user_id,
-        builder=builder,
+        messages=internal_messages,
         model_name=body.model,
         client_tools=client_tools,
         tool_choice=tool_choice,
     )
-    initial_state = await builder.create_initial_state(
-        user_id,
-        0,
-        internal_messages,
-    )
-    chat_response: ChatResponse | None = None
-    async for event in composer.execute_workflow(initial_state, workflow):
-        if event.finish_reason == "complete" and event.message:
-            chat_response = event
-    if chat_response is None:
+    if result.chat_response is None:
         raise HTTPException(
             status_code=500, detail="Workflow did not produce a response"
         )
-    return openai_response_from_chat_response(chat_response, model=body.model)
+    return openai_response_from_chat_response(result.chat_response, model=body.model)
 
 
 @router.delete("/completions/{completion_id}")

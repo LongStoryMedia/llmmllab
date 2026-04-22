@@ -1,29 +1,27 @@
 """
-Simplified Chat router that delegates to composer interface.
-All chat logic has been moved to the composer module for clean architectural separation.
-
+Simplified Chat router that delegates to the service layer.
+The router is a thin interface layer — business logic lives in services/.
 """
 
-from typing import Any, AsyncIterator, Dict, Optional, Type
+from typing import Any, AsyncIterator, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.middleware.auth import get_request_id, get_user_id, is_admin
-from db import storage  # Import database storage
+from db import storage
 from models import (
     MessageRole,
     ChatResponse,
     Message,
 )
-from utils import extract_text_from_message  # Import logging utility
+from composer.graph.state import ServerToolEvent
+from composer.graph.workflows.factory import WorkFlowType
+from server.services import CompletionService
+from utils import extract_text_from_message
 from utils.logging import llmmllogger
 from utils.message_transformation import transform_file_content_to_documents
-
-# Import composer interface and streaming state management
-import composer
-
 
 logger = llmmllogger.bind(component="chat_router")
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -34,25 +32,25 @@ async def composer_chat_completion(
     conversation_id: int,
     request_id: str,
     model_name: Optional[str] = None,
-    response_format: Optional[Type[BaseModel]] = None,
 ) -> AsyncIterator[str]:
-    """Handle chat completions by delegating to composer interface."""
-    # Get Dialog Graph Builder
-    builder = await composer.get_graph_builder(composer.WorkFlowType.DIALOG, user_id)
+    """Handle chat completions via CompletionService.
 
-    # Compose workflow for user
-    workflow = await composer.compose_workflow(
-        user_id, builder, model_name, response_format
-    )
-
-    # Create initial state (conversation_id is already validated)
-    initial_state = await composer.create_initial_state(
-        user_id, conversation_id, builder
-    )
-
+    Uses the DIALOG workflow type and stores the final message via
+    MessageRepository.  Retry/continuation logic is handled by the
+    shared CompletionService.
+    """
     logger.info(f"Starting workflow execution for request {request_id}")
 
-    async for event in composer.execute_workflow(initial_state, workflow):
+    async for event, _acc in CompletionService.stream_completion(
+        user_id=user_id,
+        messages=[],  # DIALOG workflows load history from conversation_id
+        model_name=model_name or "",
+        workflow_type=WorkFlowType.DIALOG,
+        conversation_id=conversation_id,
+    ):
+        if isinstance(event, ServerToolEvent):
+            continue
+
         if event.message:
             text = extract_text_from_message(event.message)
             logger.debug(
@@ -67,7 +65,7 @@ async def composer_chat_completion(
         if event.finish_reason == "complete" and event.message:
             message_id = await storage.get_service(storage.message).add_message(
                 event.message
-            )  # Store final message in DB
+            )
             logger.info(
                 f"Workflow execution complete for request {request_id}, final message stored with ID {message_id}"
             )
@@ -114,7 +112,7 @@ async def chat_completion(
 
         await storage.get_service(storage.message).add_message(msg)
         return StreamingResponse(
-            composer_chat_completion(user_id, msg.conversation_id, request_id, body.model_name, body.response_format),  # type: ignore
+            composer_chat_completion(user_id, msg.conversation_id, request_id, body.model_name),  # type: ignore
             media_type="application/json",
             headers={
                 "Cache-Control": "no-cache",
