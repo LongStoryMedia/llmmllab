@@ -23,9 +23,7 @@ import {
 import { MessageContentType, MessageContentTypeValues } from '../../types/MessageContentType';
 import { MessageRoleValues } from '../../types/MessageRole';
 import { useConfigContext } from '../../context/ConfigContext';
-import { getToken } from '../../api';
 import { useAuth } from '../../auth';
-import { listModelProfiles, updateModelProfile } from '../../api/model';
 import { Image as ImageIcon, Stop as StopIcon } from '@mui/icons-material';
 import { MessageContent } from '@/types';
 import { type FileUIPart } from 'ai';
@@ -121,59 +119,9 @@ const ChatInput = () => {
   const { config } = useConfigContext();
   const auth = useAuth();
 
-  const [primaryProfileThink, setPrimaryProfileThink] = useState<boolean>(false);
-  const [thinkLoading, setThinkLoading] = useState(false);
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showSchemaEditor, setShowSchemaEditor] = useState(false);
   const inProgress = isTyping || isLoading;
-
-  // Load primary profile and its 'think' setting
-  React.useEffect(() => {
-    const loadPrimary = async () => {
-      try {
-        const primaryId = config?.model_profiles?.primary_profile_id || '';
-        if (!primaryId) {
-          return;
-        }
-        const profiles = await listModelProfiles(getToken(auth.user));
-        const primary = profiles.find(p => p.id === primaryId);
-        if (primary && primary.parameters) {
-          setPrimaryProfileThink(!!primary.parameters.think);
-        }
-      } catch {
-        // ignore errors silently for now
-      }
-    };
-    loadPrimary();
-  }, [config, auth.user]);
-
-  const toggleThink = async () => {
-    const primaryId = config?.model_profiles?.primary_profile_id || '';
-    if (!primaryId) {
-      return;
-    }
-    setThinkLoading(true);
-    try {
-      const profiles = await listModelProfiles(getToken(auth.user));
-      const primary = profiles.find(p => p.id === primaryId);
-      if (!primary) {
-        return;
-      }
-      const updated = await updateModelProfile(getToken(auth.user), primaryId, {
-        ...primary,
-        parameters: {
-          ...primary.parameters,
-          think: !primary.parameters?.think
-        }
-      });
-      setPrimaryProfileThink(!!updated.parameters?.think);
-    } catch (error) {
-      console.error('Failed toggling think on primary profile', error);
-    } finally {
-      setThinkLoading(false);
-    }
-  };
 
   const handleSubmit = async (message: PromptInputMessage) => {
     if (!currentConversation?.id || !message.text.trim()) {
@@ -282,25 +230,6 @@ const ChatInput = () => {
               >
                 <ImageIcon className="text-muted-foreground" fontSize="small" />
               </PromptInputButton>
-
-              {/* Think Toggle */}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={primaryProfileThink}
-                    onChange={toggleThink}
-                    disabled={!config?.model_profiles?.primary_profile_id || thinkLoading}
-                    size="small"
-                  />
-                }
-                label="Think"
-                sx={{
-                  mr: 1,
-                  '& .MuiFormControlLabel-label': {
-                    fontSize: isMobile ? '0.75rem' : '0.875rem'
-                  }
-                }}
-              />
 
               {/* Structured Mode Toggle */}
               <StructuredModeToggle

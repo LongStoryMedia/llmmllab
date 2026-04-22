@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Grid, Typography, useTheme, Tabs, Tab, Box, Paper, Alert, CircularProgress, Button } from '@mui/material';
 import { useConfig } from '../../hooks/useConfig';
-import ModelSettings from './ModelSettings';
 import SummarizationSettings from './SummarizationSettings';
 import MemorySettings from './MemorySettings';
 import WebSearchSettings from './WebSearchSettings';
@@ -43,7 +42,7 @@ function a11yProps(index: number) {
   };
 }
 
-const tabRoutes = ["profile", "models", "summarization", "retrieval", "websearch", "security", "refinement", "image-generation", "gpu", "parameter-optimization", "circuit-breaker", "api-keys"];
+const tabRoutes = ["profile", "summarization", "retrieval", "websearch", "security", "image-generation", "gpu", "api-keys"];
 
 const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) => void, currentTab: string }) => {
   const theme = useTheme();
@@ -96,14 +95,13 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
               aria-label="settings tabs"
             >
               <Tab label="User Profile" {...a11yProps(0)} />
-              <Tab label="Models" {...a11yProps(1)} />
-              <Tab label="Summarization" {...a11yProps(2)} />
-              <Tab label="Memory Retrieval" {...a11yProps(3)} />
-              <Tab label="Web Search Settings" {...a11yProps(4)} />
-              <Tab label="Security" {...a11yProps(5)} />
-              <Tab label="Image Generation" {...a11yProps(6)} />
-              <Tab label="GPU Configuration" {...a11yProps(7)} />
-              <Tab label="API Keys" {...a11yProps(8)} />
+              <Tab label="Summarization" {...a11yProps(1)} />
+              <Tab label="Memory Retrieval" {...a11yProps(2)} />
+              <Tab label="Web Search Settings" {...a11yProps(3)} />
+              <Tab label="Security" {...a11yProps(4)} />
+              <Tab label="Image Generation" {...a11yProps(5)} />
+              <Tab label="GPU Configuration" {...a11yProps(6)} />
+              <Tab label="API Keys" {...a11yProps(7)} />
             </Tabs>
 
             <Box sx={{ p: 2 }}>
@@ -118,27 +116,24 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
                 </Box>
               </TabPanel>
               <TabPanel value={tabValue} index={1}>
-                <ModelSettings />
-              </TabPanel>
-              <TabPanel value={tabValue} index={2}>
                 <SummarizationSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={3}>
+              <TabPanel value={tabValue} index={2}>
                 <MemorySettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={4}>
+              <TabPanel value={tabValue} index={3}>
                 <WebSearchSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={5}>
+              <TabPanel value={tabValue} index={4}>
                 <SecuritySettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={6}>
+              <TabPanel value={tabValue} index={5}>
                 <ImageGenerationSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={7}>
+              <TabPanel value={tabValue} index={6}>
                 <GpuSettings />
               </TabPanel>
-              <TabPanel value={tabValue} index={8}>
+              <TabPanel value={tabValue} index={7}>
                 <ApiKeySettings />
               </TabPanel>
             </Box>

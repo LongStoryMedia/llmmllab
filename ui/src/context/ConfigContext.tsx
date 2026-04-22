@@ -4,13 +4,12 @@ import { UserConfig } from '../types/UserConfig';
 import { SummarizationConfig } from '../types/SummarizationConfig';
 import { WebSearchConfig } from '../types/WebSearchConfig';
 import { ImageGenerationConfig } from '../types/ImageGenerationConfig';
-import { ModelProfileConfig } from '../types/ModelProfileConfig';
 import { PreferencesConfig } from '../types/PreferencesConfig';
 import { MemoryConfig } from '../types/MemoryConfig';
 import { GPUConfig } from '../types/GpuConfig';
 
 
-export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | ModelProfileConfig | PreferencesConfig | MemoryConfig | GPUConfig;
+export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | PreferencesConfig | MemoryConfig | GPUConfig;
 interface ConfigContextType {
   config: UserConfig | null;
   isLoading: boolean;
