@@ -51,7 +51,7 @@ class AgentNode:
         """
         assert state.conversation_id is not None
         try:
-            n_ctx = self.agent.profile.parameters.num_ctx or 100000
+            n_ctx = self.agent.num_ctx
             max_tokens_before_summary = int(n_ctx * 0.95)
             middleware: List[AgentMiddleware] = [
                 SummarizationMiddleware(

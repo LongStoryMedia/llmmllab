@@ -75,6 +75,7 @@ class BaseAgent:
         self,
         model: BaseChatModel,
         system_prompt: str = "",
+        num_ctx: int = 100000,
         component_name: Optional[str] = None,
         middleware: Optional[List[AgentMiddleware]] = None,
         tools: Optional[List[BaseTool]] = None,
@@ -85,6 +86,7 @@ class BaseAgent:
         Args:
             model: Base chat model for agent operations
             system_prompt: System prompt for the agent
+            num_ctx: Context window size for summarization threshold
             component_name: Optional component name for logging. If not provided,
                           uses the class name.
         """
@@ -95,6 +97,7 @@ class BaseAgent:
         # Store required dependencies
         self.model = model
         self.system_prompt = system_prompt
+        self.num_ctx = num_ctx
 
         self.agent_id = f"{id(self):x}"
         # Middleware list passed to create_agent for behaviors like TodoListMiddleware

@@ -120,6 +120,7 @@ class IdeGraphBuilder(GraphBuilder):
             primary_agent = ChatAgent(
                 model=cast(BaseChatModel, primary_model),
                 system_prompt=model_def.system_prompt or IDE_PRIMARY_SYSTEM_PROMPT,
+                num_ctx=(model_def.parameters.num_ctx if model_def.parameters else None) or 100000,
                 component_name="PrimaryCodingAgent",
             )
 
