@@ -25,7 +25,7 @@ class UserConfig(BaseModel):
         Optional[ImageGenerationConfig], Field(default=None)
     ] = None
     gpu_config: Annotated[GPUConfig, Field(...)]
-    workflow: Annotated[WorkflowConfig, Field(...)]
+    workflow: Annotated[WorkflowConfig, Field(default=WorkflowConfig())]
     tool: Annotated[Optional[ToolConfig], Field(default=None)] = None
     event_stream: Annotated[Optional[EventStreamConfig], Field(default=None)] = None
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from models.gpu_config import GPUConfig
+from models.model_parameters import ModelParameters
 from models.default_configs import DEFAULT_GPU_CONFIG
 from utils.logging import llmmllogger
 
@@ -97,7 +98,7 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
 
     def _build_inference_config(self, config: Dict[str, Any]) -> None:
         """Build configuration for inference servers."""
-        params = self.model.parameters
+        params = self.model.parameters or ModelParameters()
         # Resolve GPU config: model → user_config → default
         gcfg = (
             self.model.gpu_config
