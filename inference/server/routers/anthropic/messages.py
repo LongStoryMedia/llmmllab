@@ -120,7 +120,11 @@ def _get_num_ctx() -> int:
                 if isinstance(pipeline, ChatLlamaCppPipeline) and hasattr(
                     pipeline, "profile"
                 ):
-                    num_ctx = pipeline.profile.parameters.num_ctx
+                    num_ctx = (
+                        pipeline.model.parameters.num_ctx
+                        if pipeline.model.parameters
+                        else None
+                    )
                     if num_ctx:
                         return num_ctx
     except Exception:
@@ -1095,6 +1099,14 @@ async def createMessage(
             and client_tools
             and has_content
         ):
+            logger.warning(
+                "Non-streaming: model produced text without tool calls — checking for continuation",
+                extra={
+                    "has_tool_calls": has_tool_calls,
+                    "has_content": has_content,
+                    "client_tools_count": len(client_tools),
+                },
+            )
             accumulated_text = "".join(
                 c.text
                 for c in chat_response.message.content  # type: ignore
