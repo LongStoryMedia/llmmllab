@@ -24,8 +24,8 @@
     n_kv_heads: 2
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -71,8 +71,8 @@
     n_kv_heads: 2
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -114,8 +114,8 @@
     clip_model_path: "/models/qwen3.5/27b/qwopus/mmproj.gguf"
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -160,8 +160,8 @@
     n_kv_heads: 2
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -203,8 +203,8 @@
     clip_model_path: "/models/qwen3.5/4b/mmproj-bf16.gguf"
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -248,8 +248,8 @@
     n_heads: 12
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -290,8 +290,8 @@
     original_ctx: 2048
   parameters:
     num_ctx: 155000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -336,8 +336,8 @@
     n_kv_heads: 2
   parameters:
     num_ctx: 200000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1
@@ -379,8 +379,8 @@
     clip_model_path: /models/qwen3.6/27b/mmproj.gguf
   parameters:
     num_ctx: 200000
-    repeat_last_n: -1
-    repeat_penalty: 0
+    repeat_last_n: 256
+    repeat_penalty: 1.1
     temperature: 0.7
     seed: -1
     num_predict: -1

@@ -175,6 +175,9 @@ class IdeGraphBuilder(GraphBuilder):
                 # Proxy mode or no tools: Agent -> END
                 workflow.add_edge(AGENT_NODE_NAME, END)
 
+            # Safety net: cap the maximum number of graph-level iterations.
+            # LangGraph default is 25; we set it explicitly to make the
+            # limit visible and prevent runaway loops in server-tool mode.
             return workflow.compile()
         except Exception as e:
             self.logger.error(

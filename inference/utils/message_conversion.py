@@ -117,7 +117,8 @@ def message_to_lc_message(
                     lc_tool_call = {
                         "name": tc.name,
                         "args": tc.args if tc.args else {},
-                        "id": tc.execution_id or f"call_{tc.name}_{len(parsed_tool_calls)}",
+                        "id": tc.execution_id
+                        or f"call_{tc.name}_{len(parsed_tool_calls)}",
                     }
                     parsed_tool_calls.append(lc_tool_call)
 
@@ -172,9 +173,6 @@ def message_to_lc_message(
         ai_message = AIMessage(content=content_data, id=lc_id)
         if parsed_tool_calls:
             ai_message.tool_calls = parsed_tool_calls
-            logger.info(
-                f"🔧 AIMessage created with {len(parsed_tool_calls)} tool calls"
-            )
         return ai_message
 
     elif message.role == MessageRole.USER:

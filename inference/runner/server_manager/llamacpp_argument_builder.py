@@ -134,6 +134,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "mirostat": 1,
                 # "kv_unified": True,
                 "cache_ram": 0,
+                # Repetition penalty — prevents token-level loops where the
+                # model repeats the same sequence endlessly.  A value of 1.1
+                # is a mild penalty that discourages exact repetition without
+                # noticeably harming output quality.
+                "repeat_penalty": params.repeat_penalty if params.repeat_penalty else 1.1,
+                "repeat_last_n": params.repeat_last_n if params.repeat_last_n is not None else 256,
             }
         )
 
