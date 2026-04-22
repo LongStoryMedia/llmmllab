@@ -88,7 +88,9 @@ class DialogGraphBuilder(GraphBuilder):
         """
         try:
             primary_model_def = pipeline_factory.get_model_by_task(ModelTask.TEXTTOTEXT)
-            embedding_model_def = pipeline_factory.get_model_by_task(ModelTask.TEXTTOEMBEDDINGS)
+            embedding_model_def = pipeline_factory.get_model_by_task(
+                ModelTask.TEXTTOEMBEDDINGS
+            )
 
             if not primary_model_def:
                 raise RuntimeError("No TextToText model available")

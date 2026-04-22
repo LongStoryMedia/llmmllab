@@ -99,7 +99,11 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         """Build configuration for inference servers."""
         params = self.model.parameters
         # Resolve GPU config: model → user_config → default
-        gcfg = self.model.gpu_config or (self.user_config.gpu_config if self.user_config else None) or DEFAULT_GPU_CONFIG
+        gcfg = (
+            self.model.gpu_config
+            or (self.user_config.gpu_config if self.user_config else None)
+            or DEFAULT_GPU_CONFIG
+        )
 
         # Standard server features with performance optimizations
         config.update(

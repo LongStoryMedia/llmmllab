@@ -158,7 +158,9 @@ class ChatLlamaCppPipeline(BasePipeline):
             # OpenAI SDK requires a positive int or omission.  llama.cpp
             # defaults to ctx_size when max_tokens is not sent, which is what
             # we want.
-            profile_max = self.model.parameters.max_tokens if self.model.parameters else None
+            profile_max = (
+                self.model.parameters.max_tokens if self.model.parameters else None
+            )
             max_tokens = profile_max if (profile_max and profile_max > 0) else None
 
             self.chat_model = ReasoningChatOpenAI(
@@ -167,9 +169,13 @@ class ChatLlamaCppPipeline(BasePipeline):
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=1,
                 timeout=30000,
-                temperature=(self.model.parameters.temperature if self.model.parameters else None) or 0.7,
+                temperature=(
+                    self.model.parameters.temperature if self.model.parameters else None
+                )
+                or 0.7,
                 # max_tokens=max_tokens,  # type: ignore[assignment]
-                top_p=(self.model.parameters.top_p if self.model.parameters else None) or 0.9,
+                top_p=(self.model.parameters.top_p if self.model.parameters else None)
+                or 0.9,
                 streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={

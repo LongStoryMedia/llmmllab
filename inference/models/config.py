@@ -21,9 +21,9 @@ from .web_search_config import WebSearchConfig
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
-
 class Config(BaseModel):
     """Application configuration"""
+
     server: Annotated[ServerConfig, Field(...)]
     database: Annotated[DatabaseConfig, Field(...)]
     redis: Annotated[RedisConfig, Field(...)]

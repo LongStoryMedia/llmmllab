@@ -16,7 +16,6 @@ from langchain_core.language_models import BaseChatModel
 
 from models import Model
 
-
 # Enable HTTP logging for debugging
 if os.getenv("LOG_LEVEL", "").lower() == "trace":
     logging.getLogger("openai").setLevel(logging.DEBUG)
@@ -79,7 +78,7 @@ class BasePipeline(BaseChatModel, ABC):
         messages: list[BaseMessage],
         stop: list[str] | None = None,
         run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs
+        **kwargs,
     ) -> ChatResult:
         """Generate chat completions given input messages."""
 
@@ -89,7 +88,7 @@ class BasePipeline(BaseChatModel, ABC):
         messages: list[BaseMessage],
         stop: list[str] | None = None,
         run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs
+        **kwargs,
     ) -> Iterator[ChatGenerationChunk]:
         """Stream chat completions given input messages."""
 

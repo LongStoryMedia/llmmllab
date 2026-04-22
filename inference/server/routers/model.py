@@ -12,7 +12,6 @@ from server.config import logger
 from models.model import Model
 from runner.utils.model_loader import ModelLoader
 
-
 router = APIRouter(prefix="/models", tags=["models"])
 
 

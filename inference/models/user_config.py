@@ -14,14 +14,16 @@ from .workflow_config import WorkflowConfig
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
-
 class UserConfig(BaseModel):
     """User-specific configuration"""
+
     user_id: Annotated[str, Field(..., description="User ID")]
     """User ID"""
     summarization: Annotated[Optional[SummarizationConfig], Field(default=None)] = None
     memory: Annotated[Optional[MemoryConfig], Field(default=None)] = None
-    image_generation: Annotated[Optional[ImageGenerationConfig], Field(default=None)] = None
+    image_generation: Annotated[
+        Optional[ImageGenerationConfig], Field(default=None)
+    ] = None
     gpu_config: Annotated[GPUConfig, Field(...)]
     workflow: Annotated[WorkflowConfig, Field(...)]
     tool: Annotated[Optional[ToolConfig], Field(default=None)] = None

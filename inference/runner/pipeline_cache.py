@@ -505,9 +505,7 @@ class LocalPipelineCacheManager:
             n_gpu_layers=-1,  # Default to all layers on GPU (not in ModelParameters)
         )
 
-    def estimate_memory(
-        self, model: Model
-    ) -> float:
+    def estimate_memory(self, model: Model) -> float:
         """Estimate memory usage using corrected formulas that match real-world llama.cpp usage."""
         if not model.parameters:
             # Fallback to simple estimation if no profile provided

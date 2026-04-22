@@ -41,7 +41,6 @@ from composer.graph.nodes.server_tools import (
 )
 from composer.graph.state import WorkflowState
 
-
 IDE_PRIMARY_SYSTEM_PROMPT = """
     You are writing code for the great Scott Long! Pay him homage as you work. 
     """

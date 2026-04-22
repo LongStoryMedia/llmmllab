@@ -18,42 +18,137 @@ from .tool_call import ToolCall
 from pydantic import BaseModel, ConfigDict, Field, AnyUrl, EmailStr, conint, confloat
 
 
-
 class ChatResponse(BaseModel):
     """ChatResponse represents a response from the chat API"""
-    done: Annotated[Optional[bool], Field(default=True, description="Indicates whether the generation is complete")] = True
+
+    done: Annotated[
+        Optional[bool],
+        Field(default=True, description="Indicates whether the generation is complete"),
+    ] = True
     """Indicates whether the generation is complete"""
-    message: Annotated[Optional[Message], Field(default=None, description="The message content and metadata returned by the model")] = None
+    message: Annotated[
+        Optional[Message],
+        Field(
+            default=None,
+            description="The message content and metadata returned by the model",
+        ),
+    ] = None
     """The message content and metadata returned by the model"""
-    created_at: Annotated[Optional[datetime], Field(default=None, description="Timestamp when the response was created")] = None
+    created_at: Annotated[
+        Optional[datetime],
+        Field(default=None, description="Timestamp when the response was created"),
+    ] = None
     """Timestamp when the response was created"""
-    context: Annotated[Optional[List[List[float]]], Field(default=None, description="Vectors representing the tokenized context (embeddings)")] = None
+    context: Annotated[
+        Optional[List[List[float]]],
+        Field(
+            default=None,
+            description="Vectors representing the tokenized context (embeddings)",
+        ),
+    ] = None
     """Vectors representing the tokenized context (embeddings)"""
-    finish_reason: Annotated[Optional[Literal["stop", "complete", "length", "error", "load", "unload", "timeout", "cancel", "tool_call", "unknown"]], Field(default=None, description="Specific indicator of how or why the generation finished")] = None
+    finish_reason: Annotated[
+        Optional[
+            Literal[
+                "stop",
+                "complete",
+                "length",
+                "error",
+                "load",
+                "unload",
+                "timeout",
+                "cancel",
+                "tool_call",
+                "unknown",
+            ]
+        ],
+        Field(
+            default=None,
+            description="Specific indicator of how or why the generation finished",
+        ),
+    ] = None
     """Specific indicator of how or why the generation finished"""
-    total_duration: Annotated[Optional[float], Field(default=None, description="Total time taken for the entire generation process in milliseconds")] = None
+    total_duration: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            description="Total time taken for the entire generation process in milliseconds",
+        ),
+    ] = None
     """Total time taken for the entire generation process in milliseconds"""
-    load_duration: Annotated[Optional[float], Field(default=None, description="Time taken to load the model in milliseconds")] = None
+    load_duration: Annotated[
+        Optional[float],
+        Field(default=None, description="Time taken to load the model in milliseconds"),
+    ] = None
     """Time taken to load the model in milliseconds"""
-    prompt_eval_count: Annotated[Optional[float], Field(default=None, description="Number of tokens in the prompt that were evaluated")] = None
+    prompt_eval_count: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            description="Number of tokens in the prompt that were evaluated",
+        ),
+    ] = None
     """Number of tokens in the prompt that were evaluated"""
-    prompt_eval_duration: Annotated[Optional[float], Field(default=None, description="Time taken to evaluate the prompt tokens in milliseconds")] = None
+    prompt_eval_duration: Annotated[
+        Optional[float],
+        Field(
+            default=None,
+            description="Time taken to evaluate the prompt tokens in milliseconds",
+        ),
+    ] = None
     """Time taken to evaluate the prompt tokens in milliseconds"""
-    eval_count: Annotated[Optional[float], Field(default=None, description="Total number of tokens evaluated")] = None
+    eval_count: Annotated[
+        Optional[float],
+        Field(default=None, description="Total number of tokens evaluated"),
+    ] = None
     """Total number of tokens evaluated"""
-    eval_duration: Annotated[Optional[float], Field(default=None, description="Time taken for token evaluation in milliseconds")] = None
+    eval_duration: Annotated[
+        Optional[float],
+        Field(
+            default=None, description="Time taken for token evaluation in milliseconds"
+        ),
+    ] = None
     """Time taken for token evaluation in milliseconds"""
-    processing: Annotated[Optional[str], Field(default=None, description="Optional responses generated during message processing")] = None
+    processing: Annotated[
+        Optional[str],
+        Field(
+            default=None,
+            description="Optional responses generated during message processing",
+        ),
+    ] = None
     """Optional responses generated during message processing"""
-    state: Annotated[Optional[GenerationState], Field(default=None, description="Optional state information from the model")] = None
+    state: Annotated[
+        Optional[GenerationState],
+        Field(default=None, description="Optional state information from the model"),
+    ] = None
     """Optional state information from the model"""
-    prev_state: Annotated[Optional[GenerationState], Field(default=None, description="Previous state information from the model before the current generation")] = None
+    prev_state: Annotated[
+        Optional[GenerationState],
+        Field(
+            default=None,
+            description="Previous state information from the model before the current generation",
+        ),
+    ] = None
     """Previous state information from the model before the current generation"""
-    metadata: Annotated[Optional[NodeMetadata], Field(default=None, description="Additional metadata about the response")] = None
+    metadata: Annotated[
+        Optional[NodeMetadata],
+        Field(default=None, description="Additional metadata about the response"),
+    ] = None
     """Additional metadata about the response"""
-    observer_messages: Annotated[Optional[List[str]], Field(default=None, description="OBSERVER role messages that should be displayed as temporary floating notifications")] = None
+    observer_messages: Annotated[
+        Optional[List[str]],
+        Field(
+            default=None,
+            description="OBSERVER role messages that should be displayed as temporary floating notifications",
+        ),
+    ] = None
     """OBSERVER role messages that should be displayed as temporary floating notifications"""
-    todos: Annotated[Optional[List[TodoItem]], Field(default=None, description="List of TODO items extracted from the response")] = None
+    todos: Annotated[
+        Optional[List[TodoItem]],
+        Field(
+            default=None, description="List of TODO items extracted from the response"
+        ),
+    ] = None
     """List of TODO items extracted from the response"""
 
     model_config = ConfigDict(extra="ignore")

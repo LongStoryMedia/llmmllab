@@ -129,9 +129,7 @@ class PipelineFactory:
             return self.local_cache.unlock_pipeline(model_id)
         return True
 
-    def set_pipeline_persistent(
-        self, model: Model, persistent: bool = True
-    ) -> bool:
+    def set_pipeline_persistent(self, model: Model, persistent: bool = True) -> bool:
         model_id = model.name
         if self.local_cache.is_local(model):
             return self.local_cache.set_persistent(model_id, persistent)
@@ -338,9 +336,7 @@ class PipelineFactory:
                     FluxPipe,
                 )
 
-                return FluxPipe(  # pylint: disable=abstract-class-instantiated
-                    model
-                )
+                return FluxPipe(model)  # pylint: disable=abstract-class-instantiated
             except Exception as e:
                 self.logger.error(f"Failed to initialize FluxPipe: {e}")
                 return None

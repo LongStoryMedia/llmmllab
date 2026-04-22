@@ -173,8 +173,7 @@ async def initialize_database(connection_pool: Any) -> bool:
                 # Step 11: Create dynamic tools tables
                 (
                     "Creating dynamic tools tables",
-                    [
-                    ],
+                    [],
                 ),
                 # Step 12: Create research tables
                 (
@@ -219,7 +218,9 @@ async def initialize_database(connection_pool: Any) -> bool:
                 if success:
                     logger.info(f"✅ Step {idx}/{step_count} completed successfully")
                 else:
-                    logger.warning(f"⚠️ Step {idx}/{step_count} completed with warnings")
+                    logger.warning(
+                        f"⚠️ Step {idx}/{step_count} completed with warnings"
+                    )
 
             # Return success
             logger.info("Database schema initialized successfully.")

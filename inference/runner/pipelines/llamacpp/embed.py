@@ -15,7 +15,6 @@ from models import Model, UserConfig
 from utils.logging import llmmllogger
 from runner.server_manager import LlamaCppServerManager
 
-
 logger = llmmllogger.bind(component="LlamaCppServerEmbeddings")
 
 

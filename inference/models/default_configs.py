@@ -18,7 +18,6 @@ from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
 
-
 # Default preferences configuration
 DEFAULT_PREFERENCES_CONFIG = PreferencesConfig(
     theme="light", language="en", notifications_on=True, font_size=14
