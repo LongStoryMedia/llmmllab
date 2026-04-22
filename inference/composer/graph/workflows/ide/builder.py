@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from composer.constants import AGENT_NODE_NAME, TOOL_NODE_NAME
 
 from models import (
+    GPUConfig,
     ModelTask,
     UserConfig,
     NodeMetadata,
@@ -29,6 +30,7 @@ from models import (
     Message,
     MessageContent,
     MessageContentType,
+    WorkflowConfig,
 )
 from runner import pipeline_factory
 
@@ -208,7 +210,8 @@ class IdeGraphBuilder(GraphBuilder):
                 memory=None,
                 summarization=None,
                 image_generation=None,
-                gpu_config=None,
+                gpu_config=GPUConfig(),
+                workflow=WorkflowConfig(),
             ),
             conversation_id=conversation_id,
             things_to_remember=[current_user_message],
