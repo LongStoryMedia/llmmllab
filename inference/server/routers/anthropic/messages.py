@@ -974,7 +974,7 @@ async def createMessage(
         internal_messages = messages_from_anthropic(body.messages, system=body.system)
         claude_regex = regex.compile(r"claude|haiku|sonnet|opus", regex.IGNORECASE)
         if claude_regex.search(body.model):
-            body.model = "Qwen3_6_35B_A3B"
+            body.model = "Qwen3_6_27B"
 
         client_tools = None
         tool_choice = None
