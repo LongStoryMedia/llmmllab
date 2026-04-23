@@ -22,7 +22,7 @@ logger = llmmllogger.logger.bind(component="WebReader")
 
 SPA_TEXT_THRESHOLD = 50
 SPA_SCRIPT_RATIO = 0.5
-MAX_CONTENT_LENGTH = 8000
+MAX_CONTENT_LENGTH = 0  # 0 = no truncation
 
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -96,7 +96,7 @@ def _is_spa_detected(html_content: str, text_content: str) -> bool:
 
 
 def _truncate(text: str) -> str:
-    if len(text) > MAX_CONTENT_LENGTH:
+    if MAX_CONTENT_LENGTH and len(text) > MAX_CONTENT_LENGTH:
         return text[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length...]"
     return text
 
