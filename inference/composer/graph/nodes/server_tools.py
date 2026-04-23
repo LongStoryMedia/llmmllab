@@ -136,31 +136,16 @@ class ServerToolNode:
         return state
 
 
-# Maximum number of Agent → ServerToolNode → Agent iterations before
-# the loop is forced to END.  Prevents runaway loops where the model
-# keeps calling the same server tool repeatedly.
-_MAX_SERVER_TOOL_ITERATIONS = 10
-
-
 def make_should_continue_server_tools(server_tool_names: Set[str]):
     """Create a routing function that routes to the server tool node only when
     the last message contains server-side tool calls.
 
     Returns "server_tools" if there are server tool calls, "end" otherwise.
     Client-only tool calls also route to "end" since they are proxied back.
-    Enforces a maximum iteration count to prevent infinite loops.
     """
 
     def should_continue(state: WorkflowState) -> str:
         if not state.messages:
-            return "end"
-
-        # Enforce iteration limit
-        if (state.server_tool_iterations or 0) >= _MAX_SERVER_TOOL_ITERATIONS:
-            logger.warning(
-                "Server tool iteration limit reached, forcing END",
-                extra={"iterations": state.server_tool_iterations},
-            )
             return "end"
 
         last_message = state.messages[-1]

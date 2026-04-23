@@ -446,8 +446,7 @@ class CompletionService:
         # ---------- continuation check ----------
         # Skip when the model naturally stopped — see streaming path comment.
         model_stopped_naturally = (
-            result.chat_response
-            and result.chat_response.finish_reason == "stop"
+            result.chat_response and result.chat_response.finish_reason == "stop"
         )
         if (
             _CONTINUATION_ENABLED
