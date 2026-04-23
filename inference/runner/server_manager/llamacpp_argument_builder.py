@@ -113,8 +113,8 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 # "metrics": True,
                 "no_warmup": True,  # Skip warmup for faster startup
                 "flash_attn": "on",  # Flash attention for faster prompt processing
-                "cache_type_k": "q8_0",  # Use f16 for KV cache
-                "cache_type_v": "q8_0",  # Use f16 for KV cache
+                # "cache_type_k": "q8_0",  # Use f16 for KV cache
+                # "cache_type_v": "q8_0",  # Use f16 for KV cache
                 # "cache_type_k": "q4_0",  # Use f16 for KV cache
                 # "cache_type_v": "q4_0",  # Use f16 for KV cache
                 "threads": int(os.cpu_count() or 4),
@@ -129,8 +129,8 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "reasoning": ("on" if params.think else "off"),
                 "reasoning_budget": (-1 if params.think else 0),
                 "ctx_checkpoints": 24,
-                "timeout": 30000,
-                # "context_shift": True,
+                "timeout": 32000000,
+                "context_shift": True,
                 "mirostat": 1,
                 # "kv_unified": True,
                 "cache_ram": 0,
@@ -138,8 +138,14 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 # model repeats the same sequence endlessly.  A value of 1.1
                 # is a mild penalty that discourages exact repetition without
                 # noticeably harming output quality.
-                "repeat_penalty": params.repeat_penalty if params.repeat_penalty else 1.1,
-                "repeat_last_n": params.repeat_last_n if params.repeat_last_n is not None else 256,
+                "repeat_penalty": (
+                    params.repeat_penalty if params.repeat_penalty else 1.1
+                ),
+                "repeat_last_n": (
+                    params.repeat_last_n if params.repeat_last_n is not None else 256
+                ),
+                "main_gpu": 1,
+                "tensor_split": "2,5,5",
             }
         )
 
@@ -156,12 +162,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         )
 
         # Main GPU selection
-        if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
-            config["main_gpu"] = gcfg.main_gpu
+        # if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
+        #     config["main_gpu"] = gcfg.main_gpu
 
         # Tensor split configuration
-        if gcfg.tensor_split:
-            config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
+        # if gcfg.tensor_split:
+        #     config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
 
         # Split mode configuration
         if hasattr(gcfg, "split_mode") and gcfg.split_mode:

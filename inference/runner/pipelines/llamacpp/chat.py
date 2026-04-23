@@ -168,20 +168,22 @@ class ChatLlamaCppPipeline(BasePipeline):
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=1,
-                timeout=30000,
+                timeout=32000000,
                 temperature=(
                     self.model.parameters.temperature if self.model.parameters else None
                 )
                 or 0.7,
                 # max_tokens=max_tokens,  # type: ignore[assignment]
+                max_completion_tokens=max_tokens,
                 top_p=(self.model.parameters.top_p if self.model.parameters else None)
                 or 0.9,
                 # Frequency penalty discourages the model from repeating the
                 # same tokens.  This is the OpenAI-API equivalent of
                 # llama.cpp's repeat_penalty and is applied per-request.
-                model_kwargs={
-                    "frequency_penalty": 0.3,
-                },
+                frequency_penalty=0.3,
+                # model_kwargs={
+                #     "frequency_penalty": 0.3,
+                # },
                 streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={

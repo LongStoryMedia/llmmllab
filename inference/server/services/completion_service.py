@@ -43,8 +43,8 @@ _CONTINUATION_ENABLED = os.getenv("ENABLE_TOOL_CONTINUATION", "true").lower() in
 )
 
 _CONTINUATION_PROMPT = (
-    "Did you mean to call any tools, or were you about to use a tool? If so, please do so now. "
-    "Otherwise, respond with 'done'."
+    "You described using a tool but did not actually call one. "
+    "Call the appropriate tool now. Do not describe what you will do — invoke the tool directly."
 )
 
 _EMPTY_RESPONSE_NUDGE = (

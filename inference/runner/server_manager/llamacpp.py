@@ -49,6 +49,7 @@ class LlamaCppServerManager(BaseServerManager):
             )
 
             args = builder.build_args()
+            # args.append("--override-tensor token_embd=CUDA1")
             self._logger.info(f"Server args: {' '.join(args)}")
             return args
 

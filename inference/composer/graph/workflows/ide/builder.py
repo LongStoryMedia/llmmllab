@@ -113,8 +113,7 @@ class IdeGraphBuilder(GraphBuilder):
             # Bind client tools to the pipeline so the LLM can generate tool_calls
             if client_tools:
                 bind_kwargs: dict = {}
-                if tool_choice:
-                    bind_kwargs["tool_choice"] = tool_choice
+                bind_kwargs["tool_choice"] = tool_choice or "auto"
                 primary_model = primary_model.bind_tools(client_tools, **bind_kwargs)  # type: ignore[union-attr]
 
             primary_agent = ChatAgent(
