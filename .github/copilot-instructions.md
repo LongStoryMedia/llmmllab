@@ -25,19 +25,11 @@ make validate       # TypeScript tsc --noEmit + Python compileall + Pyright type
 cd ui && npm run lint   # ESLint on UI code
 ```
 
-### Code Generation
-
-```bash
-./regenerate_models.sh              # Regenerate all models from YAML schemas
-./regenerate_models.sh python       # Python models only → inference/models/
-./regenerate_models.sh typescript   # TypeScript types only → ui/src/types/
-```
-
 ### Deployment
 
 ```bash
 make deploy         # Deploy all services (inference, maistro, ui) to k8s
-make clean          # Remove build artifacts (debug/out/, ui/build/, inference/models/)
+make clean          # Remove build artifacts (ui/build/)
 make e2e-<test>     # Run end-to-end test inside k8s pod
 make clear-debug    # Remove debug output files and sync code
 ```
@@ -53,16 +45,14 @@ inference/      Python FastAPI inference service (deployed to k8s)
   composer/     LangGraph agent orchestration, tool generation
   db/           Multi-tier storage: PostgreSQL, Redis, in-memory
   evaluation/   Model benchmarking
-  models/       Generated from YAML schemas (do not edit directly)
+  models/       Pydantic data models (edit directly)
   debug/        Debug utilities and output files
 ui/             React 19 + Vite frontend
-schemas/        YAML schema definitions (source of truth for models)
-docs/           Architecture documentation
 ```
 
 ### Key Architectural Patterns
 
-**Schema-Driven Development**: All data contracts are defined as YAML schemas in `schemas/`. The `schema2code` tool generates `inference/models/*.py` and `ui/src/types/*.ts` from these. **Never edit generated model files directly** — edit the YAML schema and regenerate.
+**Models**: Python models live in `inference/models/*.py` (Pydantic) and are edited directly. TypeScript types in `ui/src/types/*.ts` can be generated from the FastAPI OpenAPI schema at `/openapi.json` using `openapi-typescript`.
 
 **Pipeline System**: The runner uses a pluggable pipeline pattern. `pipeline_factory.py` creates appropriate pipelines (text, image, embeddings, multimodal). `pipeline_cache.py` manages instances. All pipeline implementations live in `runner/pipelines/`.
 

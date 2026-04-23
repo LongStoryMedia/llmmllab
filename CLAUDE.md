@@ -28,19 +28,11 @@ make validate       # TypeScript tsc --noEmit + Python compileall + Pyright type
 cd ui && npm run lint   # ESLint on UI code
 ```
 
-### Code Generation
-
-```bash
-./regenerate_models.sh              # Regenerate all models from YAML schemas
-./regenerate_models.sh python       # Python models only → inference/models/
-./regenerate_models.sh typescript   # TypeScript types only → ui/src/types/
-```
-
 ### Deployment
 
 ```bash
 make deploy         # Deploy all services (inference, maistro, ui) to k8s
-make clean          # Remove build artifacts (ui/build/, inference/models/)
+make clean          # Remove build artifacts (ui/build/)
 ```
 
 ## Architecture
@@ -53,16 +45,15 @@ inference/      Python FastAPI inference service (deployed to k8s)
   runner/       Model execution: pipeline_factory, pipeline_cache, pipelines/
   composer/     LangGraph agent orchestration
   db/           PostgreSQL + Redis storage
-  models/       Generated from YAML schemas (do not edit directly)
+  models/       Pydantic data models (edit directly)
   utils/        Shared helpers
   k8s/          Kubernetes manifests
 ui/             React 19 + Vite frontend
-schemas/        YAML schema definitions (source of truth for models)
 ```
 
 ### Key Architectural Patterns
 
-**Schema-Driven Development**: All data contracts are defined as YAML schemas in `schemas/`. The `schema2code` tool generates `inference/models/*.py` and `ui/src/types/*.ts` from these. **Never edit generated model files directly** — edit the YAML schema and regenerate.
+**Models**: Python models live in `inference/models/*.py` (Pydantic) and are edited directly. TypeScript types in `ui/src/types/*.ts` can be generated from the FastAPI OpenAPI schema at `/openapi.json` using `openapi-typescript`.
 
 **Pipeline System**: The runner uses a pluggable pipeline pattern. `pipeline_factory.py` creates appropriate pipelines (text, image, embeddings, multimodal). `pipeline_cache.py` manages instances. All pipeline implementations live in `runner/pipelines/`.
 

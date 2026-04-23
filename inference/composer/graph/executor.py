@@ -585,6 +585,7 @@ class WorkflowExecutor:
                 finish_reason="error",
                 total_duration=total_duration,
             )
+            return  # Don't fall through to final-message assembly (empty response would overwrite error)
 
         # --------------------------------------------------------------------
         # Build final accumulated message - pass through raw

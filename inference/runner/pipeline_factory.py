@@ -290,26 +290,26 @@ class PipelineFactory:
 
                 return ChatLlamaCppPipeline(model, grammar, metadata)
             case ModelProvider.OPENAI:
-                import os
                 from langchain_openai import (
                     ChatOpenAI,
                 )  # pylint: disable=import-outside-toplevel
                 from pydantic import SecretStr
+                from server.config import OPENAI_API_KEY
 
                 return ChatOpenAI(  # type: ignore[return-value]
                     model=model.name,
-                    api_key=SecretStr(os.environ.get("OPENAI_API_KEY", "")),
+                    api_key=SecretStr(OPENAI_API_KEY),
                 )
             case ModelProvider.ANTHROPIC:
-                import os
                 from langchain_anthropic import (
                     ChatAnthropic,
                 )  # pylint: disable=import-outside-toplevel
                 from pydantic import SecretStr
+                from server.config import ANTHROPIC_API_KEY
 
                 return ChatAnthropic(  # type: ignore[return-value]
                     model_name=model.name,
-                    api_key=SecretStr(os.environ.get("ANTHROPIC_API_KEY", "")),
+                    api_key=SecretStr(ANTHROPIC_API_KEY),
                 )
             case _:
                 raise ValueError(f"Unsupported text provider: {model.provider}")

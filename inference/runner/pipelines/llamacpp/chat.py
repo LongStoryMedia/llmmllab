@@ -6,9 +6,7 @@ to our llama.cpp server and exposes it for use with composer agents.
 """
 
 import json
-import os
-import re
-from typing import Any, Dict, Iterator, List, Optional, Type, cast
+from typing import Any, Dict, Iterator, List, Optional, Type
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.messages import BaseMessage, AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatResult, ChatGenerationChunk
@@ -19,6 +17,7 @@ from pydantic import BaseModel
 from models import Model
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
+from server.config import LOG_LEVEL
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")
@@ -167,8 +166,8 @@ class ChatLlamaCppPipeline(BasePipeline):
                 base_url=base_url,
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
                 model="local-model",  # Standard llama.cpp model name
-                max_retries=1,
-                timeout=300,  # 5 minutes — prevents zombie requests to llama-server
+                max_retries=0,  # No SDK-level retries — completion_service handles retry logic
+                timeout=600,  # 10 minutes — must exceed prompt-processing time for large contexts
                 temperature=(
                     self.model.parameters.temperature if self.model.parameters else None
                 )
@@ -190,7 +189,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 # validation, so llama.cpp-specific fields pass through.
                 extra_body={"t_max_predict_ms": 240_000},
                 streaming=True,
-                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                verbose=LOG_LEVEL.lower() == "trace",
                 metadata={
                     "model_name": self.model.name,
                     "task": self.model.task.value,

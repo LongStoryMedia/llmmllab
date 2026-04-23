@@ -63,6 +63,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
 
 from server import config  # Import config for auth settings
+from server.config import DISABLE_AUTH, TEST_USER_ID
 from utils.logging import llmmllogger
 
 
@@ -497,11 +498,8 @@ async def get_current_user(request: Request) -> TokenValidationResult:
 # Utility functions for getting auth data from request
 def get_user_id(request: Request) -> Optional[str]:
     """Get user ID from request state"""
-    # If auth is disabled, return test user ID from environment variable
-    import os
-
-    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
-        return os.environ.get("TEST_USER_ID", "test-user-auth-disabled")
+    if DISABLE_AUTH:
+        return TEST_USER_ID
 
     if hasattr(request.state, "auth"):
         return request.state.auth.get(ContextKey.USER_ID)
@@ -510,13 +508,9 @@ def get_user_id(request: Request) -> Optional[str]:
 
 def get_user_claims(request: Request) -> Optional[Dict[str, Any]]:
     """Get user claims from request state"""
-    # If auth is disabled, return default test claims
-    import os
-
-    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
-        test_user_id = os.environ.get("TEST_USER_ID", "test-user-auth-disabled")
+    if DISABLE_AUTH:
         return {
-            "sub": test_user_id,
+            "sub": TEST_USER_ID,
             "email": "test@example.com",
             "name": "Test User (Auth Disabled)",
         }
@@ -528,10 +522,7 @@ def get_user_claims(request: Request) -> Optional[Dict[str, Any]]:
 
 def is_admin(request: Request) -> bool:
     """Check if current user is admin"""
-    # If auth is disabled, return True for admin access
-    import os
-
-    if os.environ.get("DISABLE_AUTH", "").lower() == "true":
+    if DISABLE_AUTH:
         return True
 
     if hasattr(request.state, "auth"):

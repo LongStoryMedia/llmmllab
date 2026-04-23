@@ -6,10 +6,10 @@
 FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04 AS llama-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-dev python3-venv \
-        git wget curl \
-        build-essential cmake g++ ninja-build \
-        libcurl4-openssl-dev pkg-config ccache zstd \
+    python3 python3-dev python3-venv \
+    git wget curl \
+    build-essential cmake g++ ninja-build \
+    libcurl4-openssl-dev pkg-config ccache zstd \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
@@ -25,9 +25,9 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /llama.cpp \
 
 WORKDIR /llama.cpp
 RUN cmake -B build \
-        -DGGML_CUDA=ON \
-        -DCMAKE_CUDA_ARCHITECTURES="86" \
-        -DCMAKE_BUILD_TYPE=Release \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES="86" \
+    -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build --config Release -j6
 
 # ---------------------------------------------------------------------------
@@ -72,8 +72,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Runtime-only apt deps (no compilers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-venv \
-        curl libglib2.0-0 libgomp1 ffmpeg binutils \
+    python3 python3-venv \
+    curl libglib2.0-0 libgomp1 ffmpeg binutils \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
@@ -89,8 +89,8 @@ RUN uv venv --python 3.12 ${SHARED_VENV}
 # Kept as its own layer so python changes don't re-download torch wheels.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${SHARED_VENV}/bin/python \
-        torch torchaudio torchvision \
-        --index-url https://download.pytorch.org/whl/cu121
+    torch torchaudio torchvision \
+    --index-url https://download.pytorch.org/whl/cu121
 
 # Copy only the dep manifests first so editing source doesn't bust the deps layer
 COPY pyproject.toml uv.lock .python-version ./

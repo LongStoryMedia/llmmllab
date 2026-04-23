@@ -30,10 +30,10 @@ Available Engines (see https://docs.searxng.org/dev/engines/index.html):
 - And many more specialized engines
 """
 
-import os
 from typing import Annotated, List, Literal, Optional
 
 from langchain_core.tools import tool
+from server.config import SEARX_HOST
 from utils.logging import llmmllogger
 from models import SearchResult, SearchResultContent, WebSearchConfig
 
@@ -50,10 +50,10 @@ except ModuleNotFoundError:  # pragma: no cover - environment variability
 
 
 #   engines:
-#     type: array
+# type: array
 #     description: List of SearxNG search engines to use
 #     items:
-#       type: string
+# type: string
 #     default:
 #       [
 #         "google",
@@ -65,10 +65,10 @@ except ModuleNotFoundError:  # pragma: no cover - environment variability
 #         "wikipedia",
 #       ]
 #   categories:
-#     type: array
+# type: array
 #     description: SearxNG search categories to include
 #     items:
-#       type: string
+# type: string
 #       enum:
 #         [
 #           "general",
@@ -107,7 +107,7 @@ class SearxNG:
         ],
     ):
         self.web_config = web_config
-        self.searx_host = web_config.searx_host or os.getenv("SEARX_HOST", "")
+        self.searx_host = web_config.searx_host or SEARX_HOST
         self.categories = categories or list[str](web_config.categories)
 
         # Build SearxSearchWrapper parameters directly from WebSearchConfig

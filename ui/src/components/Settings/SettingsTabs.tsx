@@ -6,7 +6,6 @@ import MemorySettings from './MemorySettings';
 import WebSearchSettings from './WebSearchSettings';
 import SecuritySettings from './SecuritySettings';
 import ImageGenerationSettings from './ImageGenerationSettings';
-import GpuSettings from './GpuSettings';
 import ApiKeySettings from './ApiKeySettings';
 
 interface TabPanelProps {
@@ -42,7 +41,7 @@ function a11yProps(index: number) {
   };
 }
 
-const tabRoutes = ["profile", "summarization", "retrieval", "websearch", "security", "image-generation", "gpu", "api-keys"];
+const tabRoutes = ["profile", "summarization", "retrieval", "websearch", "security", "image-generation", "api-keys"];
 
 const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) => void, currentTab: string }) => {
   const theme = useTheme();
@@ -100,8 +99,7 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
               <Tab label="Web Search Settings" {...a11yProps(3)} />
               <Tab label="Security" {...a11yProps(4)} />
               <Tab label="Image Generation" {...a11yProps(5)} />
-              <Tab label="GPU Configuration" {...a11yProps(6)} />
-              <Tab label="API Keys" {...a11yProps(7)} />
+              <Tab label="API Keys" {...a11yProps(6)} />
             </Tabs>
 
             <Box sx={{ p: 2 }}>
@@ -131,9 +129,6 @@ const SettingsTabs = ({ onTabChange, currentTab }: { onTabChange: (tab: string) 
                 <ImageGenerationSettings />
               </TabPanel>
               <TabPanel value={tabValue} index={6}>
-                <GpuSettings />
-              </TabPanel>
-              <TabPanel value={tabValue} index={7}>
                 <ApiKeySettings />
               </TabPanel>
             </Box>

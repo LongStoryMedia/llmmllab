@@ -3,9 +3,7 @@ Qwen3 VL pipeline for multimodal (text + image) generation.
 Optimized for Qwen3 VL models with vision capabilities.
 """
 
-import os
-import json
-from typing import Dict, Any, Optional, Type, List
+from typing import Dict, Any, Optional, Type
 from llama_cpp.llama import Llama
 from llama_cpp.llama_chat_format import LlamaChatCompletionHandler, Qwen25VLChatHandler
 from pydantic import BaseModel  # noqa: F401
@@ -15,6 +13,7 @@ from pydantic import BaseModel  # noqa: F401
 
 from models import Model, OptimalParameters
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
+from server.config import LOG_LEVEL
 
 
 class Qwen3VLPipeline(BaseLlamaCppPipeline):
@@ -58,7 +57,7 @@ class Qwen3VLPipeline(BaseLlamaCppPipeline):
         if self.model.details.clip_model_path:
             handler = Qwen25VLChatHandler(
                 clip_model_path=self.model.details.clip_model_path,
-                verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
+                verbose=LOG_LEVEL.lower() == "trace",
             )
             return super()._initialize_llama(gguf_path, handler, force_params)
         else:

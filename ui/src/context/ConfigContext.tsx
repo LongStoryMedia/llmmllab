@@ -6,10 +6,9 @@ import { WebSearchConfig } from '../types/WebSearchConfig';
 import { ImageGenerationConfig } from '../types/ImageGenerationConfig';
 import { PreferencesConfig } from '../types/PreferencesConfig';
 import { MemoryConfig } from '../types/MemoryConfig';
-import { GPUConfig } from '../types/GpuConfig';
 
 
-export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | PreferencesConfig | MemoryConfig | GPUConfig;
+export type ConfigSection = SummarizationConfig | WebSearchConfig | ImageGenerationConfig | PreferencesConfig | MemoryConfig;
 interface ConfigContextType {
   config: UserConfig | null;
   isLoading: boolean;

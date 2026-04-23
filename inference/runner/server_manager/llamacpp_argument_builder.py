@@ -1,208 +1,131 @@
 """
-Llama.cpp Argument Builder - Specific implementation for llama.cpp servers.
+Llama.cpp Argument Builder - Builds command-line arguments for llama.cpp servers.
 
-This module provides the concrete implementation for building arguments
-for llama.cpp servers with dynamic flag discovery and model-specific
-configuration.
+Builds a config dict from model parameters, then serializes it directly
+to a command-line argument list.
 """
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from models.gpu_config import GPUConfig
 from models.model_parameters import ModelParameters
-from models.default_configs import DEFAULT_GPU_CONFIG
+from models import Model, UserConfig
+from server.config import LLAMA_SERVER_EXECUTABLE, LOG_LEVEL
 from utils.logging import llmmllogger
-
-from .base_argument_builder import BaseArgumentBuilder
-from .dynamic_flag_parser import DynamicFlagParser
 
 logger = llmmllogger.bind(component="LlamaCppArgumentBuilder")
 
 
-class LlamaCppArgumentBuilder(BaseArgumentBuilder):
-    """Argument builder for llama.cpp servers with dynamic flag discovery."""
+class LlamaCppArgumentBuilder:
+    """Builds command-line arguments for llama.cpp servers.
 
-    def _get_executable_path(self) -> str:
-        """Return the path to llama.cpp server executable."""
-        return "/llama.cpp/build/bin/llama-server"
+    Usage::
 
-    def _setup_parser(self) -> None:
-        """Setup llama.cpp specific argument parser with dynamically discovered flags."""
-        self._parser = self._create_parser("llama.cpp server arguments")
+        builder = LlamaCppArgumentBuilder(model, user_config, port)
+        args = builder.build_args()   # ["/llama.cpp/.../llama-server", "--model", "/path/to.gguf", ...]
+    """
 
-        # Add common arguments first
-        self._add_common_args()
+    def __init__(
+        self,
+        model: Model,
+        user_config: Optional[UserConfig] = None,
+        port: Optional[int] = None,
+        is_embedding: bool = False,
+    ):
+        self.model = model
+        self.user_config = user_config
+        self.port = port
+        self.is_embedding = is_embedding
 
-        # Use dynamic flag parser to discover and add all available flags
-        dynamic_parser = DynamicFlagParser(self._get_executable_path())
-        dynamic_parser.build_parser(self._parser)
+    def build_args(self) -> List[str]:
+        """Build the complete argument list for the llama.cpp server process."""
+        config = self._build_config()
+        args = [LLAMA_SERVER_EXECUTABLE] + _config_to_args(config)
+        logger.debug(f"Built args: {' '.join(args)}")
+        return args
 
-        # Build the arguments based on configuration if model is available
-        if hasattr(self, "model") and self.model:
-            self._build_configuration()
-
-    def _build_configuration(self) -> None:
-        """Build the argument configuration based on model and profile."""
-        config = {}
-
-        # Get GGUF path
-        gguf_path = self._get_gguf_path()
-        config["model"] = gguf_path
-
-        # Basic server config
-        config["host"] = "127.0.0.1"
-        config["port"] = self.port
+    def _build_config(self) -> Dict[str, Any]:
+        """Build the full config dict for this model."""
+        config: Dict[str, Any] = {
+            "model": self._get_gguf_path(),
+            "host": "127.0.0.1",
+            "port": self.port,
+        }
 
         if self.is_embedding:
-            self._build_embedding_config(config)
+            self._add_embedding_config(config)
         else:
-            self._build_inference_config(config)
+            self._add_inference_config(config)
 
-        # Parse the configuration into arguments
-        # We create a fake argument list and parse it
-        fake_args = []
-        for key, value in config.items():
-            if value is None:
-                continue
+        return config
 
-            flag = f"--{key.replace('_', '-')}"
-            if isinstance(value, bool):
-                if value:
-                    fake_args.append(flag)
-            elif isinstance(value, (list, tuple)):
-                if value:
-                    fake_args.extend([flag, ",".join(map(str, value))])
-            else:
-                fake_args.extend([flag, str(value)])
+    # ── Embedding ────────────────────────────────────────────────────
 
-        self._args = self._parser.parse_args(fake_args)
-
-    def _build_embedding_config(self, config: Dict[str, Any]) -> None:
-        """Build configuration for embedding servers."""
+    def _add_embedding_config(self, config: Dict[str, Any]) -> None:
         config.update(
             {
                 "threads": os.cpu_count() or 4,
-                "ctx_size": 4096,  # Smaller context for embeddings
+                "ctx_size": 4096,
                 "batch_size": 1024,
-                "embedding": True,  # Singular 'embedding' to match llama.cpp flag
+                "embedding": True,
                 "pooling": "mean",
-                "no_webui": True,  # Disable web UI for embedding servers
+                "no_webui": True,
             }
         )
-
-        # Add debug logging if enabled
-        if os.getenv("LOG_LEVEL", "WARNING").lower() == "debug":
+        if LOG_LEVEL.lower() == "debug":
             config["verbose"] = True
 
-    def _build_inference_config(self, config: Dict[str, Any]) -> None:
-        """Build configuration for inference servers."""
-        params = self.model.parameters or ModelParameters()
-        # Resolve GPU config: model → user_config → default
-        gcfg = (
-            self.model.gpu_config
-            or (self.user_config.gpu_config if self.user_config else None)
-            or DEFAULT_GPU_CONFIG
-        )
+    # ── Inference ────────────────────────────────────────────────────
 
-        # Standard server features with performance optimizations
+    def _add_inference_config(self, config: Dict[str, Any]) -> None:
+        params = self.model.parameters or ModelParameters()
+
         config.update(
             {
                 "cont_batching": True,
-                "metrics": True,  # Prometheus endpoint for monitoring
-                "slots": True,  # Slot monitoring for zombie detection
-                "no_warmup": True,  # Skip warmup for faster startup
-                "flash_attn": "on",  # Flash attention for faster prompt processing
-                "cache_type_k": "q8_0",  # Quantize KV cache to halve memory vs f16
-                "cache_type_v": "q8_0",  # Quantize KV cache to halve memory vs f16
+                "metrics": True,
+                "slots": True,
+                "no_warmup": True,
+                "flash_attn": "on",
+                "cache_type_k": "q8_0",
+                "cache_type_v": "q8_0",
                 "threads": int(os.cpu_count() or 4),
-                # "threads_batch": 2,
                 "ctx_size": params.num_ctx or 90000,
                 "batch_size": params.batch_size or 2048,
                 "ubatch_size": params.micro_batch_size or (params.batch_size or 2048),
-                # Reasoning / thinking configuration
-                # --reasoning: on/off/auto — whether the model should use <think> blocks
-                # --reasoning-format: how thought tags are extracted/returned
-                # --reasoning-budget: token budget for thinking (-1 = unlimited, 0 = disabled)
-                "reasoning": ("on" if params.think else "off"),
-                # Cap thinking tokens to prevent infinite <think> loops.
-                # 16384 is generous for most tasks; -1 would be unlimited.
-                "reasoning_budget": (16384 if params.think else 0),
+                "reasoning": "on" if params.think else "off",
+                "reasoning_budget": 16384 if params.think else 0,
                 "ctx_checkpoints": 24,
-                "timeout": 600,  # 10 min server read/write timeout
+                "timeout": 600,
                 "context_shift": True,
                 "mirostat": 1,
-                # "kv_unified": True,
                 "cache_ram": 0,
-                # Repetition penalty — prevents token-level loops where the
-                # model repeats the same sequence endlessly.  A value of 1.1
-                # is a mild penalty that discourages exact repetition without
-                # noticeably harming output quality.
-                "repeat_penalty": (
-                    params.repeat_penalty if params.repeat_penalty else 1.1
-                ),
+                "repeat_penalty": params.repeat_penalty or 1.1,
                 "repeat_last_n": (
                     params.repeat_last_n if params.repeat_last_n is not None else 256
                 ),
-                "main_gpu": 1,
-                "tensor_split": "2,5,5",
+                "n_gpu_layers": (
+                    params.n_gpu_layers if params.n_gpu_layers is not None else -1
+                ),
+                "main_gpu": params.main_gpu if params.main_gpu is not None else -1,
+                "split_mode": params.split_mode or "layer",
+                "parallel": 1,
+                "jinja": True,
+                "no_webui": True,
             }
         )
 
-        # Parallelism: use 1 slot to avoid GGML_ASSERT failures with
-        # GQA models on multi-GPU row-split and to prevent KV cache
-        # thrashing under SWA/hybrid attention models.
-        config["parallel"] = 1
+        # Tensor split — only set if configured
+        if params.tensor_split:
+            config["tensor_split"] = params.tensor_split
 
-        # GPU configuration
-        config["n_gpu_layers"] = (
-            params.n_gpu_layers
-            if params.n_gpu_layers is not None
-            else (gcfg.gpu_layers if gcfg.gpu_layers is not None else -1)
-        )
-
-        # Main GPU selection
-        # if gcfg.main_gpu is not None and gcfg.main_gpu >= 0:
-        #     config["main_gpu"] = gcfg.main_gpu
-
-        # Tensor split configuration
-        # if gcfg.tensor_split:
-        #     config["tensor_split"] = ",".join(map(str, gcfg.tensor_split))
-
-        # Split mode configuration
-        if hasattr(gcfg, "split_mode") and gcfg.split_mode:
-            # Pass string split modes directly to llama.cpp
-            if isinstance(gcfg.split_mode, str):
-                config["split_mode"] = gcfg.split_mode.lower()
-            else:
-                # Convert legacy integer values to strings
-                split_mode_mapping = {
-                    1: "layer",  # LLAMA_SPLIT_MODE_LAYER
-                    2: "row",  # LLAMA_SPLIT_MODE_ROW
-                }
-                config["split_mode"] = split_mode_mapping.get(gcfg.split_mode, "layer")
-
-        # MoE (Mixture of Experts) configuration
-        # config["n_cpu_moe"] = params.n_cpu_moe
-
-        # NUMA distribution
-        # config["numa"] = "distribute"
-
-        # KV cache configuration:
-        # In llama.cpp, --no-kv-offload means "keep KV cache on CPU"
-        # (without it, KV is offloaded to GPU alongside model layers).
-        # kv_on_cpu=True  → set --no-kv-offload → KV stays on CPU
-        # kv_on_cpu=False → don't set flag       → KV goes to GPU
+        # KV cache placement:
+        #   --no-kv-offload tells llama.cpp to keep KV on CPU.
+        #   Without it, KV is offloaded to GPU alongside model layers.
         config["no_kv_offload"] = params.kv_on_cpu
 
-        # config["flash_attn"] = (
-        #     "on"
-        #     if params.flash_attention
-        #     else "off" if not params.flash_attention else "auto"
-        # )
-
-        # Multimodal support - critical for vision models
+        # Multimodal projector
         mmproj_path = self.model.details.clip_model_path
         if mmproj_path and Path(mmproj_path).exists():
             config["mmproj"] = mmproj_path
@@ -212,11 +135,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 f"Vision model detected but no mmproj file found for {self.model.name}"
             )
 
-        # Draft model support for speculative decoding
+        # Draft model (speculative decoding)
         if hasattr(self.model, "draft_model") and self.model.draft_model:
             if mmproj_path and Path(mmproj_path).exists():
                 logger.warning(
-                    f"Draft models are not supported with multimodal models. Ignoring draft model for {self.model.name}"
+                    f"Draft models are not supported with multimodal models. "
+                    f"Ignoring draft model for {self.model.name}"
                 )
             else:
                 from runner.utils.model_loader import ModelLoader
@@ -227,25 +151,36 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 if draft_gguf:
                     config["model_draft"] = str(draft_gguf)
 
-        # Additional GPU optimizations
-        # if hasattr(gcfg, "offload_kqv") and not gcfg.offload_kqv:
-        #     config["no_kv_offload"] = True
-
-        # Enable JSON schema support for tools (required for tool calling)
-        config.update(
-            {
-                "jinja": True,
-                "no_webui": True,  # Explicitly disable web UI features for server mode
-            }
-        )
-        #
-        # Add logging configuration
-        if os.getenv("LOG_LEVEL", "WARNING").lower() == "trace":
+        if LOG_LEVEL.lower() == "trace":
             config["verbose"] = True
 
+    # ── Helpers ──────────────────────────────────────────────────────
+
     def _get_gguf_path(self) -> str:
-        """Return resolved GGUF file path for model."""
         details = getattr(self.model, "details", None)
         if details and hasattr(details, "gguf_file") and details.gguf_file:
             return details.gguf_file
         return self.model.model
+
+
+def _config_to_args(config: Dict[str, Any]) -> List[str]:
+    """Convert a {flag_name: value} dict to a flat command-line arg list.
+
+    Keys use underscores (python style); they are converted to hyphens
+    for the CLI.  Booleans emit a bare flag when True, nothing when False.
+    None values are skipped.
+    """
+    args: List[str] = []
+    for key, value in config.items():
+        if value is None:
+            continue
+        flag = f"--{key.replace('_', '-')}"
+        if isinstance(value, bool):
+            if value:
+                args.append(flag)
+        elif isinstance(value, (list, tuple)):
+            if value:
+                args.extend([flag, ",".join(map(str, value))])
+        else:
+            args.extend([flag, str(value)])
+    return args

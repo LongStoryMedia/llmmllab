@@ -13,7 +13,6 @@ from .memory_config import MemoryConfig
 from .summarization_config import SummarizationConfig
 from .web_search_config import WebSearchConfig
 from .image_generation_config import ImageGenerationConfig
-from .gpu_config import GPUConfig
 from .user_config import UserConfig
 from .workflow_config import WorkflowConfig
 from .tool_config import ToolConfig
@@ -84,18 +83,6 @@ DEFAULT_IMAGE_GENERATION_CONFIG = ImageGenerationConfig(
     negative_prompt="blurry, distorted, low quality, pixelated",
 )
 
-# Default GPU configuration
-DEFAULT_GPU_CONFIG = GPUConfig(
-    no_kv_offload=False,
-    gpu_layers=-1,  # Use all GPU layers by default
-    main_gpu=0,
-    main_gpu_device_id=None,
-    tensor_split=None,
-    tensor_split_devices=None,
-    split_mode="row",
-    offload_kqv=True,
-)
-
 # Default workflow configuration
 DEFAULT_WORKFLOW_CONFIG = WorkflowConfig(
     enable_workflow_caching=True,
@@ -131,5 +118,4 @@ def create_default_user_config(user_id: str) -> UserConfig:
         memory=DEFAULT_MEMORY_CONFIG,
         summarization=DEFAULT_SUMMARIZATION_CONFIG,
         image_generation=DEFAULT_IMAGE_GENERATION_CONFIG,
-        gpu_config=DEFAULT_GPU_CONFIG,
     )

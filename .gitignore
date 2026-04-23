@@ -77,7 +77,6 @@ error.txt
 todo.md
 
 # Auto-generated
-inference/openapi.json
 inference/copilot-out.json
 inference/routing_test_output.txt
 inference/benchmark_data/

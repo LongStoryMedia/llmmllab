@@ -42,11 +42,6 @@ test:
 	cd inference && pytest test/
 	cd ui && npm run test
 
-gen:
-	@echo "generating models..."
-	chmod +x ./regenerate_models.sh
-	./regenerate_models.sh
-
 validate:
 	@echo "Validating TypeScript in UI project..."
 	@cd ui && npx tsc --noEmit
@@ -64,7 +59,6 @@ validate:
 clean:
 	@echo "Cleaning artifacts..."
 	rm -rf ./ui/build/
-	rm -rf ./inference/models/
 	@echo "Artifacts cleaned."
 
-.PHONY: inference maistro ui validate test clean deploy start start-maistro start-ui inference-dev gen
+.PHONY: inference maistro ui validate test clean deploy start start-maistro start-ui inference-dev

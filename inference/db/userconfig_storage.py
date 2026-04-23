@@ -16,7 +16,6 @@ from models.default_configs import (
     DEFAULT_SUMMARIZATION_CONFIG,
     DEFAULT_WEB_SEARCH_CONFIG,
     DEFAULT_IMAGE_GENERATION_CONFIG,
-    DEFAULT_GPU_CONFIG,
     DEFAULT_WORKFLOW_CONFIG,
     DEFAULT_TOOL_CONFIG,
     create_default_user_config,
@@ -254,7 +253,6 @@ class UserConfigStorage:
             "summarization",
             "web_search",
             "image_generation",
-            "gpu_config",
             "workflow",
             "tool",
         ]:
@@ -274,7 +272,6 @@ class UserConfigStorage:
         self._apply_defaults(
             config_data["image_generation"], DEFAULT_IMAGE_GENERATION_CONFIG.dict()
         )
-        self._apply_defaults(config_data["gpu_config"], DEFAULT_GPU_CONFIG.dict())
         self._apply_defaults(config_data["workflow"], DEFAULT_WORKFLOW_CONFIG.dict())
         self._apply_defaults(config_data["tool"], DEFAULT_TOOL_CONFIG.dict())
 

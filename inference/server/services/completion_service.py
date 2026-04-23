@@ -14,7 +14,6 @@ in Anthropic/OpenAI format, raw JSON for llmmllab).
 """
 
 import asyncio
-import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Optional, Union
@@ -38,10 +37,9 @@ logger = llmmllogger.bind(component="completion_service")
 # Configuration
 # ---------------------------------------------------------------------------
 
-_CONTINUATION_ENABLED = os.getenv("ENABLE_TOOL_CONTINUATION", "true").lower() in (
-    "1",
-    "true",
-)
+from server.config import ENABLE_TOOL_CONTINUATION
+
+_CONTINUATION_ENABLED = ENABLE_TOOL_CONTINUATION
 
 _CONTINUATION_PROMPT = (
     "You described using a tool but did not actually call one. "
@@ -88,6 +86,10 @@ class CompletionResult:
             and self.chat_response.message.tool_calls
         )
 
+    @property
+    def is_error(self) -> bool:
+        return bool(self.chat_response and self.chat_response.finish_reason == "error")
+
 
 @dataclass
 class StreamAccumulator:
@@ -95,6 +97,7 @@ class StreamAccumulator:
 
     has_content: bool = False
     has_tool_calls: bool = False
+    is_error: bool = False
     final_tool_calls: list[ToolCall] = field(default_factory=list)
     final_content: str = ""
     output_tokens: int = 0
@@ -188,6 +191,8 @@ class CompletionService:
                     continue
 
                 if event.done:
+                    if event.finish_reason == "error":
+                        acc.is_error = True
                     if event.message and event.message.tool_calls:
                         acc.final_tool_calls = event.message.tool_calls
                         acc.has_tool_calls = True
@@ -275,7 +280,12 @@ class CompletionService:
                         continue
 
             # ---------- empty-response retry ----------
-            if not acc.has_content and not acc.has_tool_calls and not acc.final_content:
+            if (
+                not acc.has_content
+                and not acc.has_tool_calls
+                and not acc.final_content
+                and not acc.is_error
+            ):
                 logger.warning(
                     "Model produced empty response — retrying with same messages",
                     extra={"model": model_name},
@@ -480,7 +490,7 @@ class CompletionService:
                             result.chat_response = event
 
         # ---------- empty-response retry ----------
-        if not result.has_content and not result.has_tool_calls:
+        if not result.has_content and not result.has_tool_calls and not result.is_error:
             logger.warning(
                 "Non-streaming: model produced empty response — retrying",
                 extra={"model": model_name},

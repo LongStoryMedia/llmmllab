@@ -42,7 +42,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from huggingface_hub import login
 
-from server.config import CONFIG_DIR, IMAGE_DIR
+from server.config import CONFIG_DIR, IMAGE_DIR, HF_TOKEN
 from server.routers import (
     images,
     config,
@@ -85,11 +85,10 @@ logger = llmmllogger.bind(component="app")
 os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
-# Get Hugging Face token from environment variable
-hf_token = os.environ.get("HF_TOKEN")
-if hf_token:
+# Get Hugging Face token from config
+if HF_TOKEN:
     logger.info("Logging into Hugging Face with token from environment variable")
-    login(token=hf_token)
+    login(token=HF_TOKEN)
 else:
     logger.info(
         "Warning: No HF_TOKEN environment variable found. Some features may not work properly."

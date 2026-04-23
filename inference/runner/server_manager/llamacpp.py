@@ -1,15 +1,12 @@
 """
 LlamaCppServerManager - Specialized server manager for llama.cpp servers.
-
-This extends the base ServerManager with llama.cpp-specific functionality.
-Now uses structured argument building via argparse for cleaner flag management.
 """
 
 from typing import List, Optional
 
 from models import Model, UserConfig
 from runner.server_manager.base import BaseServerManager
-from runner.server_manager import create_argument_builder
+from runner.server_manager.llamacpp_argument_builder import LlamaCppArgumentBuilder
 
 
 class LlamaCppServerManager(BaseServerManager):
@@ -38,21 +35,13 @@ class LlamaCppServerManager(BaseServerManager):
             return f"{self.server_url}/v1{path}"
 
     def _build_server_args(self) -> List[str]:
-        """Build command line arguments for llama.cpp server using argparse-based builder."""
-        try:
-            builder = create_argument_builder(
-                server_type="llamacpp",
-                model=self.model,
-                user_config=self.user_config,
-                port=self.port,
-                is_embedding=self.is_embedding,
-            )
-
-            args = builder.build_args()
-            # args.append("--override-tensor token_embd=CUDA1")
-            self._logger.info(f"Server args: {' '.join(args)}")
-            return args
-
-        except Exception as e:
-            self._logger.error(f"Failed to build server arguments: {e}")
-            raise
+        """Build command line arguments for llama.cpp server."""
+        builder = LlamaCppArgumentBuilder(
+            model=self.model,
+            user_config=self.user_config,
+            port=self.port,
+            is_embedding=self.is_embedding,
+        )
+        args = builder.build_args()
+        self._logger.info(f"Server args: {' '.join(args)}")
+        return args

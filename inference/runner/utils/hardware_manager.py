@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Union
 from dataclasses import dataclass
 
 import nvsmi
+from server.config import GPU_POWER_CAP_PCT as _GPU_POWER_CAP_PCT
 from models.dev_stats import DevStats
 
 
@@ -36,8 +37,8 @@ class MemoryConfig:
     context_reset_cooldown: int = 30
 
     # Thermal / power management
-    gpu_power_cap_pct: float = float(os.getenv("GPU_POWER_CAP_PCT", "85"))
-    thermal_warning_c: float = 78.0   # Log warning above this
+    gpu_power_cap_pct: float = _GPU_POWER_CAP_PCT
+    thermal_warning_c: float = 78.0  # Log warning above this
     thermal_critical_c: float = 88.0  # Considered critical — risk of PCIe drop
 
 
@@ -464,17 +465,25 @@ class EnhancedHardwareManager:
                 # Enable persistence mode (keeps driver loaded, avoids init spikes)
                 subprocess.run(
                     ["nvidia-smi", "-i", str(i), "-pm", "1"],
-                    capture_output=True, text=True, timeout=10, check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 )
 
                 # Query default power limit
                 result = subprocess.run(
                     [
-                        "nvidia-smi", "-i", str(i),
+                        "nvidia-smi",
+                        "-i",
+                        str(i),
                         "--query-gpu=power.default_limit",
                         "--format=csv,noheader,nounits",
                     ],
-                    capture_output=True, text=True, timeout=10, check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 )
 
                 if result.returncode != 0 or not result.stdout.strip():
@@ -486,7 +495,10 @@ class EnhancedHardwareManager:
 
                 set_result = subprocess.run(
                     ["nvidia-smi", "-i", str(i), "-pl", str(target_watts)],
-                    capture_output=True, text=True, timeout=10, check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 )
 
                 if set_result.returncode == 0:
