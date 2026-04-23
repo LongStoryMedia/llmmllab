@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -341,94 +342,103 @@ async def stream_message(
     output_tokens = 0
     acc = StreamAccumulator()
 
-    async for event, acc in CompletionService.stream_completion(
-        user_id=user_id,
-        messages=messages,
-        model_name=model_name,
-        client_tools=client_tools,
-        tool_choice=tool_choice,
-        server_tool_names=server_tool_names or None,
-    ):
-        # ---- ServerToolEvent → emit as standard text content blocks ----
-        if isinstance(event, ServerToolEvent):
-            if text_block_started:
+    try:
+        async for event, acc in CompletionService.stream_completion(
+            user_id=user_id,
+            messages=messages,
+            model_name=model_name,
+            client_tools=client_tools,
+            tool_choice=tool_choice,
+            server_tool_names=server_tool_names or None,
+        ):
+            # ---- ServerToolEvent → emit as standard text content blocks ----
+            if isinstance(event, ServerToolEvent):
+                if text_block_started:
+                    yield _sse(
+                        "content_block_stop",
+                        {"type": "content_block_stop", "index": text_block_index},
+                    )
+                    text_block_started = False
+
+                tc = event.tool_call
+                canonical = event.canonical_name
+                result_text = event.result_text or ""
+                max_result_len = 4000
+                if len(result_text) > max_result_len:
+                    result_text = result_text[:max_result_len] + "\n\n[... truncated]"
+
+                if canonical == "web_search":
+                    query = tc.args.get("query", "")
+                    tool_summary = (
+                        f"\n\n🔍 **Web Search:** {query}\n\n{result_text}\n\n"
+                    )
+                elif canonical == "web_fetch":
+                    url = tc.args.get("url", "")
+                    tool_summary = f"\n\n📄 **Web Fetch:** {url}\n\n{result_text}\n\n"
+                else:
+                    tool_summary = f"\n\n🔧 **{tc.name}**\n\n{result_text}\n\n"
+
+                yield _sse(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": next_block_index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                )
+                yield _sse(
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": next_block_index,
+                        "delta": {"type": "text_delta", "text": tool_summary},
+                    },
+                )
                 yield _sse(
                     "content_block_stop",
-                    {"type": "content_block_stop", "index": text_block_index},
+                    {"type": "content_block_stop", "index": next_block_index},
                 )
-                text_block_started = False
+                next_block_index += 1
+                continue
 
-            tc = event.tool_call
-            canonical = event.canonical_name
-            result_text = event.result_text or ""
-            max_result_len = 4000
-            if len(result_text) > max_result_len:
-                result_text = result_text[:max_result_len] + "\n\n[... truncated]"
+            # ---- ChatResponse events ----
+            if event.done:
+                if event.prompt_eval_count:
+                    input_tokens = TokenService.scale_tokens(
+                        int(event.prompt_eval_count)
+                    )
+                if event.eval_count:
+                    output_tokens = int(event.eval_count)
+                continue
 
-            if canonical == "web_search":
-                query = tc.args.get("query", "")
-                tool_summary = f"\n\n🔍 **Web Search:** {query}\n\n{result_text}\n\n"
-            elif canonical == "web_fetch":
-                url = tc.args.get("url", "")
-                tool_summary = f"\n\n📄 **Web Fetch:** {url}\n\n{result_text}\n\n"
-            else:
-                tool_summary = f"\n\n🔧 **{tc.name}**\n\n{result_text}\n\n"
-
-            yield _sse(
-                "content_block_start",
-                {
-                    "type": "content_block_start",
-                    "index": next_block_index,
-                    "content_block": {"type": "text", "text": ""},
-                },
-            )
-            yield _sse(
-                "content_block_delta",
-                {
-                    "type": "content_block_delta",
-                    "index": next_block_index,
-                    "delta": {"type": "text_delta", "text": tool_summary},
-                },
-            )
-            yield _sse(
-                "content_block_stop",
-                {"type": "content_block_stop", "index": next_block_index},
-            )
-            next_block_index += 1
-            continue
-
-        # ---- ChatResponse events ----
-        if event.done:
-            if event.prompt_eval_count:
-                input_tokens = TokenService.scale_tokens(int(event.prompt_eval_count))
-            if event.eval_count:
-                output_tokens = int(event.eval_count)
-            continue
-
-        # Stream live text deltas
-        if event.message and event.message.content:
-            for part in event.message.content:
-                if part.type == MessageContentType.TEXT and part.text:
-                    if not text_block_started:
+            # Stream live text deltas
+            if event.message and event.message.content:
+                for part in event.message.content:
+                    if part.type == MessageContentType.TEXT and part.text:
+                        if not text_block_started:
+                            yield _sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": next_block_index,
+                                    "content_block": {"type": "text", "text": ""},
+                                },
+                            )
+                            text_block_index = next_block_index
+                            next_block_index += 1
+                            text_block_started = True
                         yield _sse(
-                            "content_block_start",
+                            "content_block_delta",
                             {
-                                "type": "content_block_start",
-                                "index": next_block_index,
-                                "content_block": {"type": "text", "text": ""},
+                                "type": "content_block_delta",
+                                "index": text_block_index,
+                                "delta": {"type": "text_delta", "text": part.text},
                             },
                         )
-                        text_block_index = next_block_index
-                        next_block_index += 1
-                        text_block_started = True
-                    yield _sse(
-                        "content_block_delta",
-                        {
-                            "type": "content_block_delta",
-                            "index": text_block_index,
-                            "delta": {"type": "text_delta", "text": part.text},
-                        },
-                    )
+
+    except asyncio.CancelledError:
+        logger.warning("Client disconnected — stream_message cancelled")
+        return
 
     # Use the accumulator for final state
     output_tokens = acc.output_tokens or output_tokens

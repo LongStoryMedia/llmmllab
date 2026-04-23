@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -365,57 +366,62 @@ async def stream_chat_completion(
 
     acc = StreamAccumulator()
 
-    async for event, acc in CompletionService.stream_completion(
-        user_id=user_id,
-        messages=messages,
-        model_name=model_name,
-        client_tools=client_tools,
-        tool_choice=tool_choice,
-    ):
-        # Skip ServerToolEvents for OpenAI-compatible clients
+    try:
+        async for event, acc in CompletionService.stream_completion(
+            user_id=user_id,
+            messages=messages,
+            model_name=model_name,
+            client_tools=client_tools,
+            tool_choice=tool_choice,
+        ):
+            # Skip ServerToolEvents for OpenAI-compatible clients
 
-        if isinstance(event, ServerToolEvent):
-            continue
+            if isinstance(event, ServerToolEvent):
+                continue
 
-        if event.done:
-            if event.message and event.message.tool_calls:
-                final_tool_calls = event.message.tool_calls
-                has_tool_calls = True
+            if event.done:
+                if event.message and event.message.tool_calls:
+                    final_tool_calls = event.message.tool_calls
+                    has_tool_calls = True
+                if event.message and event.message.content:
+                    parts = [
+                        c.text
+                        for c in event.message.content
+                        if c.type == MessageContentType.TEXT and c.text
+                    ]
+                    final_content = "".join(parts)
+                continue
+
+            # Stream text content deltas directly (skip thinking blocks)
             if event.message and event.message.content:
-                parts = [
+                text_parts = [
                     c.text
                     for c in event.message.content
                     if c.type == MessageContentType.TEXT and c.text
                 ]
-                final_content = "".join(parts)
-            continue
+                response_text = "".join(text_parts)
+                if response_text:
+                    has_content = True
+                    chunk = CreateChatCompletionStreamResponse(
+                        id=chunk_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=model_name,
+                        choices=[
+                            StreamChoicesItem.model_construct(
+                                index=0,
+                                delta=ChatCompletionStreamResponseDelta(
+                                    content=response_text
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+                    yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
 
-        # Stream text content deltas directly (skip thinking blocks)
-        if event.message and event.message.content:
-            text_parts = [
-                c.text
-                for c in event.message.content
-                if c.type == MessageContentType.TEXT and c.text
-            ]
-            response_text = "".join(text_parts)
-            if response_text:
-                has_content = True
-                chunk = CreateChatCompletionStreamResponse(
-                    id=chunk_id,
-                    object="chat.completion.chunk",
-                    created=created,
-                    model=model_name,
-                    choices=[
-                        StreamChoicesItem.model_construct(
-                            index=0,
-                            delta=ChatCompletionStreamResponseDelta(
-                                content=response_text
-                            ),
-                            finish_reason=None,
-                        )
-                    ],
-                )
-                yield f"data: {chunk.model_dump_json(exclude_none=True)}\n\n"
+    except asyncio.CancelledError:
+        logger.warning("Client disconnected — stream_chat_completion cancelled")
+        return
 
     # Use accumulator for final tool calls if not captured from done events
     if not has_tool_calls and acc.has_tool_calls:

@@ -13,6 +13,7 @@ are responsible only for formatting those into the wire protocol (SSE chunks
 in Anthropic/OpenAI format, raw JSON for llmmllab).
 """
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -170,112 +171,8 @@ class CompletionService:
         """
         acc = StreamAccumulator()
 
-        # ---------- primary pass ----------
-        async for event in CompletionService._build_and_run(
-            user_id,
-            messages,
-            model_name,
-            workflow_type,
-            conversation_id,
-            client_tools,
-            tool_choice,
-            server_tool_names,
-        ):
-            if isinstance(event, ServerToolEvent):
-                yield event, acc
-                continue
-
-            if event.done:
-                if event.message and event.message.tool_calls:
-                    acc.final_tool_calls = event.message.tool_calls
-                    acc.has_tool_calls = True
-                if event.message and event.message.content:
-                    parts = [
-                        c.text
-                        for c in event.message.content
-                        if c.type == MessageContentType.TEXT and c.text
-                    ]
-                    acc.final_content = "".join(parts)
-                if event.prompt_eval_count:
-                    acc.input_tokens = int(event.prompt_eval_count)
-                if event.eval_count:
-                    acc.output_tokens = int(event.eval_count)
-                yield event, acc
-                continue
-
-            # Live delta — let the router stream it
-            if event.message and event.message.content:
-                for part in event.message.content:
-                    if part.type == MessageContentType.TEXT and part.text:
-                        acc.has_content = True
-            yield event, acc
-
-        # Filter server tool calls out of final_tool_calls
-        if server_tool_names and acc.final_tool_calls:
-            acc.final_tool_calls = [
-                tc for tc in acc.final_tool_calls if tc.name not in server_tool_names
-            ]
-            acc.has_tool_calls = bool(acc.final_tool_calls)
-
-        # ---------- continuation check ----------
-        if (
-            _CONTINUATION_ENABLED
-            and not acc.has_tool_calls
-            and client_tools
-            and (acc.has_content or acc.final_content)
-        ):
-            accumulated_text = acc.final_content or ""
-            logger.info(
-                "Model produced text without tool calls — sending single continuation check",
-                extra={
-                    "content_len": len(accumulated_text),
-                    "content_preview": accumulated_text[:200],
-                },
-            )
-            continuation_messages = list(messages) + [
-                Message(
-                    role=MessageRole.ASSISTANT,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=accumulated_text
-                        )
-                    ],
-                ),
-                Message(
-                    role=MessageRole.USER,
-                    content=[
-                        MessageContent(
-                            type=MessageContentType.TEXT, text=_CONTINUATION_PROMPT
-                        )
-                    ],
-                ),
-            ]
-            async for event in CompletionService._build_and_run(
-                user_id,
-                continuation_messages,
-                model_name,
-                workflow_type,
-                conversation_id,
-                client_tools,
-                "auto",
-                server_tool_names,
-            ):
-                if isinstance(event, ServerToolEvent):
-                    continue
-                if event.done:
-                    if event.message and event.message.tool_calls:
-                        acc.final_tool_calls = event.message.tool_calls
-                        acc.has_tool_calls = True
-                    if event.eval_count:
-                        acc.output_tokens += int(event.eval_count)
-                    continue
-
-        # ---------- empty-response retry ----------
-        if not acc.has_content and not acc.has_tool_calls and not acc.final_content:
-            logger.warning(
-                "Model produced empty response — retrying with same messages",
-                extra={"model": model_name},
-            )
+        try:
+            # ---------- primary pass ----------
             async for event in CompletionService._build_and_run(
                 user_id,
                 messages,
@@ -287,7 +184,9 @@ class CompletionService:
                 server_tool_names,
             ):
                 if isinstance(event, ServerToolEvent):
+                    yield event, acc
                     continue
+
                 if event.done:
                     if event.message and event.message.tool_calls:
                         acc.final_tool_calls = event.message.tool_calls
@@ -299,41 +198,96 @@ class CompletionService:
                             if c.type == MessageContentType.TEXT and c.text
                         ]
                         acc.final_content = "".join(parts)
+                    if event.prompt_eval_count:
+                        acc.input_tokens = int(event.prompt_eval_count)
                     if event.eval_count:
-                        acc.output_tokens += int(event.eval_count)
+                        acc.output_tokens = int(event.eval_count)
+                    yield event, acc
                     continue
 
-                # Live delta from retry
+                # Live delta — let the router stream it
                 if event.message and event.message.content:
                     for part in event.message.content:
                         if part.type == MessageContentType.TEXT and part.text:
                             acc.has_content = True
                 yield event, acc
 
-            # ---------- nudge if retry also empty ----------
-            if not acc.has_content and not acc.has_tool_calls and not acc.final_content:
-                logger.warning(
-                    "Retry also produced empty response — sending nudge prompt",
-                    extra={"model": model_name},
+            # Filter server tool calls out of final_tool_calls
+            if server_tool_names and acc.final_tool_calls:
+                acc.final_tool_calls = [
+                    tc
+                    for tc in acc.final_tool_calls
+                    if tc.name not in server_tool_names
+                ]
+                acc.has_tool_calls = bool(acc.final_tool_calls)
+
+            # ---------- continuation check ----------
+            if (
+                _CONTINUATION_ENABLED
+                and not acc.has_tool_calls
+                and client_tools
+                and (acc.has_content or acc.final_content)
+            ):
+                accumulated_text = acc.final_content or ""
+                logger.info(
+                    "Model produced text without tool calls — sending single continuation check",
+                    extra={
+                        "content_len": len(accumulated_text),
+                        "content_preview": accumulated_text[:200],
+                    },
                 )
-                nudge_messages = list(messages) + [
+                continuation_messages = list(messages) + [
+                    Message(
+                        role=MessageRole.ASSISTANT,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT, text=accumulated_text
+                            )
+                        ],
+                    ),
                     Message(
                         role=MessageRole.USER,
                         content=[
                             MessageContent(
-                                type=MessageContentType.TEXT, text=_EMPTY_RESPONSE_NUDGE
+                                type=MessageContentType.TEXT, text=_CONTINUATION_PROMPT
                             )
                         ],
                     ),
                 ]
                 async for event in CompletionService._build_and_run(
                     user_id,
-                    nudge_messages,
+                    continuation_messages,
                     model_name,
                     workflow_type,
                     conversation_id,
                     client_tools,
                     "auto",
+                    server_tool_names,
+                ):
+                    if isinstance(event, ServerToolEvent):
+                        continue
+                    if event.done:
+                        if event.message and event.message.tool_calls:
+                            acc.final_tool_calls = event.message.tool_calls
+                            acc.has_tool_calls = True
+                        if event.eval_count:
+                            acc.output_tokens += int(event.eval_count)
+                        continue
+
+            # ---------- empty-response retry ----------
+            if not acc.has_content and not acc.has_tool_calls and not acc.final_content:
+                logger.warning(
+                    "Model produced empty response — retrying with same messages",
+                    extra={"model": model_name},
+                )
+                async for event in CompletionService._build_and_run(
+                    user_id,
+                    messages,
+                    model_name,
+                    workflow_type,
+                    conversation_id,
+                    client_tools,
+                    tool_choice,
                     server_tool_names,
                 ):
                     if isinstance(event, ServerToolEvent):
@@ -353,11 +307,70 @@ class CompletionService:
                             acc.output_tokens += int(event.eval_count)
                         continue
 
+                    # Live delta from retry
                     if event.message and event.message.content:
                         for part in event.message.content:
                             if part.type == MessageContentType.TEXT and part.text:
                                 acc.has_content = True
                     yield event, acc
+
+                # ---------- nudge if retry also empty ----------
+                if (
+                    not acc.has_content
+                    and not acc.has_tool_calls
+                    and not acc.final_content
+                ):
+                    logger.warning(
+                        "Retry also produced empty response — sending nudge prompt",
+                        extra={"model": model_name},
+                    )
+                    nudge_messages = list(messages) + [
+                        Message(
+                            role=MessageRole.USER,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text=_EMPTY_RESPONSE_NUDGE,
+                                )
+                            ],
+                        ),
+                    ]
+                    async for event in CompletionService._build_and_run(
+                        user_id,
+                        nudge_messages,
+                        model_name,
+                        workflow_type,
+                        conversation_id,
+                        client_tools,
+                        "auto",
+                        server_tool_names,
+                    ):
+                        if isinstance(event, ServerToolEvent):
+                            continue
+                        if event.done:
+                            if event.message and event.message.tool_calls:
+                                acc.final_tool_calls = event.message.tool_calls
+                                acc.has_tool_calls = True
+                            if event.message and event.message.content:
+                                parts = [
+                                    c.text
+                                    for c in event.message.content
+                                    if c.type == MessageContentType.TEXT and c.text
+                                ]
+                                acc.final_content = "".join(parts)
+                            if event.eval_count:
+                                acc.output_tokens += int(event.eval_count)
+                            continue
+
+                        if event.message and event.message.content:
+                            for part in event.message.content:
+                                if part.type == MessageContentType.TEXT and part.text:
+                                    acc.has_content = True
+                        yield event, acc
+
+        except asyncio.CancelledError:
+            logger.warning("Stream cancelled (client disconnect) — stopping retries")
+            return
 
     # ------------------------------------------------------------------
     # Non-streaming path

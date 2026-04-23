@@ -21,6 +21,7 @@ Architectural Role:
 """
 
 from typing import AsyncIterator, List, Optional, Type, Union
+import uuid
 from pydantic import BaseModel
 from models import ChatResponse, Message
 from utils.logging import llmmllogger
@@ -178,7 +179,7 @@ async def execute_workflow(
     Yields:
         Dict containing workflow events (tokens, state updates, etc.)
     """
-    async for event in stream_workflow(initial_state, workflow):
+    async for event in stream_workflow(initial_state, workflow, thread_id=str(uuid.uuid4())):
         yield event
 
 

@@ -5,6 +5,7 @@ across different graph types and state models, extracting the streaming logic
 from ComposerService into a generic, reusable component.
 """
 
+import asyncio
 from typing import (
     Any,
     AsyncIterator,
@@ -74,7 +75,10 @@ class WorkflowExecutor:
         Returns:
             RunnableConfig: Configuration for LangGraph execution
         """
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        config: RunnableConfig = {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": 25,
+        }
         if additional_config:
             config.setdefault("configurable", {}).update(additional_config)
         return config
@@ -539,6 +543,10 @@ class WorkflowExecutor:
                         message_kwargs={"tool_calls": [tc]},
                     )
                     yield res
+
+        except asyncio.CancelledError:
+            self.logger.warning("Workflow cancelled (client disconnect)")
+            raise
 
         except Exception as e:
             self.logger.error(

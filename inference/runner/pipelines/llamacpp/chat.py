@@ -168,7 +168,7 @@ class ChatLlamaCppPipeline(BasePipeline):
                 api_key=lambda: "not-needed",  # llama.cpp server doesn't require auth
                 model="local-model",  # Standard llama.cpp model name
                 max_retries=1,
-                timeout=32000000,
+                timeout=300,  # 5 minutes — prevents zombie requests to llama-server
                 temperature=(
                     self.model.parameters.temperature if self.model.parameters else None
                 )
@@ -181,9 +181,14 @@ class ChatLlamaCppPipeline(BasePipeline):
                 # same tokens.  This is the OpenAI-API equivalent of
                 # llama.cpp's repeat_penalty and is applied per-request.
                 frequency_penalty=0.3,
-                # model_kwargs={
-                #     "frequency_penalty": 0.3,
-                # },
+                # t_max_predict_ms: server-side generation timeout (4 min).
+                # llama.cpp kills the generation after this many ms, even if
+                # the HTTP connection is still alive.  This is the last line
+                # of defence against zombie requests that survive all other
+                # timeout layers.
+                model_kwargs={
+                    "t_max_predict_ms": 240_000,
+                },
                 streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={

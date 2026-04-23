@@ -15,6 +15,7 @@ import uuid
 
 from langgraph.graph.state import CompiledStateGraph, StateGraph, END, START
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import InMemorySaver
 from langchain.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -174,10 +175,11 @@ class IdeGraphBuilder(GraphBuilder):
                 # Proxy mode or no tools: Agent -> END
                 workflow.add_edge(AGENT_NODE_NAME, END)
 
-            # Safety net: cap the maximum number of graph-level iterations.
-            # LangGraph default is 25; we set it explicitly to make the
-            # limit visible and prevent runaway loops in server-tool mode.
-            return workflow.compile()
+            # InMemorySaver enables state inspection for debugging and is
+            # required by ModelCallLimitMiddleware thread/run limits.
+            return workflow.compile(
+                checkpointer=InMemorySaver(),
+            )
         except Exception as e:
             self.logger.error(
                 "Failed to build workflow",

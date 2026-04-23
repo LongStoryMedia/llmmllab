@@ -110,7 +110,8 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         config.update(
             {
                 "cont_batching": True,
-                # "metrics": True,
+                "metrics": True,  # Prometheus endpoint for monitoring
+                "slots": True,  # Slot monitoring for zombie detection
                 "no_warmup": True,  # Skip warmup for faster startup
                 "flash_attn": "on",  # Flash attention for faster prompt processing
                 # "cache_type_k": "q8_0",  # Use f16 for KV cache
@@ -127,9 +128,11 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 # --reasoning-format: how thought tags are extracted/returned
                 # --reasoning-budget: token budget for thinking (-1 = unlimited, 0 = disabled)
                 "reasoning": ("on" if params.think else "off"),
-                "reasoning_budget": (-1 if params.think else 0),
+                # Cap thinking tokens to prevent infinite <think> loops.
+                # 16384 is generous for most tasks; -1 would be unlimited.
+                "reasoning_budget": (16384 if params.think else 0),
                 "ctx_checkpoints": 24,
-                "timeout": 32000000,
+                "timeout": 600,  # 10 min server read/write timeout
                 "context_shift": True,
                 "mirostat": 1,
                 # "kv_unified": True,
