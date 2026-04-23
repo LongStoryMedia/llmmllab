@@ -363,9 +363,6 @@ async def stream_message(
                 tc = event.tool_call
                 canonical = event.canonical_name
                 result_text = event.result_text or ""
-                max_result_len = 4000
-                if len(result_text) > max_result_len:
-                    result_text = result_text[:max_result_len] + "\n\n[... truncated]"
 
                 if canonical == "web_search":
                     query = tc.args.get("query", "")
