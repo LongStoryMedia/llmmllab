@@ -189,6 +189,9 @@ class WorkflowExecutor:
         # closing tag arrives, preventing partial XML from leaking to the
         # client as garbled text content.
         tc_stream_buf = RawToolCallStreamBuffer()
+        # Flag: true when the stream has seen structured tool_call_chunks
+        # from LangChain.  Used to suppress duplicate content-as-text.
+        streaming_has_tool_call_chunks = False
 
         try:
             # Prepare state dict
@@ -223,6 +226,16 @@ class WorkflowExecutor:
                     "on_chat_model_stream",
                     "on_llm_stream",
                 ) and isinstance(chunk, AIMessage):
+
+                    # -- Streaming tool_call_chunks --
+                    # When LangChain parses structured tool calls from the
+                    # stream, it puts them in tool_call_chunks (accumulated
+                    # into output.tool_calls at on_chat_model_end).  If the
+                    # model also emits the tool call as content text, the
+                    # stream buffer will catch it.  Flag that we've seen
+                    # structured chunks so we can suppress the duplicate text.
+                    if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+                        streaming_has_tool_call_chunks = True
 
                     # -- Regular content tokens --
                     if chunk.content:
@@ -339,9 +352,11 @@ class WorkflowExecutor:
                         # where the whole response arrives in on_llm_end), extract
                         # content now.  Skip when tool calls are present — the
                         # content field may contain raw tool-call markup that must
-                        # not leak as visible text.
-                        has_end_tc = bool(
-                            hasattr(output, "tool_calls") and output.tool_calls
+                        # not leak as visible text.  Also skip when we already
+                        # saw structured tool_call_chunks during streaming.
+                        has_end_tc = (
+                            bool(hasattr(output, "tool_calls") and output.tool_calls)
+                            or streaming_has_tool_call_chunks
                         )
                         self.logger.debug(
                             "on_llm_end event",
@@ -374,12 +389,12 @@ class WorkflowExecutor:
                             if full_text.strip() == "<think>":
                                 full_text = ""
 
-                            if _RAW_TOOL_CALL_RE.search(full_text):
-                                content_part, raw_tcs = (
-                                    self.content_parser.strip_raw_tool_calls(full_text)
-                                )
-                            else:
-                                content_part, raw_tcs = full_text, []
+                            # Always try to parse — the enhanced parser
+                            # handles XML tags, bare JSON, code blocks, and
+                            # Mistral-style [TOOL_CALLS] format.
+                            content_part, raw_tcs = (
+                                self.content_parser.strip_raw_tool_calls(full_text)
+                            )
 
                             if content_part:
                                 self.logger.info(
