@@ -466,6 +466,10 @@ class WorkflowExecutor:
 
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
+                        # Normalize: llama.cpp returns "tool_calls" (plural)
+                        # but ChatResponse expects "tool_call" (singular).
+                        if reason == "tool_calls":
+                            reason = "tool_call"
                         model_finish_reason = reason
                         self.logger.debug(
                             "Model generation completed",
