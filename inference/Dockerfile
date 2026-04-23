@@ -99,6 +99,9 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Download Playwright Chromium browser binary + its system-level deps
+RUN ${SHARED_VENV}/bin/playwright install --with-deps chromium
+
 # Now copy application source
 COPY . .
 

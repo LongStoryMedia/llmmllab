@@ -114,10 +114,8 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
                 "slots": True,  # Slot monitoring for zombie detection
                 "no_warmup": True,  # Skip warmup for faster startup
                 "flash_attn": "on",  # Flash attention for faster prompt processing
-                # "cache_type_k": "q8_0",  # Use f16 for KV cache
-                # "cache_type_v": "q8_0",  # Use f16 for KV cache
-                # "cache_type_k": "q4_0",  # Use f16 for KV cache
-                # "cache_type_v": "q4_0",  # Use f16 for KV cache
+                "cache_type_k": "q8_0",  # Quantize KV cache to halve memory vs f16
+                "cache_type_v": "q8_0",  # Quantize KV cache to halve memory vs f16
                 "threads": int(os.cpu_count() or 4),
                 # "threads_batch": 2,
                 "ctx_size": params.num_ctx or 90000,
@@ -191,10 +189,12 @@ class LlamaCppArgumentBuilder(BaseArgumentBuilder):
         # NUMA distribution
         # config["numa"] = "distribute"
 
-        # KV cache configuration: offload = move to CPU, no_offload = keep on GPU
-        # kv_on_cpu=True means user wants KV on CPU, so enable offloading
-        # kv_on_cpu=False means user wants KV on GPU, so disable offloading (keep on GPU)
-        config["no_kv_offload"] = not params.kv_on_cpu
+        # KV cache configuration:
+        # In llama.cpp, --no-kv-offload means "keep KV cache on CPU"
+        # (without it, KV is offloaded to GPU alongside model layers).
+        # kv_on_cpu=True  → set --no-kv-offload → KV stays on CPU
+        # kv_on_cpu=False → don't set flag       → KV goes to GPU
+        config["no_kv_offload"] = params.kv_on_cpu
 
         # config["flash_attn"] = (
         #     "on"
