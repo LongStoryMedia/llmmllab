@@ -98,6 +98,7 @@ class StreamAccumulator:
     has_content: bool = False
     has_tool_calls: bool = False
     is_error: bool = False
+    finish_reason: str = ""
     final_tool_calls: list[ToolCall] = field(default_factory=list)
     final_content: str = ""
     output_tokens: int = 0
@@ -193,6 +194,8 @@ class CompletionService:
                 if event.done:
                     if event.finish_reason == "error":
                         acc.is_error = True
+                    if event.finish_reason:
+                        acc.finish_reason = event.finish_reason
                     if event.message and event.message.tool_calls:
                         acc.final_tool_calls = event.message.tool_calls
                         acc.has_tool_calls = True
@@ -227,11 +230,16 @@ class CompletionService:
                 acc.has_tool_calls = bool(acc.final_tool_calls)
 
             # ---------- continuation check ----------
+            # Skip when the model naturally stopped (finish_reason="stop") —
+            # it intentionally chose not to call a tool and forcing one
+            # creates an infinite loop where the model keeps saying "done"
+            # but gets coerced into unnecessary tool calls.
             if (
                 _CONTINUATION_ENABLED
                 and not acc.has_tool_calls
                 and client_tools
                 and (acc.has_content or acc.final_content)
+                and acc.finish_reason != "stop"
             ):
                 accumulated_text = acc.final_content or ""
                 logger.info(
@@ -436,11 +444,17 @@ class CompletionService:
             ]
 
         # ---------- continuation check ----------
+        # Skip when the model naturally stopped — see streaming path comment.
+        model_stopped_naturally = (
+            result.chat_response
+            and result.chat_response.finish_reason == "stop"
+        )
         if (
             _CONTINUATION_ENABLED
             and not result.has_tool_calls
             and client_tools
             and result.has_content
+            and not model_stopped_naturally
         ):
             accumulated_text = "".join(
                 c.text

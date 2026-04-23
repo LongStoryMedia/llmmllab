@@ -177,6 +177,9 @@ class WorkflowExecutor:
         message_contents: List[MessageContent] = []
         state: Optional[GenerationState] = None
         prev_state: Optional[GenerationState] = state
+        # Track the model's actual finish reason (stop, tool_calls, length, etc.)
+        # so the completion service can distinguish natural stops from truncations.
+        model_finish_reason: str = "complete"
         # Track how many server_tool_events we've already yielded to avoid
         # duplicates (the state field accumulates via operator.add).
         server_tool_events_yielded = 0
@@ -463,6 +466,7 @@ class WorkflowExecutor:
 
                         md = output.response_metadata or {}
                         reason = md.get("finish_reason") or "unknown"
+                        model_finish_reason = reason
                         self.logger.debug(
                             "Model generation completed",
                             extra={
@@ -627,7 +631,7 @@ class WorkflowExecutor:
         yield ChatResponse(
             message=final_message,
             done=True,
-            finish_reason="complete",
+            finish_reason=model_finish_reason,
             total_duration=(datetime.now(timezone.utc) - start_time).total_seconds()
             * 1000.0,
         )
