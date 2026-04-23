@@ -186,9 +186,9 @@ class ChatLlamaCppPipeline(BasePipeline):
                 # the HTTP connection is still alive.  This is the last line
                 # of defence against zombie requests that survive all other
                 # timeout layers.
-                model_kwargs={
-                    "t_max_predict_ms": 240_000,
-                },
+                # extra_body lands in the HTTP JSON body without OpenAI SDK
+                # validation, so llama.cpp-specific fields pass through.
+                extra_body={"t_max_predict_ms": 240_000},
                 streaming=True,
                 verbose=os.getenv("LOG_LEVEL", "WARNING").lower() == "trace",
                 metadata={
