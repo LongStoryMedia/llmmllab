@@ -88,7 +88,8 @@ class ServerToolNode:
         #      so the model sees them as normal context it can reason over.
         server_call_names = {tc.name for tc in server_calls}
         remaining_tool_calls = [
-            tc for tc in (last_message.tool_calls or [])
+            tc
+            for tc in (last_message.tool_calls or [])
             if tc.name not in server_call_names
         ]
         last_message.tool_calls = remaining_tool_calls or None
@@ -96,8 +97,7 @@ class ServerToolNode:
         # Ensure the assistant message has some text content (avoids empty AIMessage
         # which LangChain drops / the model sees as EOS).
         has_text = any(
-            c.type == MessageContentType.TEXT and c.text
-            for c in last_message.content
+            c.type == MessageContentType.TEXT and c.text for c in last_message.content
         )
         if not has_text:
             query_summaries = []

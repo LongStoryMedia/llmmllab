@@ -234,12 +234,14 @@ class CompletionService:
             # it intentionally chose not to call a tool and forcing one
             # creates an infinite loop where the model keeps saying "done"
             # but gets coerced into unnecessary tool calls.
+            # Also skip on "length" — the model was cut off mid-response
+            # by the token limit, not intentionally avoiding tool calls.
             if (
                 _CONTINUATION_ENABLED
                 and not acc.has_tool_calls
                 and client_tools
                 and (acc.has_content or acc.final_content)
-                and acc.finish_reason != "stop"
+                and acc.finish_reason not in ("stop", "length")
             ):
                 accumulated_text = acc.final_content or ""
                 logger.info(
@@ -444,16 +446,18 @@ class CompletionService:
             ]
 
         # ---------- continuation check ----------
-        # Skip when the model naturally stopped — see streaming path comment.
-        model_stopped_naturally = (
-            result.chat_response and result.chat_response.finish_reason == "stop"
+        # Skip when the model naturally stopped or was cut off by token
+        # limit — see streaming path comment.
+        skip_continuation = (
+            result.chat_response
+            and result.chat_response.finish_reason in ("stop", "length")
         )
         if (
             _CONTINUATION_ENABLED
             and not result.has_tool_calls
             and client_tools
             and result.has_content
-            and not model_stopped_naturally
+            and not skip_continuation
         ):
             accumulated_text = "".join(
                 c.text

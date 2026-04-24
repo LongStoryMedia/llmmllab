@@ -167,7 +167,9 @@ async def read_web_content(url: str, render_js: bool = False) -> str:
     try:
         parsed_url = urlparse(url)
         if not parsed_url.scheme or parsed_url.scheme not in ("http", "https"):
-            return f"Error: Invalid URL '{url}'. Only HTTP and HTTPS URLs are supported."
+            return (
+                f"Error: Invalid URL '{url}'. Only HTTP and HTTPS URLs are supported."
+            )
     except Exception as e:
         return f"Error: Invalid URL format '{url}': {str(e)}"
 
