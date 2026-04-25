@@ -72,7 +72,7 @@ from server.cleanup_service import cleanup_service
 from db.maintenance import maintenance_service
 from utils.logging import llmmllogger
 from composer import shutdown_composer
-from runner import local_pipeline_cache
+from runner import pipeline_cache
 
 logger = llmmllogger.bind(component="app")
 
@@ -144,13 +144,13 @@ async def lifespan(_: FastAPI):
 
         # Attempt to gracefully stop and cleanup pipeline cache
         try:
-            if local_pipeline_cache is not None:
-                logger.info("Stopping local pipeline cache and cleaning pipelines...")
+            if pipeline_cache is not None:
+                logger.info("Stopping pipeline cache and cleaning pipelines...")
                 try:
-                    local_pipeline_cache.stop()
-                    logger.info("Local pipeline cache stopped and cleaned")
+                    pipeline_cache.stop()
+                    logger.info("Pipeline cache stopped and cleaned")
                 except Exception as e:
-                    logger.info(f"Error stopping local pipeline cache: {e}")
+                    logger.info(f"Error stopping pipeline cache: {e}")
         except Exception:
             pass
 

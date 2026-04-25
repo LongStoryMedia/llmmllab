@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from server.middleware.auth import get_request_id, get_user_id, is_admin
 from server.config import logger  # Import logger from config
 from db import storage
-from runner import local_pipeline_cache
+from runner import pipeline_cache
 from composer import clear_workflow_cache
 from .chat import router, composer_chat_completion
 
@@ -185,12 +185,9 @@ async def cancel_conversation(request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
 
     try:
-        user_config = await storage.get_service(storage.user_config).get_user_config(
-            user_id
-        )
         logger.info(f"Cancelling conversation for user {user_id}")
         await clear_workflow_cache(user_id)
-        local_pipeline_cache.cleanup_for_user(user_config)
+        pipeline_cache.clear()
     except HTTPException as e:
         raise e
     except Exception as e:  # noqa: BLE001, justified for DB errors
