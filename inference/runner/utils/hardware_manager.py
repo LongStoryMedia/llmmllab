@@ -1,5 +1,5 @@
 import nvsmi
-from typing import Dict
+from typing import Dict, List
 
 
 class HardwareManager:
@@ -8,10 +8,11 @@ class HardwareManager:
     def __init__(self):
         self._has_gpu = False
         self._gpu_count = 0
+        self._gpus: List[nvsmi.GPU] = []
         try:
-            gpus = nvsmi.get_gpus()
-            self._has_gpu = len(gpus) > 0
-            self._gpu_count = len(gpus)
+            self._gpus = list(nvsmi.get_gpus())
+            self._has_gpu = len(self._gpus) > 0
+            self._gpu_count = len(self._gpus)
         except Exception:
             pass
 
@@ -28,7 +29,7 @@ class HardwareManager:
         if not self._has_gpu:
             return 0.0
         try:
-            return sum(g.mem_free for g in nvsmi.get_gpus()) * 1024 * 1024
+            return sum(g.mem_free for g in self._gpus) * 1024 * 1024
         except Exception:
             return 0.0
 
@@ -38,7 +39,7 @@ class HardwareManager:
         if not self._has_gpu:
             return stats
         try:
-            for g in nvsmi.get_gpus():
+            for g in self._gpus:
                 stats[str(g.id)] = {
                     "name": g.name,
                     "total_mb": g.mem_total,
