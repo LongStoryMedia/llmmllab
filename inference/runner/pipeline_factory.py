@@ -5,7 +5,6 @@ to the PipelineCache API.
 
 from typing import Dict, Optional, Type, Union
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 from models import (
@@ -100,7 +99,10 @@ class PipelineFactory:
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
-            return self.cache.get(model, priority, self._create_embedding_pipeline, None, metadata)
+            def create_embed(m, _g=None, md=None):
+                return self._create_embedding_pipeline(m, md)
+
+            return self.cache.get(model, priority, create_embed, None, metadata)  # type: ignore
 
         # Remote / API providers -> create transient each call, no caching
         pipeline = self._create_embedding_pipeline(model)
