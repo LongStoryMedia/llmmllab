@@ -66,7 +66,9 @@ class PipelineFactory:
             self.logger.info(
                 f"Using LOCAL cached path for {model_id} (provider: {provider})"
             )
-            return self.cache.get(model, priority, self.create_pipeline, grammar, metadata)
+            return self.cache.get(
+                model, priority, self.create_pipeline, grammar, metadata
+            )
 
         # Remote / API providers -> create transient each call, no caching
         self.logger.info(
@@ -99,6 +101,7 @@ class PipelineFactory:
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
+
             def create_embed(m, _g=None, md=None):
                 return self._create_embedding_pipeline(m, md)
 
@@ -160,9 +163,7 @@ class PipelineFactory:
                 )
                 return self._create_embedding_pipeline(model, metadata)
             if model.task == ModelTask.TEXTTOIMAGE:
-                self.logger.info(
-                    f"Routing to _create_image_pipeline for {model.name}"
-                )
+                self.logger.info(f"Routing to _create_image_pipeline for {model.name}")
                 return self._create_image_pipeline(model, metadata)
             if model.task == ModelTask.IMAGETOIMAGE:
                 self.logger.info(

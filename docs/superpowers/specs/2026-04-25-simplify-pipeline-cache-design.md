@@ -17,7 +17,7 @@ Reduce the system to ~300 lines total that are simple, predictable, and correct:
 
 1. Cache local models; return from cache when available.
 2. Never evict a model that is actively in use.
-3. Evict idle models only when VRAM is needed for an incoming model.
+3. Evict idle models when VRAM is needed for an incoming model.
 4. Proactively evict models that have been idle too long.
 5. Fail the request (don't guess) when there's genuinely not enough VRAM.
 

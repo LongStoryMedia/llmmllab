@@ -172,7 +172,6 @@ class ChatLlamaCppPipeline(BasePipeline):
                     self.model.parameters.temperature if self.model.parameters else None
                 )
                 or 0.7,
-                # max_tokens=max_tokens,  # type: ignore[assignment]
                 max_completion_tokens=max_tokens,
                 top_p=(self.model.parameters.top_p if self.model.parameters else None)
                 or 0.9,

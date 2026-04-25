@@ -110,7 +110,7 @@ class LlamaCppArgumentBuilder:
                 ),
                 "main_gpu": params.main_gpu if params.main_gpu is not None else -1,
                 "split_mode": params.split_mode or "layer",
-                "parallel": 1,
+                # "parallel": 1,
                 "jinja": True,
                 "no_webui": True,
             }
