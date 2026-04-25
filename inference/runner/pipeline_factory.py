@@ -1,11 +1,9 @@
 """
-Production-ready pipeline factory with weakref caching, background cleanup, and
-modern/legacy pipeline selection. Replaces the previous garbled version.
+Pipeline factory that routes local vs remote providers and delegates caching
+to the PipelineCache API.
 """
 
-import threading
-from typing import Dict, Optional, Type, Union, Any
-from contextlib import contextmanager
+from typing import Dict, Optional, Type, Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
@@ -18,13 +16,7 @@ from models import (
 )
 from runner.pipelines.base import BasePipeline
 from utils.logging import llmmllogger
-from .pipeline_cache import LocalPipelineCacheManager
-
-try:
-    # Prefer the shared module-global cache if available
-    from .pipeline_cache import local_pipeline_cache as _GLOBAL_PIPELINE_CACHE
-except Exception:
-    _GLOBAL_PIPELINE_CACHE = None
+from .pipeline_cache import pipeline_cache
 from .utils.model_loader import ModelLoader
 
 
@@ -33,36 +25,25 @@ class PipelineFactory:
     Factory for creating pipelines.
 
     Handles:
-    - Pipeline creation and coordination
-    - Resource allocation coordination
-    - Delegating cache management to LocalPipelineCacheManager
+    - Routing local providers through the cached pipeline API
+    - Creating transient pipelines for remote/API providers
+    - Delegating all cache management to PipelineCache
     """
 
     def __init__(self, models_map: Dict[str, Model]):
         self.logger = llmmllogger.bind(component="PipelineFactory")
 
-        # Initialize attributes that were removed but are still used
         self._available_models: Dict[str, Model] = ModelLoader().get_available_models()
-        self.prefer_langgraph = False  # Default value for langgraph preference
-        self._active_loads = 0  # Track active loading operations
-        self._active_local_uses = 0  # Track active local pipeline uses
 
-        # Use the shared module-global cache if present, otherwise create one
-        if _GLOBAL_PIPELINE_CACHE is not None:
-            self.local_cache = _GLOBAL_PIPELINE_CACHE
-        else:
-            self.local_cache = LocalPipelineCacheManager()
-
-        # Coordination for memory-constrained loading
-        self._coord_lock = threading.Lock()
-        self._coord_cond = threading.Condition(self._coord_lock)
+        # Use the module-global cache singleton
+        self.cache = pipeline_cache
 
         # Set self.models to the loaded models, with models_map as fallback
         self.models: Dict[str, Model] = (
             self._available_models if self._available_models else (models_map or {})
         )
 
-        self.logger.info("PipelineFactory initialized with LocalPipelineCacheManager")
+        self.logger.info("PipelineFactory initialized with PipelineCache")
 
     def get_pipeline(
         self,
@@ -76,42 +57,21 @@ class PipelineFactory:
             f"Requesting pipeline for model_id: {model_id}, priority: {priority}, grammar: {grammar}, metadata: {metadata}"
         )
 
-        # DEBUG: Add provider detection logging
         provider = getattr(model, "provider", None)
-        # Local providers -> managed cached path with automatic locking
+
+        # Local providers -> cached path via PipelineCache
         if provider in {
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
             self.logger.info(
-                f"📦 Using LOCAL cached path for {model_id} (provider: {provider})"
+                f"Using LOCAL cached path for {model_id} (provider: {provider})"
             )
+            return self.cache.get(model, priority, self.create_pipeline, grammar, metadata)
 
-            # Use a factory function that handles coordination internally
-            def create_with_coordination(
-                m: Model,
-                g: Optional[Type[BaseModel]] = grammar,
-                metadata: Optional[dict] = {},
-            ) -> Optional[Union[BasePipeline, Embeddings]]:
-                return self.create_pipeline(m, g, metadata)
-
-            pipeline = self.local_cache.get_or_create(
-                model,
-                priority,
-                create_with_coordination,
-                grammar,
-                metadata=metadata,
-            )
-            if not pipeline:
-                raise RuntimeError(
-                    f"Failed to create cached pipeline for model '{model.name}'"
-                )
-
-            return pipeline
-
-        # Remote / API providers -> create transient each call, no caching or locking needed
+        # Remote / API providers -> create transient each call, no caching
         self.logger.info(
-            f"🌐 Using REMOTE non-cached path for {model_id} (provider: {provider})"
+            f"Using REMOTE non-cached path for {model_id} (provider: {provider})"
         )
         pipeline = self.create_pipeline(model)
         if not pipeline:
@@ -122,28 +82,6 @@ class PipelineFactory:
             f"Created transient pipeline for remote provider {provider} ({model.name})"
         )
         return pipeline
-
-    def unlock_pipeline(self, model: Model) -> bool:
-        model_id = model.name
-        if self.local_cache.is_local(model):
-            return self.local_cache.unlock_pipeline(model_id)
-        return True
-
-    def set_pipeline_persistent(self, model: Model, persistent: bool = True) -> bool:
-        model_id = model.name
-        if self.local_cache.is_local(model):
-            return self.local_cache.set_persistent(model_id, persistent)
-        return True
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        return self.local_cache.get_cache_info()
-
-    def force_evict_pipeline(self, model: Model) -> bool:
-        model_id = model.name
-        if self.local_cache.is_local(model):
-            self.local_cache.clear_cache(model_id)
-            return True
-        return False
 
     def get_embedding_pipeline(
         self,
@@ -162,24 +100,7 @@ class PipelineFactory:
             ModelProvider.LLAMA_CPP,
             ModelProvider.STABLE_DIFFUSION_CPP,
         }:
-
-            def create_embedding_fn(
-                m: Model,
-                _g: Optional[Type[BaseModel]] = None,
-                metadata: Optional[dict] = None,
-            ) -> Optional[Embeddings]:
-                return self._create_embedding_pipeline(m, metadata=metadata)
-
-            pipeline = self.local_cache.get_or_create(
-                model, priority, create_embedding_fn, None, metadata=metadata
-            )
-            if not pipeline:
-                raise RuntimeError(
-                    f"Failed to create cached embedding pipeline for model '{model.name}'"
-                )
-            if not isinstance(pipeline, Embeddings):
-                raise ValueError(f"Expected Embeddings instance, got {type(pipeline)}")
-            return pipeline
+            return self.cache.get(model, priority, self._create_embedding_pipeline, None, metadata)
 
         # Remote / API providers -> create transient each call, no caching
         pipeline = self._create_embedding_pipeline(model)
@@ -189,31 +110,11 @@ class PipelineFactory:
             )
         return pipeline
 
-    @contextmanager
-    def pipeline(
-        self,
-        model: Model,
-        priority: PipelinePriority = PipelinePriority.NORMAL,
-        grammar: Optional[Type[BaseModel]] = None,
-    ):
-        model_id = model.name
-        is_local = self.local_cache.is_local(model)
+    def unlock_pipeline(self, model: Model) -> bool:
+        return self.cache.unlock(model.name)
 
-        pipe = self.get_pipeline(model, priority, grammar)
-
-        if is_local:
-            self.local_cache.lock_pipeline(model_id)
-            with self._coord_cond:
-                self._active_local_uses += 1
-
-        try:
-            yield pipe
-        finally:
-            if is_local:
-                self.local_cache.unlock_pipeline(model_id)
-                with self._coord_cond:
-                    self._active_local_uses = max(0, self._active_local_uses - 1)
-                    self._coord_cond.notify_all()
+    def clear_cache(self, model: Model) -> None:
+        self.cache.clear(model.name)
 
     def _get_model_by_id(self, model_id: str) -> Optional[Model]:
         if not self._available_models:
@@ -248,22 +149,22 @@ class PipelineFactory:
                 or model.task == ModelTask.VISIONTEXTTOTEXT
             ):
                 self.logger.info(
-                    f"🎯 Routing to _create_text_pipeline for model {model.name}"
+                    f"Routing to _create_text_pipeline for model {model.name}"
                 )
                 return self._create_text_pipeline(model, grammar, metadata)
             if model.task == ModelTask.TEXTTOEMBEDDINGS:
                 self.logger.info(
-                    f"🎯 Routing to _create_embedding_pipeline for {model.name}"
+                    f"Routing to _create_embedding_pipeline for {model.name}"
                 )
                 return self._create_embedding_pipeline(model, metadata)
             if model.task == ModelTask.TEXTTOIMAGE:
                 self.logger.info(
-                    f"🎯 Routing to _create_image_pipeline for {model.name}"
+                    f"Routing to _create_image_pipeline for {model.name}"
                 )
                 return self._create_image_pipeline(model, metadata)
             if model.task == ModelTask.IMAGETOIMAGE:
                 self.logger.info(
-                    f"🎯 Routing to _create_image_to_image_pipeline for {model.name}"
+                    f"Routing to _create_image_to_image_pipeline for {model.name}"
                 )
                 return self._create_image_to_image_pipeline(model, metadata)
             self.logger.error(f"Unsupported task type: {model.task}")
@@ -284,15 +185,15 @@ class PipelineFactory:
 
         match model.provider:
             case ModelProvider.LLAMA_CPP:
-                from .pipelines.llamacpp.chat import (
+                from .pipelines.llamacpp.chat import (  # pylint: disable=import-outside-toplevel
                     ChatLlamaCppPipeline,
-                )  # pylint: disable=import-outside-toplevel
+                )
 
                 return ChatLlamaCppPipeline(model, grammar, metadata)
             case ModelProvider.OPENAI:
-                from langchain_openai import (
+                from langchain_openai import (  # pylint: disable=import-outside-toplevel
                     ChatOpenAI,
-                )  # pylint: disable=import-outside-toplevel
+                )
                 from pydantic import SecretStr
                 from server.config import OPENAI_API_KEY
 
@@ -301,9 +202,9 @@ class PipelineFactory:
                     api_key=SecretStr(OPENAI_API_KEY),
                 )
             case ModelProvider.ANTHROPIC:
-                from langchain_anthropic import (
+                from langchain_anthropic import (  # pylint: disable=import-outside-toplevel
                     ChatAnthropic,
-                )  # pylint: disable=import-outside-toplevel
+                )
                 from pydantic import SecretStr
                 from server.config import ANTHROPIC_API_KEY
 
@@ -373,8 +274,6 @@ class PipelineFactory:
                 )
 
         return None
-
-    # (Removed duplicate legacy cleanup method; single alias earlier in file)
 
 
 # Create global factory instance
