@@ -284,7 +284,7 @@ class PipelineCache:
         """Release pipeline resources."""
         try:
             if hasattr(pipeline, "server_manager"):
-                del pipeline.server_manager  # type: ignore[attr-defined]
+                del pipeline.server_manager  # type: ignore[attr-defined,reportAttributeAccessIssue]
             del pipeline
         except Exception as e:
             self.logger.warning(f"Error during pipeline cleanup: {e}")
