@@ -120,10 +120,12 @@ class PipelineCache:
             raise RuntimeError(f"Failed to create pipeline for {model.name}")
 
         with self._lock:
-            self._cache[cache_key] = _CacheEntry(
+            entry = _CacheEntry(
                 pipeline=pipeline,
                 estimated_size_bytes=required_bytes,
+                use_count=1,  # Creator holds the lock
             )
+            self._cache[cache_key] = entry
             self.logger.debug(f"Cached new pipeline for {cache_key}")
 
         return pipeline
