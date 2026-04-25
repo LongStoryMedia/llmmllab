@@ -92,8 +92,8 @@ class PipelineCache:
             if entry is not None:
                 pipe = entry.pipeline
                 # Check server health
-                if hasattr(pipe, "server_manager") and pipe.server_manager is not None:
-                    if hasattr(pipe.server_manager, "is_running") and not pipe.server_manager.is_running():
+                sm = getattr(pipe, "server_manager", None)
+                if sm is not None and hasattr(sm, "is_running") and not sm.is_running():
                         self.logger.warning(
                             f"Found cached pipeline for {cache_key} with dead server - evicting"
                         )
@@ -126,15 +126,16 @@ class PipelineCache:
             )
             self.logger.debug(f"Cached new pipeline for {cache_key}")
 
-        hardware_manager.update_all_memory_stats()
         return pipeline
 
-    def unlock(self, model_id: str) -> None:
+    def unlock(self, model_id: str) -> bool:
         """Decrement use_count for a model."""
         with self._lock:
             entry = self._cache.get(model_id)
             if entry is not None:
                 entry.use_count = max(0, entry.use_count - 1)
+                return True
+        return False
 
     def clear(self, model_id: Optional[str] = None) -> None:
         """Remove a specific entry or all entries."""
@@ -156,7 +157,7 @@ class PipelineCache:
 
     def stats(self) -> Dict[str, Any]:
         """Return cache statistics."""
-        mem = hardware_manager.update_all_memory_stats()
+        gpu = hardware_manager.gpu_stats()
         with self._lock:
             locked = sum(1 for e in self._cache.values() if e.use_count > 0)
             total_bytes = sum(e.estimated_size_bytes for e in self._cache.values())
@@ -169,22 +170,12 @@ class PipelineCache:
                 for mid, e in self._cache.items()
             }
 
-        gpu_stats = {
-            dev: {
-                "total_mb": s.mem_total,
-                "used_mb": s.mem_used,
-                "free_mb": s.mem_free,
-                "util_percent": s.mem_util,
-            }
-            for dev, s in mem.items()
-        }
-
         return {
             "count": len(self._cache),
             "locked": locked,
             "total_cached_gb": total_bytes / 1e9,
             "entries": entries,
-            "gpu": gpu_stats,
+            "gpu": gpu,
         }
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -262,7 +253,7 @@ class PipelineCache:
 
         return evicted_ids
 
-    def _ensure_vram(self, cache_key: str, required_bytes: float) -> None:
+    def _ensure_vram(self, _cache_key: str, required_bytes: float) -> None:
         """Evict idle models until VRAM is available, else raise InsufficientVRAMError."""
         available = hardware_manager.available_vram_bytes()
         if available >= required_bytes:
