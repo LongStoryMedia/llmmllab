@@ -1,185 +1,204 @@
 """
-Unit tests for pipeline cache locking functionality.
+Unit tests for pipeline cache use_count (locking) functionality.
 
-Tests the pipeline locking mechanism that prevents eviction during active inference.
+Tests the use_count mechanism that prevents eviction during active inference.
+Since use_count is incremented in get() (which requires a full model setup),
+these tests directly manipulate _CacheEntry.use_count to simulate locking.
 """
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from runner.pipeline_cache import LocalPipelineCacheManager, _PipelineCacheEntry
-from models import PipelinePriority
+from runner.pipeline_cache import PipelineCache, _CacheEntry
 
 
-class TestPipelineCacheEntry:
-    """Test cases for _PipelineCacheEntry locking functionality."""
+class TestCacheEntry:
+    """Test cases for _CacheEntry use_count functionality."""
 
     def test_initial_state(self):
-        """Test that new cache entries start unlocked."""
+        """Test that new cache entries start with use_count=0."""
         mock_pipeline = MagicMock()
-        mock_pipeline.__class__.__name__ = "TestPipeline"
-        
-        entry = _PipelineCacheEntry(mock_pipeline, PipelinePriority.NORMAL)
-        
-        assert not entry.in_use
-        assert entry._use_count == 0  # noqa: SLF001 - accessing for test validation
+        entry = _CacheEntry(pipeline=mock_pipeline)
 
-    def test_single_lock_unlock(self):
-        """Test basic lock and unlock functionality."""
+        assert entry.use_count == 0
+        assert entry.estimated_size_bytes == 0
+        assert entry.last_accessed > 0
+
+    def test_manual_increment_decrement(self):
+        """Test manually incrementing and decrementing use_count."""
         mock_pipeline = MagicMock()
-        entry = _PipelineCacheEntry(mock_pipeline, PipelinePriority.NORMAL)
-        
-        # Lock the entry
-        entry.lock()
-        assert entry.in_use
-        assert entry._use_count == 1  # noqa: SLF001
-        
-        # Unlock the entry
-        entry.unlock()
-        assert not entry.in_use
-        assert entry._use_count == 0  # noqa: SLF001
+        entry = _CacheEntry(pipeline=mock_pipeline)
 
-    def test_nested_locking(self):
-        """Test support for concurrent/nested usage."""
-        mock_pipeline = MagicMock()
-        entry = _PipelineCacheEntry(mock_pipeline, PipelinePriority.NORMAL)
-        
-        # Lock twice (concurrent usage)
-        entry.lock()
-        entry.lock()
-        assert entry.in_use
-        assert entry._use_count == 2  # noqa: SLF001
-        
-        # Unlock once - should still be in use
-        entry.unlock()
-        assert entry.in_use
-        assert entry._use_count == 1  # noqa: SLF001
-        
-        # Unlock completely
-        entry.unlock()
-        assert not entry.in_use
-        assert entry._use_count == 0  # noqa: SLF001
+        entry.use_count += 1
+        assert entry.use_count == 1
 
-    def test_unlock_underflow_protection(self):
-        """Test that unlocking more than locking doesn't go negative."""
-        mock_pipeline = MagicMock()
-        entry = _PipelineCacheEntry(mock_pipeline, PipelinePriority.NORMAL)
-        
-        # Unlock without locking
-        entry.unlock()
-        assert not entry.in_use
-        assert entry._use_count == 0  # noqa: SLF001
+        entry.use_count += 1
+        assert entry.use_count == 2
+
+        entry.use_count -= 1
+        assert entry.use_count == 1
+
+        entry.use_count -= 1
+        assert entry.use_count == 0
 
 
-class TestLocalPipelineCacheManagerLocking:
-    """Test cases for LocalPipelineCacheManager locking functionality."""
+class TestPipelineCacheUnlock:
+    """Test cases for PipelineCache.unlock() functionality."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.cache_manager = LocalPipelineCacheManager()
+        with patch.object(PipelineCache, '_cleanup_loop', return_value=None):
+            self.cache = PipelineCache()
         self.mock_pipeline = MagicMock()
         self.mock_pipeline.__class__.__name__ = "TestPipeline"
         self.model_id = "test-model"
 
     def teardown_method(self):
         """Clean up after each test."""
-        self.cache_manager.force_cleanup()
+        self.cache.clear()
 
-    def _add_test_entry(self):
+    def _add_test_entry(self, use_count=0):
         """Helper to add a test entry directly to cache."""
-        entry = _PipelineCacheEntry(self.mock_pipeline, PipelinePriority.NORMAL)
-        with self.cache_manager._lock:  # noqa: SLF001 - test utility
-            self.cache_manager._cache[self.model_id] = entry  # noqa: SLF001
+        entry = _CacheEntry(pipeline=self.mock_pipeline, estimated_size_bytes=1024)
+        entry.use_count = use_count
+        with self.cache._lock:
+            self.cache._cache[self.model_id] = entry
         return entry
 
-    def test_lock_existing_pipeline(self):
-        """Test locking an existing pipeline."""
-        self._add_test_entry()
-        
-        result = self.cache_manager.lock_pipeline(self.model_id)
-        assert result is True
-        
-        stats = self.cache_manager.stats()
-        assert stats["locked"] == 1
-        assert stats["entries"][self.model_id]["in_use"] is True
-        assert stats["entries"][self.model_id]["use_count"] == 1
+    def test_unlock_existing_entry(self):
+        """Test unlock() on an existing entry returns True and decrements use_count."""
+        self._add_test_entry(use_count=1)
 
-    def test_lock_nonexistent_pipeline(self):
-        """Test locking a pipeline that doesn't exist."""
-        result = self.cache_manager.lock_pipeline("nonexistent-model")
+        result = self.cache.unlock(self.model_id)
+        assert result is True
+
+        with self.cache._lock:
+            assert self.cache._cache[self.model_id].use_count == 0
+
+    def test_unlock_nonexistent_entry(self):
+        """Test unlock() on a non-existing entry returns False."""
+        result = self.cache.unlock("nonexistent-model")
         assert result is False
 
-    def test_unlock_existing_pipeline(self):
-        """Test unlocking an existing pipeline."""
-        self._add_test_entry()
-        
-        # Lock first
-        self.cache_manager.lock_pipeline(self.model_id)
-        
-        # Then unlock
-        result = self.cache_manager.unlock_pipeline(self.model_id)
+    def test_unlock_does_not_go_negative(self):
+        """Test that unlock() on use_count=0 doesn't go negative."""
+        self._add_test_entry(use_count=0)
+
+        result = self.cache.unlock(self.model_id)
         assert result is True
-        
-        stats = self.cache_manager.stats()
-        assert stats["locked"] == 0
-        assert stats["entries"][self.model_id]["in_use"] is False
 
-    def test_unlock_nonexistent_pipeline(self):
-        """Test unlocking a pipeline that doesn't exist."""
-        result = self.cache_manager.unlock_pipeline("nonexistent-model")
-        assert result is False
+        with self.cache._lock:
+            assert self.cache._cache[self.model_id].use_count == 0
 
-    def test_context_manager_success(self):
-        """Test the context manager for pipeline usage."""
-        self._add_test_entry()
-        
-        with self.cache_manager.pipeline_in_use(self.model_id) as locked:
-            assert locked is True
-            
-            # Check that pipeline is locked during context
-            stats = self.cache_manager.stats()
-            assert stats["entries"][self.model_id]["in_use"] is True
-        
-        # Check that pipeline is unlocked after context
-        stats = self.cache_manager.stats()
-        assert stats["entries"][self.model_id]["in_use"] is False
+    def test_unlock_multiple(self):
+        """Test multiple unlocks decrement use_count correctly."""
+        self._add_test_entry(use_count=3)
 
-    def test_context_manager_failure(self):
-        """Test the context manager with nonexistent pipeline."""
-        with self.cache_manager.pipeline_in_use("nonexistent-model") as locked:
-            assert locked is False
+        self.cache.unlock(self.model_id)
+        with self.cache._lock:
+            assert self.cache._cache[self.model_id].use_count == 2
 
-    def test_context_manager_nested_locking(self):
-        """Test nested context managers increase use count."""
-        self._add_test_entry()
-        
-        # Manual lock first
-        self.cache_manager.lock_pipeline(self.model_id)
-        initial_stats = self.cache_manager.stats()
-        assert initial_stats["entries"][self.model_id]["use_count"] == 1
-        
-        # Use context manager (should increment count)
-        with self.cache_manager.pipeline_in_use(self.model_id) as locked:
-            assert locked is True
-            nested_stats = self.cache_manager.stats()
-            assert nested_stats["entries"][self.model_id]["use_count"] == 2
-        
-        # After context, should be back to original count
-        final_stats = self.cache_manager.stats()
-        assert final_stats["entries"][self.model_id]["use_count"] == 1
+        self.cache.unlock(self.model_id)
+        with self.cache._lock:
+            assert self.cache._cache[self.model_id].use_count == 1
 
-    def test_stats_include_lock_info(self):
-        """Test that stats include locking information."""
-        self._add_test_entry()
-        
-        # Initially no locks
-        stats = self.cache_manager.stats()
-        assert "locked" in stats
-        assert stats["locked"] == 0
-        
-        # After locking
-        self.cache_manager.lock_pipeline(self.model_id)
-        stats = self.cache_manager.stats()
-        assert stats["locked"] == 1
-        assert "in_use" in stats["entries"][self.model_id]
-        assert "use_count" in stats["entries"][self.model_id]
+        self.cache.unlock(self.model_id)
+        with self.cache._lock:
+            assert self.cache._cache[self.model_id].use_count == 0
+
+
+class TestPipelineCacheStats:
+    """Test cases for PipelineCache.stats() including locked count."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        with patch.object(PipelineCache, '_cleanup_loop', return_value=None):
+            self.cache = PipelineCache()
+        self.mock_pipeline = MagicMock()
+        self.mock_pipeline.__class__.__name__ = "TestPipeline"
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        self.cache.clear()
+
+    def _add_test_entry(self, model_id, use_count=0, size_bytes=1024):
+        """Helper to add a test entry directly to cache."""
+        entry = _CacheEntry(pipeline=self.mock_pipeline, estimated_size_bytes=size_bytes)
+        entry.use_count = use_count
+        with self.cache._lock:
+            self.cache._cache[model_id] = entry
+        return entry
+
+    def test_stats_includes_locked_count(self):
+        """Test that stats includes locked count based on use_count > 0."""
+        self._add_test_entry("model-a", use_count=0)
+        self._add_test_entry("model-b", use_count=2)
+        self._add_test_entry("model-c", use_count=1)
+
+        stats = self.cache.stats()
+
+        assert stats["count"] == 3
+        assert stats["locked"] == 2
+        assert "total_cached_gb" in stats
+        assert "entries" in stats
+        assert "gpu" in stats
+
+    def test_stats_entry_info(self):
+        """Test that stats entries include use_count and metadata."""
+        self._add_test_entry("my-model", use_count=1, size_bytes=1_000_000_000)
+
+        stats = self.cache.stats()
+
+        assert "my-model" in stats["entries"]
+        entry_info = stats["entries"]["my-model"]
+        assert entry_info["use_count"] == 1
+        assert "last_accessed" in entry_info
+        assert "estimated_size_gb" in entry_info
+
+
+class TestPipelineCacheClear:
+    """Test cases for PipelineCache.clear() functionality."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        with patch.object(PipelineCache, '_cleanup_loop', return_value=None):
+            self.cache = PipelineCache()
+        self.mock_pipeline = MagicMock()
+        self.mock_pipeline.__class__.__name__ = "TestPipeline"
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        self.cache.clear()
+
+    def _add_test_entry(self, model_id):
+        """Helper to add a test entry directly to cache."""
+        entry = _CacheEntry(pipeline=self.mock_pipeline, estimated_size_bytes=1024)
+        with self.cache._lock:
+            self.cache._cache[model_id] = entry
+        return entry
+
+    def test_clear_specific_entry(self):
+        """Test clear(model_id) removes only the specified entry."""
+        self._add_test_entry("model-a")
+        self._add_test_entry("model-b")
+
+        self.cache.clear("model-a")
+
+        with self.cache._lock:
+            assert "model-a" not in self.cache._cache
+            assert "model-b" in self.cache._cache
+
+    def test_clear_all_entries(self):
+        """Test clear() without args removes all entries."""
+        self._add_test_entry("model-a")
+        self._add_test_entry("model-b")
+
+        self.cache.clear()
+
+        with self.cache._lock:
+            assert len(self.cache._cache) == 0
+
+    def test_clear_nonexistent_entry(self):
+        """Test clear(model_id) on non-existing entry doesn't raise."""
+        self.cache.clear("nonexistent-model")
+        # No exception is the expected behavior
