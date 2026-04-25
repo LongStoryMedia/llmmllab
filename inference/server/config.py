@@ -65,6 +65,8 @@ LLAMA_SERVER_EXECUTABLE = os.environ.get(
     "LLAMA_SERVER_EXECUTABLE", "/llama.cpp/build/bin/llama-server"
 )
 GPU_POWER_CAP_PCT = int(os.environ.get("GPU_POWER_CAP_PCT", "85"))
+PIPELINE_CACHE_TIMEOUT_MIN = int(os.environ.get("PIPELINE_CACHE_TIMEOUT_MIN", "30"))
+PIPELINE_EVICTION_TIMEOUT_MIN = int(os.environ.get("PIPELINE_EVICTION_TIMEOUT_MIN", "60"))
 
 # ── External API keys ───────────────────────────────────────────────
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
