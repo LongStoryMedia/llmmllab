@@ -12,7 +12,7 @@ from typing import Optional
 import httpx
 
 from models.message import Message, MessageContentType
-from runner import pipeline_factory
+from runner import pipeline_cache
 from runner.pipelines.llamacpp.chat import ChatLlamaCppPipeline
 from utils.logging import llmmllogger
 
@@ -36,9 +36,8 @@ class TokenService:
     def get_num_ctx() -> int:
         """Return ``num_ctx`` from the active llama.cpp pipeline, or a safe default."""
         try:
-            cache = pipeline_factory.local_cache
-            with cache._lock:
-                for entry in cache._cache.values():
+            with pipeline_cache._lock:
+                for entry in pipeline_cache._cache.values():
                     pipeline = entry.pipeline
                     if isinstance(pipeline, ChatLlamaCppPipeline) and hasattr(
                         pipeline, "profile"
@@ -113,10 +112,9 @@ class TokenService:
         combined_text = "\n".join(parts)
 
         try:
-            cache = pipeline_factory.local_cache
-            with cache._lock:
+            with pipeline_cache._lock:
                 server_url = None
-                for entry in cache._cache.values():
+                for entry in pipeline_cache._cache.values():
                     pipeline = entry.pipeline
                     if (
                         isinstance(pipeline, ChatLlamaCppPipeline)
