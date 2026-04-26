@@ -68,16 +68,21 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode using a sync engine."""
+    """Run migrations in 'online' mode using a sync engine.
+
+    TimescaleDB DDL (create_hypertable, add_compression_policy, etc.) requires
+    autocommit — it cannot run inside a user transaction. We set autocommit on
+    the connection so each statement commits immediately, and skip the outer
+    transaction wrapper.
+    """
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
         poolclass=NullPool,
     )
 
-    with connectable.connect() as connection:
+    with connectable.connect().execution_options(autocommit=True) as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+        context.run_migrations()
 
 
 if context.is_offline_mode():
