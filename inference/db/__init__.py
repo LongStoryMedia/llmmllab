@@ -66,7 +66,7 @@ class Storage:
             logger.info("SQLAlchemy engine and session factory created")
 
             # Run Alembic migrations to ensure schema is up to date
-            await self._run_alembic_upgrades()
+            await self._run_alembic_upgrades(connection_string)
 
             # Initialize all storage components
             assert self.session_factory is not None
@@ -141,7 +141,7 @@ class Storage:
             self.initialized = False
             logger.info("Database engine disposed")
 
-    async def _run_alembic_upgrades(self):
+    async def _run_alembic_upgrades(self, connection_string: str):
         """Run Alembic migrations to ensure schema is up to date."""
         from alembic.command import upgrade  # pylint: disable=import-outside-toplevel
         from alembic.config import Config as AlembicConfig  # pylint: disable=import-outside-toplevel
@@ -158,17 +158,14 @@ class Storage:
             "script_location",
             str(alembic_ini.parent / "alembic"),
         )
-        # Override the URL from the connection string — use sync psycopg2 driver
-        conn_str = os.environ.get("DB_CONNECTION_STRING", "")
-        if conn_str:
-            # Strip async prefix for Alembic's sync migration runner
-            conn_str = conn_str.replace("postgresql+asyncpg://", "postgresql://", 1)
-            conn_str = conn_str.replace("postgres+asyncpg://", "postgresql://", 1)
-            if conn_str.startswith("postgresql://"):
-                conn_str = conn_str.replace("postgresql://", "postgresql+psycopg2://", 1)
-            elif conn_str.startswith("postgres://"):
-                conn_str = conn_str.replace("postgres://", "postgres+psycopg2://", 1)
-            alembic_cfg.set_main_option("sqlalchemy.url", conn_str)
+        # Convert the async connection string to sync psycopg2 for Alembic
+        sync_conn_str = connection_string.replace("postgresql+asyncpg://", "postgresql://", 1)
+        sync_conn_str = sync_conn_str.replace("postgres+asyncpg://", "postgresql://", 1)
+        if sync_conn_str.startswith("postgresql://"):
+            sync_conn_str = sync_conn_str.replace("postgresql://", "postgresql+psycopg2://", 1)
+        elif sync_conn_str.startswith("postgres://"):
+            sync_conn_str = sync_conn_str.replace("postgres://", "postgres+psycopg2://", 1)
+        alembic_cfg.set_main_option("sqlalchemy.url", sync_conn_str)
 
         logger.info("Running Alembic migrations...")
         # Alembic's upgrade command is sync; we run it in a thread to avoid blocking the event loop

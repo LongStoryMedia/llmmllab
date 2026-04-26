@@ -65,7 +65,7 @@ def run_migrations_online() -> None:
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
         poolclass=NullPool,
-        echo=True,
+        echo=False,
     )
 
     with connectable.connect().execution_options(autocommit=True) as connection:
