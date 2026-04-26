@@ -158,13 +158,16 @@ class Storage:
             "script_location",
             str(alembic_ini.parent / "alembic"),
         )
-        # Override the URL from the connection string
+        # Override the URL from the connection string — use sync psycopg2 driver
         conn_str = os.environ.get("DB_CONNECTION_STRING", "")
         if conn_str:
+            # Strip async prefix for Alembic's sync migration runner
+            conn_str = conn_str.replace("postgresql+asyncpg://", "postgresql://", 1)
+            conn_str = conn_str.replace("postgres+asyncpg://", "postgresql://", 1)
             if conn_str.startswith("postgresql://"):
-                conn_str = conn_str.replace("postgresql://", "postgresql+asyncpg://", 1)
+                conn_str = conn_str.replace("postgresql://", "postgresql+psycopg2://", 1)
             elif conn_str.startswith("postgres://"):
-                conn_str = conn_str.replace("postgres://", "postgres+asyncpg://", 1)
+                conn_str = conn_str.replace("postgres://", "postgres+psycopg2://", 1)
             alembic_cfg.set_main_option("sqlalchemy.url", conn_str)
 
         logger.info("Running Alembic migrations...")

@@ -1,15 +1,14 @@
 """Alembic environment configuration.
 
-Uses SQLAlchemy async engine with asyncpg. Reads DB_CONNECTION_STRING
-from the environment at runtime.
+Uses a synchronous SQLAlchemy engine with psycopg2 for migrations.
+The db/__init__.py caller ensures the URL uses the psycopg2 driver.
 """
 
 import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy import create_engine
 
 from db.models import Base
 
@@ -18,16 +17,23 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override the sqlalchemy.url from environment variable
+# Override the sqlalchemy.url from environment variable (sync driver)
 connection_string = os.environ.get("DB_CONNECTION_STRING", "")
 if connection_string:
+    # Strip async prefix, use psycopg2 sync driver
+    connection_string = connection_string.replace(
+        "postgresql+asyncpg://", "postgresql+psycopg2://", 1
+    )
+    connection_string = connection_string.replace(
+        "postgres+asyncpg://", "postgresql+psycopg2://", 1
+    )
     if connection_string.startswith("postgresql://"):
         connection_string = connection_string.replace(
-            "postgresql://", "postgresql+asyncpg://", 1
+            "postgresql://", "postgresql+psycopg2://", 1
         )
     elif connection_string.startswith("postgres://"):
         connection_string = connection_string.replace(
-            "postgres://", "postgres+asyncpg://", 1
+            "postgres://", "postgresql+psycopg2://", 1
         )
     config.set_main_option("sqlalchemy.url", connection_string)
 
@@ -48,36 +54,17 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection):
-    """Run migrations with the given connection."""
-    context.configure(connection=connection, target_metadata=target_metadata)
-
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-import asyncio  # noqa: E402
-
-from sqlalchemy.ext.asyncio import AsyncConnection  # noqa: E402
-
-
-async def run_async_migrations() -> None:
-    """Run migrations in 'online' mode using async."""
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode using a sync engine."""
+    connectable = create_engine(
+        config.get_main_option("sqlalchemy.url"),
+        poolclass="null",
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():
