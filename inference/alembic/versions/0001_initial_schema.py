@@ -63,8 +63,6 @@ def upgrade() -> None:
 
     # Step 1: Users
     op.execute(_sql("user/create_users_table.sql"))
-    op.execute(_sql("user/create_user_check_trigger.sql"))
-    op.execute(_sql("user/user_delete_cascade.sql"))
 
     # Step 1b: API keys
     op.execute(_sql("api_key/create_api_keys_table.sql"))
@@ -74,20 +72,26 @@ def upgrade() -> None:
     op.execute(_sql("conversation/create_conversations_indexes.sql"))
     op.execute(_sql("conversation/create_conversations_hypertable.sql"))
     op.execute(_sql("conversation/create_cascade_delete_trigger.sql"))
-    op.execute(_sql("conversation/create_conversation_update_trigger.sql"))
+    op.execute(_sql("conversation/enable_conversations_compression.sql"))
     op.execute(_sql("conversation/conversations_compression_policy.sql"))
     op.execute(_sql("conversation/conversations_retention_policy.sql"))
-    op.execute(_sql("conversation/enable_conversations_compression.sql"))
+
+    # Step 2b: User triggers (reference conversations table, must come after)
+    op.execute(_sql("user/create_user_check_trigger.sql"))
+    op.execute(_sql("user/user_delete_cascade.sql"))
 
     # Step 4: Messages
     op.execute(_sql("message/create_messages_table.sql"))
 
+    # Conversation update trigger (references messages table)
+    op.execute(_sql("conversation/create_conversation_update_trigger.sql"))
+
     # Step 5: Message content
     op.execute(_sql("message_content/create_message_content_table.sql"))
     op.execute(_sql("message_content/create_message_contents_hypertable.sql"))
+    op.execute(_sql("message_content/enable_message_contents_compression.sql"))
     op.execute(_sql("message_content/message_contents_compression_policy.sql"))
     op.execute(_sql("message_content/message_contents_retention_policy.sql"))
-    op.execute(_sql("message_content/enable_message_contents_compression.sql"))
 
     # Step 6: Documents
     op.execute(_sql("document/create_documents_table.sql"))
@@ -96,8 +100,8 @@ def upgrade() -> None:
     # Step 7: Summaries
     op.execute(_sql("summary/create_summaries_table.sql"))
     op.execute(_sql("summary/create_summaries_hypertable.sql"))
-    op.execute(_sql("summary/create_summaries_indexes.sql"))
     op.execute(_sql("summary/enable_summaries_compression.sql"))
+    op.execute(_sql("summary/create_summaries_indexes.sql"))
     op.execute(_sql("summary/create_summary_cascade_delete_triggers.sql"))
 
     # Step 8: Search
@@ -107,11 +111,11 @@ def upgrade() -> None:
 
     # Step 9: Memory
     op.execute(_sql("memory/init_memory_schema.sql"))
-    op.execute(_sql("memory/create_memory_indexes.sql"))
-    op.execute(_sql("memory/create_memory_cascade_delete_triggers.sql"))
     op.execute(_sql("memory/enable_memories_compression.sql"))
     op.execute(_sql("memory/memories_compression_policy.sql"))
     op.execute(_sql("memory/memories_retention_policy.sql"))
+    op.execute(_sql("memory/create_memory_indexes.sql"))
+    op.execute(_sql("memory/create_memory_cascade_delete_triggers.sql"))
 
     # Step 10: Images
     op.execute(_sql("images/create_images_schema.sql"))
