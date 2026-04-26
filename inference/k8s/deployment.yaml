@@ -84,9 +84,9 @@ spec:
             - name: AUTH_JWKS_URI
               value: "https://auth.longstorymedia.com/keys"
             - name: DB_HOST
-              value: "192.168.0.71"
+              value: "llmmll-postgres.llmmll.svc.cluster.local"
             - name: DB_PORT
-              value: "32345"
+              value: "5432"
             - name: DB_USER
               value: "lsm"
             - name: DB_PASSWORD

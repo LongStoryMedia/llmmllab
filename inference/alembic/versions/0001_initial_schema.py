@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-04-25
 """
 
+import logging
 from alembic import op
 from pathlib import Path
 
@@ -16,6 +17,8 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
+logger = logging.getLogger(__name__)
+
 # SQL directory relative to this migration file's project root
 SQL_DIR = Path(__file__).resolve().parent.parent.parent / "db" / "sql"
 
@@ -25,8 +28,35 @@ def _sql(filename: str) -> str:
     return (SQL_DIR / filename).read_text()
 
 
+def _schema_already_exists() -> bool:
+    """Check if the schema was already created by init_db.py."""
+    conn = op.get_bind()
+    try:
+        result = conn.execute(
+            sa.text("""
+                SELECT EXISTS(
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'users'
+                )
+            """)
+        )
+        return bool(result.scalar())
+    except Exception:
+        return False
+
+
 def upgrade() -> None:
-    """Apply the full schema, matching init_db.py initialization order."""
+    """Apply the full schema, matching init_db.py initialization order.
+
+    If the schema already exists (created by init_db.py), this migration
+    is a no-op — the alembic_version stamp ensures future migrations (0002+)
+    will still run correctly.  All DDL statements use IF NOT EXISTS /
+    OR REPLACE so they are safe to re-run on a fresh database.
+    """
+    if _schema_already_exists():
+        logger.info("Schema already exists, skipping initial migration DDL")
+        return
 
     # Extensions
     op.execute(_sql("init/create_extensions.sql"))

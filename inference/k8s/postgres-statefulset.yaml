@@ -1,0 +1,147 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llmmll-postgres-init
+  namespace: llmmll
+data:
+  init.sh: |
+    #!/bin/bash
+    set -e
+    until pg_isready -h localhost -p 5432 -U "lsm" --dbname "postgres"; do
+      echo "Waiting for PostgreSQL..."
+      sleep 2
+    done
+    export PGPASSWORD="${POSTGRES_PASSWORD}"
+    psql -v ON_ERROR_STOP=0 --username "lsm" --dbname "postgres" <<-EOSQL
+      SELECT 'CREATE DATABASE llmmll' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'llmmll') \gexec
+    EOSQL
+    psql -v ON_ERROR_STOP=0 --username "lsm" --dbname "llmmll" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+    psql -v ON_ERROR_STOP=0 --username "lsm" --dbname "llmmll" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    psql -v ON_ERROR_STOP=0 --username "lsm" --dbname "llmmll" -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+    unset PGPASSWORD
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llmmll-postgres
+  namespace: llmmll
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: llmmll-postgres
+  namespace: llmmll
+  labels:
+    app: llmmll-postgres
+spec:
+  replicas: 1
+  serviceName: llmmll-postgres
+  selector:
+    matchLabels:
+      app: llmmll-postgres
+  template:
+    metadata:
+      labels:
+        app: llmmll-postgres
+    spec:
+      serviceAccountName: llmmll-postgres
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: timescale/timescaledb-ha:pg17
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            runAsUser: 1001
+            runAsGroup: 1001
+            runAsNonRoot: true
+          env:
+            - name: POSTGRESQL_VOLUME_DIR
+              value: "/home/postgres/pgdata"
+            - name: POSTGRES_USER
+              value: "lsm"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+            - name: POSTGRES_DB
+              value: "llmmll"
+            - name: PGROOT
+              value: /home/postgres
+            - name: PGDATA
+              value: /home/postgres/pgdata/data
+            - name: PGHOST
+              value: /var/run/postgresql
+            - name: POSTGRESQL_ENABLE_TLS
+              value: "no"
+            - name: POSTGRESQL_SHARED_PRELOAD_LIBRARIES
+              value: "timescaledb,pg_stat_statements"
+          ports:
+            - name: tcp-postgresql
+              containerPort: 5432
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "lsm" -d postgres -h 127.0.0.1 -p 5432
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "lsm" -d postgres -h 127.0.0.1 -p 5432
+          resources:
+            limits:
+              cpu: "2"
+              memory: 4Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /home/postgres/pgdata
+            - name: postgresql-run
+              mountPath: /var/run/postgresql
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/
+      volumes:
+        - name: postgresql-run
+          emptyDir: {}
+        - name: init-scripts
+          configMap:
+            name: llmmll-postgres-init
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "10Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmmll-postgres
+  namespace: llmmll
+spec:
+  selector:
+    app: llmmll-postgres
+  ports:
+    - name: tcp-postgresql
+      port: 5432
+      targetPort: tcp-postgresql
+  type: ClusterIP
