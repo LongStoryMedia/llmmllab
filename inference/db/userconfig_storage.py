@@ -7,7 +7,9 @@ import logging
 import time
 import threading
 from typing import List, Optional, Dict
-import asyncpg
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from models.user_config import UserConfig
 from models.default_configs import (
@@ -23,8 +25,6 @@ from models.default_configs import (
 
 
 from db.cache_storage import cache_storage
-from db.db_utils import typed_pool
-from db.connection_recovery import execute_with_recovery
 from utils.logging import llmmllogger
 from .serialization import serialize_to_json
 
@@ -32,10 +32,8 @@ logger = llmmllogger.bind(component="userconfig_storage")
 
 
 class UserConfigStorage:
-    def __init__(self, pool: asyncpg.Pool, get_query):
-        self.pool = pool
-        self.typed_pool = typed_pool(pool)
-        self.get_query = get_query
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+        self.session_factory = session_factory
 
         # Multi-tier cache will be initialized lazily to avoid circular dependency
         self.multi_tier_cache = None
@@ -203,20 +201,21 @@ class UserConfigStorage:
             )
 
         # Fallback to legacy method if users table method fails
-        async with self.typed_pool.acquire() as conn:
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT config FROM users WHERE id = :user_id"),
+                {"user_id": user_id},
+            )
+            row = result.one_or_none()
 
-            async def _get_config_legacy():
-                return await conn.fetchrow(self.get_query("user.get_config"), user_id)
-
-            row = await execute_with_recovery(_get_config_legacy)
             if not row:
                 logger.info(
                     f"No user config found in database for {user_id}, creating default"
                 )
                 return create_default_user_config(user_id)
 
-            # Create config dictionary by merging row data with user_id
-            config_data = dict(row)
+            # Create config dictionary from row data
+            config_data = {"config": row[0]}
 
             # Parse config if it's a JSON string
             if isinstance(config_data.get("config"), str):
@@ -334,93 +333,90 @@ class UserConfigStorage:
         config_json = serialize_to_json(config_data)
 
         # Save to database
-        async def _update_config():
-            async with self.typed_pool.acquire() as conn:
-                await conn.execute(
-                    self.get_query("user.update_config"), config_json, user_id
-                )
-                logger.debug(f"Successfully updated user config in database: {user_id}")
-
-        await execute_with_recovery(_update_config)
+        async with self.session_factory() as session:
+            await session.execute(
+                text("UPDATE users SET config = :config_json WHERE id = :user_id"),
+                {"config_json": config_json, "user_id": user_id},
+            )
+            await session.commit()
+            logger.debug(f"Successfully updated user config in database: {user_id}")
 
     async def get_all_users(self) -> List[dict]:
         # This is an admin operation and doesn't need caching
         try:
+            async with self.session_factory() as session:
+                result = await session.execute(text("SELECT * FROM users"))
+                rows = result.fetchall()
+                users = []
 
-            async def _get_all_users():
-                async with self.typed_pool.acquire() as conn:
-                    rows = await conn.fetch(self.get_query("user.get_all_users"))
-                    users = []
+                for row in rows:
+                    user_dict = dict(row._mapping)
+                    user_id = user_dict.get("id", "unknown")
 
-                    for row in rows:
-                        user_dict = dict(row)
-                        user_id = user_dict.get("id", "unknown")
+                    # Process config if it exists
+                    if "config" in user_dict and user_dict["config"]:
+                        try:
+                            config_dict = {}
 
-                        # Process config if it exists
-                        if "config" in user_dict and user_dict["config"]:
-                            try:
-                                config_dict = {}
-
-                                # Handle string JSON configs
-                                if isinstance(user_dict["config"], str):
-                                    try:
-                                        config_dict = json.loads(user_dict["config"])
-                                    except json.JSONDecodeError as e:
-                                        logger.warning(
-                                            f"Failed to parse config JSON for user {user_id}: {e}"
-                                        )
-                                        config_dict = {}
-                                elif isinstance(user_dict["config"], dict):
-                                    config_dict = user_dict["config"]
-
-                                # Ensure user_id is included in the config
-                                config_dict["user_id"] = user_id
-
-                                # Ensure all required fields have defaults
-                                self._ensure_required_fields(config_dict)
-
-                                # Create a proper UserConfig instance and convert back to dict
+                            # Handle string JSON configs
+                            if isinstance(user_dict["config"], str):
                                 try:
-                                    # Make sure all needed fields have proper values before creating the UserConfig instance
-                                    self._ensure_required_fields(config_dict)
-                                    user_dict["config"] = UserConfig(
-                                        **config_dict
-                                    ).model_dump()
-                                except Exception as e:
+                                    config_dict = json.loads(user_dict["config"])
+                                except json.JSONDecodeError as e:
                                     logger.warning(
-                                        f"Failed to create UserConfig for user {user_id}: {e}"
+                                        f"Failed to parse config JSON for user {user_id}: {e}"
                                     )
-                                    from server.routers.config import (
-                                        create_default_config,
-                                    )
+                                    config_dict = {}
+                            elif isinstance(user_dict["config"], dict):
+                                config_dict = user_dict["config"]
 
-                                    user_dict["config"] = create_default_config(
-                                        user_id
-                                    ).model_dump()
+                            # Ensure user_id is included in the config
+                            config_dict["user_id"] = user_id
+
+                            # Ensure all required fields have defaults
+                            self._ensure_required_fields(config_dict)
+
+                            # Create a proper UserConfig instance and convert back to dict
+                            try:
+                                # Make sure all needed fields have proper values before creating the UserConfig instance
+                                self._ensure_required_fields(config_dict)
+                                user_dict["config"] = UserConfig(
+                                    **config_dict
+                                ).model_dump()
                             except Exception as e:
                                 logger.warning(
-                                    f"Failed to process config for user {user_id}: {e}"
+                                    f"Failed to create UserConfig for user {user_id}: {e}"
                                 )
-                                # Use empty config as fallback
-                                from server.routers.config import create_default_config
+                                from server.routers.config import (
+                                    create_default_config,
+                                )
 
                                 user_dict["config"] = create_default_config(
                                     user_id
                                 ).model_dump()
-                        else:
-                            # No config or empty config, use default
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to process config for user {user_id}: {e}"
+                            )
+                            # Use empty config as fallback
                             from server.routers.config import create_default_config
 
                             user_dict["config"] = create_default_config(
                                 user_id
                             ).model_dump()
+                    else:
+                        # No config or empty config, use default
+                        from server.routers.config import create_default_config
 
-                        users.append(user_dict)
+                        user_dict["config"] = create_default_config(
+                            user_id
+                        ).model_dump()
 
-                    return users
+                    users.append(user_dict)
 
-            # Execute with automatic recovery from stale OID errors
-            return await execute_with_recovery(_get_all_users)
+                return users
+
+            return users
 
         except Exception as e:
             logger.error(f"Error fetching all users: {str(e)}")
@@ -471,25 +467,22 @@ class UserConfigStorage:
         Returns the user's configuration.
         """
         try:
+            # Create default configuration for this user
+            default_config = create_default_user_config(user_id)
+            config_json = serialize_to_json(default_config.model_dump())
 
-            async def _ensure_user():
-                # Create default configuration for this user
-                default_config = create_default_user_config(user_id)
-                config_json = serialize_to_json(default_config.model_dump())
+            async with self.session_factory() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO users(id, config) VALUES (:user_id, :config_json)"
+                        " ON CONFLICT (id) DO UPDATE SET config = COALESCE(users.config, EXCLUDED.config)"
+                    ),
+                    {"user_id": user_id, "config_json": config_json},
+                )
+                await session.commit()
 
-                async with self.typed_pool.acquire() as conn:
-                    # Create user with default config, or update config if user exists but has no config
-                    await conn.execute(
-                        self.get_query("user.create_user_with_config"),
-                        user_id,
-                        config_json,
-                    )
-
-                    logger.info(f"Ensured user exists with default config: {user_id}")
-                    return default_config
-
-            # Execute with automatic recovery from stale OID errors
-            return await execute_with_recovery(_ensure_user)
+                logger.info(f"Ensured user exists with default config: {user_id}")
+                return default_config
 
         except Exception as e:
             logger.error(f"Failed to ensure user exists: {user_id}, error: {e}")
@@ -503,40 +496,35 @@ class UserConfigStorage:
         Returns None if user doesn't exist or has no config.
         """
         try:
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    text("SELECT config FROM users WHERE id = :user_id"),
+                    {"user_id": user_id},
+                )
+                row = result.one_or_none()
 
-            async def _get_config():
-                async with self.typed_pool.acquire() as conn:
-                    row = await conn.fetchrow(
-                        self.get_query("user.get_user_config_from_users_table"), user_id
-                    )
+                if not row or not row[0]:
+                    return None
 
-                    if not row or not row["config"]:
-                        return None
+                # Handle JSONB config data properly
+                config_raw = row[0]
+                if isinstance(config_raw, dict):
+                    config_data = config_raw.copy()
+                elif isinstance(config_raw, str):
+                    config_data = json.loads(config_raw)
+                else:
+                    # Handle other formats - try converting to dict safely
+                    try:
+                        config_data = dict(config_raw) if config_raw else {}
+                    except (ValueError, TypeError) as conv_error:
+                        logger.error(
+                            f"Cannot convert config data to dict: {config_raw}, error: {conv_error}"
+                        )
+                        config_data = {}
 
-                    # Handle JSONB config data properly
-                    config_raw = row["config"]
-                    if isinstance(config_raw, dict):
-                        config_data = config_raw.copy()
-                    elif isinstance(config_raw, str):
-                        import json
+                config_data["user_id"] = user_id  # Ensure user_id is set
 
-                        config_data = json.loads(config_raw)
-                    else:
-                        # Handle other formats - try converting to dict safely
-                        try:
-                            config_data = dict(config_raw) if config_raw else {}
-                        except (ValueError, TypeError) as conv_error:
-                            logger.error(
-                                f"Cannot convert config data to dict: {config_raw}, error: {conv_error}"
-                            )
-                            config_data = {}
-
-                    config_data["user_id"] = user_id  # Ensure user_id is set
-
-                    return UserConfig(**config_data)
-
-            # Execute with automatic recovery from stale OID errors
-            return await execute_with_recovery(_get_config)
+                return UserConfig(**config_data)
 
         except Exception as e:
             logger.error(
@@ -553,16 +541,13 @@ class UserConfigStorage:
         try:
             config_json = serialize_to_json(config.dict())
 
-            async def _update_config():
-                async with self.typed_pool.acquire() as conn:
-                    await conn.execute(
-                        self.get_query("user.update_user_config_in_users_table"),
-                        user_id,
-                        config_json,
-                    )
-                    logger.info(f"Updated user config in users table: {user_id}")
-
-            await execute_with_recovery(_update_config)
+            async with self.session_factory() as session:
+                await session.execute(
+                    text("UPDATE users SET config = :config_json WHERE id = :user_id"),
+                    {"user_id": user_id, "config_json": config_json},
+                )
+                await session.commit()
+                logger.info(f"Updated user config in users table: {user_id}")
 
         except Exception as e:
             logger.error(

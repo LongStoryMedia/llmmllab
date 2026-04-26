@@ -3,11 +3,13 @@ Storage service for managing message content entities in the database.
 Message contents represent the actual content parts of messages (text, URLs, etc.).
 """
 
-import asyncpg
 from typing import List, Optional
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
-from db.db_utils import TypedConnection, typed_pool
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="message_content_storage")
@@ -16,67 +18,62 @@ logger = llmmllogger.bind(component="message_content_storage")
 class MessageContentStorage:
     """Storage service for message content entities with CRUD operations."""
 
-    def __init__(self, pool: asyncpg.Pool, get_query):
-        self.pool = pool
-        self.typed_pool = typed_pool(pool)
-        self.get_query = get_query
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+        self.session_factory = session_factory
         self.logger = logger
 
     async def add_content(
         self,
         content: MessageContent,
-        conn: Optional[TypedConnection] = None,
     ) -> Optional[int]:
         """
         Add a new message content to the database.
 
         Args:
             content: The MessageContent object to add
-            conn: Optional database connection to use
 
         Returns:
             The ID of the created message content, or None on failure
         """
+        query = text(
+            """
+            INSERT INTO message_contents(message_id, type, text_content, url, format, name, created_at)
+                VALUES (:message_id, :type, :text, :url, :format, :name, COALESCE(:created_at, NOW()))
+            RETURNING id;
+            """
+        )
+
         try:
-            # Use provided connection or acquire a new one
-            if conn is None:
-                async with self.typed_pool.acquire() as connection:
-                    return await self._add_content(content, connection)
-            else:
-                return await self._add_content(content, conn)
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    query,
+                    {
+                        "message_id": content.message_id,
+                        "type": content.type.value if hasattr(content.type, "value") else str(content.type),
+                        "text": content.text,
+                        "url": content.url,
+                        "format": content.format,
+                        "name": content.name,
+                        "created_at": content.created_at,
+                    },
+                )
+                row = result.mappings().first()
+
+                if row:
+                    content_id = row["id"]
+                    self.logger.info(
+                        f"Added message content {content_id} for message {content.message_id}"
+                    )
+                    await session.commit()
+                    return content_id
+                else:
+                    self.logger.error(f"Failed to add content for message {content.message_id}")
+                    return None
 
         except Exception as e:
             self.logger.error(
                 f"Error adding content for message {content.message_id}: {e}"
             )
-            return None
-
-    async def _add_content(
-        self,
-        content: MessageContent,
-        conn: TypedConnection,
-    ) -> Optional[int]:
-        """Internal method to add message content using a specific connection."""
-
-        row = await conn.fetchrow(
-            self.get_query("message_content.add_content"),
-            content.message_id,
-            content.type.value if hasattr(content.type, "value") else str(content.type),
-            content.text,
-            content.url,
-            content.format,
-            content.name,
-            content.created_at,
-        )
-
-        if row:
-            content_id = row["id"]
-            self.logger.info(
-                f"Added message content {content_id} for message {content.message_id}"
-            )
-            return content_id
-        else:
-            self.logger.error(f"Failed to add content for message {content.message_id}")
             return None
 
     async def get_contents_by_message(self, message_id: int) -> List[MessageContent]:
@@ -89,11 +86,30 @@ class MessageContentStorage:
         Returns:
             List of MessageContent objects
         """
+        query = text(
+            """
+            SELECT
+                mc.id,
+                mc.message_id,
+                mc.type,
+                mc.text_content AS text,
+                mc.url,
+                mc.format,
+                mc.name,
+                mc.created_at
+            FROM
+                message_contents mc
+            WHERE
+                mc.message_id = :message_id
+            ORDER BY
+                mc.id
+            """
+        )
+
         try:
-            async with self.typed_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    self.get_query("message_content.get_by_message"), message_id
-                )
+            async with self.session_factory() as session:
+                result = await session.execute(query, {"message_id": message_id})
+                rows = result.mappings().all()
 
                 contents = []
                 for row in rows:
@@ -102,7 +118,7 @@ class MessageContentStorage:
                             id=row["id"],
                             message_id=row["message_id"],
                             type=MessageContentType(row["type"]),
-                            text=row["text_content"],
+                            text=row["text"],
                             url=row["url"],
                             format=row["format"],
                             name=row["name"],
@@ -136,14 +152,19 @@ class MessageContentStorage:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            async with self.typed_pool.acquire() as conn:
-                result = await conn.execute(
-                    self.get_query("message_content.delete_content"), content_id
-                )
+        query = text(
+            """
+            DELETE FROM message_contents
+            WHERE id = :id;
+            """
+        )
 
-                # Check if any rows were affected
-                if result == "DELETE 1":
+        try:
+            async with self.session_factory() as session:
+                result = await session.execute(query, {"id": content_id})
+                await session.commit()
+
+                if result.rowcount == 1:  # type: ignore[attr-defined]
                     self.logger.info(f"Deleted message content {content_id}")
                     return True
                 else:
@@ -164,13 +185,19 @@ class MessageContentStorage:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            async with self.typed_pool.acquire() as conn:
-                result = await conn.execute(
-                    self.get_query("message_content.delete_by_message"), message_id
-                )
+        query = text(
+            """
+            DELETE FROM message_contents
+            WHERE message_id = :message_id;
+            """
+        )
 
-                self.logger.info(f"Deleted contents for message {message_id}: {result}")
+        try:
+            async with self.session_factory() as session:
+                result = await session.execute(query, {"message_id": message_id})
+                await session.commit()
+
+                self.logger.info(f"Deleted contents for message {message_id}: {result.rowcount} rows")  # type: ignore[attr-defined]
                 return True
 
         except Exception as e:

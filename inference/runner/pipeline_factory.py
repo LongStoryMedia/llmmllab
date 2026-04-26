@@ -4,7 +4,6 @@ to the PipelineCache API.
 """
 
 from typing import Dict, Optional, Type, Union
-
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel
 from models import (
@@ -212,7 +211,7 @@ class PipelineFactory:
                 from server.config import ANTHROPIC_API_KEY
 
                 return ChatAnthropic(  # type: ignore[return-value]
-                    model_name=model.name,
+                    model_name=model.name,  # type: ignore
                     api_key=SecretStr(ANTHROPIC_API_KEY),
                 )
             case _:

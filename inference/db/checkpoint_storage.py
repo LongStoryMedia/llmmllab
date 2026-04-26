@@ -3,7 +3,6 @@ Simplified checkpoint storage service using LangGraph AsyncPostgresSaver.
 Provides clean factory methods for creating checkpointers without unnecessary abstraction.
 """
 
-from typing import Optional
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from utils.logging import llmmllogger
@@ -19,39 +18,49 @@ class CheckpointStorage:
     without over-engineering the abstraction layer.
     """
 
-    def __init__(self, pool=None, get_query=None):
+    def __init__(self, connection_string: str):
         """
-        Initialize checkpoint storage.
-
-        Note: pool and get_query parameters maintained for compatibility
-        but not used since AsyncPostgresSaver manages its own connections.
-        """
-        self.logger = llmmllogger.bind(component="checkpoint_storage_instance")
-        self._connection_string: Optional[str] = None
-        self._initialized = False
-
-    async def initialize(self, connection_string: str) -> None:
-        """
-        Initialize checkpoint storage by setting up tables.
+        Initialize checkpoint storage and set up tables.
 
         Args:
             connection_string: PostgreSQL connection string
         """
-        try:
-            self._connection_string = connection_string
+        self.logger = llmmllogger.bind(component="checkpoint_storage_instance")
+        self._connection_string = connection_string
+        self._initialized = False
+        self._setup()
 
-            # Setup tables using LangGraph's standard approach
-            # This creates the checkpoints and checkpoint_writes tables automatically
-            async with AsyncPostgresSaver.from_conn_string(connection_string) as saver:
+    def _setup(self) -> None:
+        """Set up checkpoint tables using LangGraph's standard approach."""
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # We're inside an async context; schedule setup
+            asyncio.ensure_future(self._async_setup())
+        else:
+            # No event loop; create one and run setup synchronously
+            asyncio.run(self._async_setup())
+
+    async def _async_setup(self) -> None:
+        """Async helper to set up the checkpoint tables."""
+        try:
+            async with AsyncPostgresSaver.from_conn_string(
+                self._connection_string
+            ) as saver:
                 await saver.setup()
 
             self._initialized = True
             self.logger.info(
-                "✅ Checkpoint storage initialized using LangGraph's standard tables"
+                "Checkpoint storage initialized using LangGraph's standard tables"
             )
 
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize checkpoint storage: {e}")
+            self.logger.error(f"Failed to initialize checkpoint storage: {e}")
             raise
 
     @asynccontextmanager
@@ -66,9 +75,9 @@ class CheckpointStorage:
             async with checkpoint_storage.create_checkpointer() as checkpointer:
                 graph = builder.compile(checkpointer=checkpointer)
         """
-        if not self._initialized or not self._connection_string:
+        if not self._initialized:
             raise RuntimeError(
-                "CheckpointStorage not initialized - call initialize() first"
+                "CheckpointStorage not initialized - initialization failed"
             )
 
         async with AsyncPostgresSaver.from_conn_string(
@@ -86,15 +95,15 @@ class CheckpointStorage:
         Returns:
             AsyncPostgresSaver context manager
         """
-        if not self._initialized or not self._connection_string:
+        if not self._initialized:
             raise RuntimeError(
-                "CheckpointStorage not initialized - call initialize() first"
+                "CheckpointStorage not initialized - initialization failed"
             )
 
         # Return the context manager - this is the standard LangGraph pattern
         return AsyncPostgresSaver.from_conn_string(self._connection_string)
 
-    def get_connection_string(self) -> Optional[str]:
+    def get_connection_string(self):
         """Get the connection string for external checkpointer creation."""
         return self._connection_string if self._initialized else None
 

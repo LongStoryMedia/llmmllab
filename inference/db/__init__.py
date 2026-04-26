@@ -1,17 +1,19 @@
 """
 Database module that initializes all storage components and provides access to them.
+
+Uses SQLAlchemy async engine + session factory instead of asyncpg.Pool.
+Schema management is handled by Alembic (runs on startup).
 """
 
-import asyncpg
 import os
-from typing import Optional, Protocol, Any, Callable, cast
+from typing import Optional, Any
 
-from asyncpg import Pool
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from utils.logging import llmmllogger
 from .cache_storage import cache_storage
+from .engine import create_async_engine, create_session_factory, dispose_engine
 from .userconfig_storage import UserConfigStorage
-from .connection_recovery import init_recovery_manager
 from .conversation_storage import ConversationStorage
 from .message_storage import MessageStorage
 from .image_storage import ImageStorage
@@ -26,114 +28,92 @@ from .document_storage import DocumentStorage
 from .todo_storage import TodoStorage
 from .checkpoint_storage import CheckpointStorage
 from .api_key_storage import ApiKeyStorage
-from .queries import get_query
-from .init_db import initialize_database
 from .maintenance import maintenance_service
 
 logger = llmmllogger.bind(component="db_init")
 
 
-class StorageInterface(Protocol):
-    """Protocol defining the interface for storage classes"""
-
-    pool: Pool
-    get_query: Callable[[str], str]
-
-    def __init__(self, pool: Pool, get_query: Callable[[str], str]) -> None: ...
-
-
 class Storage:
     def __init__(self):
-        self.pool = None
-        self.user_config = None
-        self.conversation = None
-        self.message = None
-        self.image = None
-        self.model = None
-        self.summary = None
-        self.memory = None
-        self.search = None
-        self.thought = None
-        self.tool_call = None
-        self.message_content = None
-        self.document = None
-        self.todo = None
-        self.checkpoint = None
-        self.api_key = None
-        self.get_query = get_query
+        self.engine: Optional[AsyncEngine] = None
+        self.session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+        self.user_config: Optional[UserConfigStorage] = None
+        self.conversation: Optional[ConversationStorage] = None
+        self.message: Optional[MessageStorage] = None
+        self.image: Optional[ImageStorage] = None
+        self.model: Optional[ModelStorage] = None
+        self.summary: Optional[SummaryStorage] = None
+        self.memory: Optional[MemoryStorage] = None
+        self.search: Optional[SearchStorage] = None
+        self.thought: Optional[ThoughtStorage] = None
+        self.tool_call: Optional[ToolCallStorage] = None
+        self.message_content: Optional[MessageContentStorage] = None
+        self.document: Optional[DocumentStorage] = None
+        self.todo: Optional[TodoStorage] = None
+        self.checkpoint: Optional[CheckpointStorage] = None
+        self.api_key: Optional[ApiKeyStorage] = None
         self.initialized = False
 
     async def initialize(self, connection_string: str):
-        """Initialize the database connection and storage components"""
+        """Initialize the database engine, run Alembic migrations, and create storage components."""
         if self.initialized:
             return
 
         try:
-            logger.info("Initializing database connection pool")
-            # Avoid stale OID errors from server-side prepared statements by disabling or sizing the cache
-            stmt_cache_size_str = os.environ.get("DB_STATEMENT_CACHE_SIZE", "0")
-            try:
-                stmt_cache_size = int(stmt_cache_size_str)
-            except ValueError:
-                stmt_cache_size = 0
-            self.pool = await asyncpg.create_pool(
-                connection_string, statement_cache_size=stmt_cache_size
-            )
-            logger.info(
-                f"Database pool created (statement_cache_size={stmt_cache_size})"
-            )
+            logger.info("Initializing SQLAlchemy database engine")
+            self.engine = create_async_engine(connection_string)
+            self.session_factory = create_session_factory(self.engine)
+            logger.info("SQLAlchemy engine and session factory created")
 
-            # Initialize connection recovery manager
-            init_recovery_manager(self.pool)
-
-            # Proactively clear any stale connection state after pool creation
-            await self._clear_stale_connection_state()
+            # Run Alembic migrations to ensure schema is up to date
+            await self._run_alembic_upgrades()
 
             # Initialize all storage components
-            self.user_config = UserConfigStorage(self.pool, get_query)
+            assert self.session_factory is not None
+            factory = self.session_factory
+
+            self.user_config = UserConfigStorage(factory)
             self.conversation = ConversationStorage(
-                self.pool, get_query, self.user_config
+                factory, self.user_config
             )
-            self.image = ImageStorage(self.pool, get_query)
-            self.model = ModelStorage(self.pool, get_query)
-            self.summary = SummaryStorage(self.pool, get_query)
-            self.memory = MemoryStorage(self.pool, get_query)
-            self.search = SearchStorage(self.pool, get_query)
-            self.thought = ThoughtStorage(self.pool, get_query)
-            self.tool_call = ToolCallStorage(self.pool, get_query)
-            self.message_content = MessageContentStorage(self.pool, get_query)
-            self.document = DocumentStorage(self.pool, get_query)
-            self.todo = TodoStorage(self.pool, get_query)
-            self.checkpoint = CheckpointStorage(self.pool, get_query)
-            self.api_key = ApiKeyStorage(self.pool, get_query)
+            self.image = ImageStorage(factory)
+            self.model = ModelStorage(factory)
+            self.summary = SummaryStorage(factory)
+            self.memory = MemoryStorage(factory)
+            self.search = SearchStorage(factory)
+            self.thought = ThoughtStorage(factory)
+            self.tool_call = ToolCallStorage(factory)
+            self.message_content = MessageContentStorage(factory)
+            self.document = DocumentStorage(factory)
+            self.todo = TodoStorage(factory)
+            self.checkpoint = CheckpointStorage(connection_string)
+            self.api_key = ApiKeyStorage(factory)
             self.message = MessageStorage(
-                self.pool,
-                get_query,
+                factory,
                 self.thought,
                 self.tool_call,
                 self.message_content,
                 self.document,
             )
 
-            # Initialize checkpoint storage
-            await self.checkpoint.initialize(connection_string)
-
             self.initialized = True
             logger.info("Storage components initialized successfully")
-
-            await initialize_database(self.pool)
 
             # Initialize and start the database maintenance service
             maintenance_interval = int(
                 os.environ.get("DB_MAINTENANCE_INTERVAL_HOURS", "24")
             )
-            await maintenance_service.initialize(self.pool, maintenance_interval)
+            assert self.engine is not None
+            await maintenance_service.initialize(
+                self.engine, factory, maintenance_interval
+            )
             await maintenance_service.start_maintenance_schedule()
             logger.info("Database maintenance service started")
 
         except Exception as e:
-            # Reset all components to None to ensure they're not partially initialized
-            self.pool = None
+            # Reset all components on failure
+            self.engine = None
+            self.session_factory = None
             self.user_config = None
             self.conversation = None
             self.message = None
@@ -145,6 +125,7 @@ class Storage:
             self.thought = None
             self.tool_call = None
             self.message_content = None
+            self.document = None
             self.todo = None
             self.initialized = False
 
@@ -152,33 +133,41 @@ class Storage:
             raise
 
     async def close(self):
-        """Close the database connection pool"""
-        if self.pool:
-            await self.pool.close()
+        """Close the database engine and its connection pool."""
+        if self.engine:
+            await dispose_engine()
+            self.engine = None
+            self.session_factory = None
             self.initialized = False
-            logger.info("Database connection pool closed")
+            logger.info("Database engine disposed")
 
-    async def _clear_stale_connection_state(self):
-        """Proactively clear any stale connection state on startup."""
-        if not self.pool:
+    async def _run_alembic_upgrades(self):
+        """Run Alembic migrations to ensure schema is up to date."""
+        from alembic.command import upgrade  # pylint: disable=import-outside-toplevel
+        from alembic.config import Config as AlembicConfig  # pylint: disable=import-outside-toplevel
+        from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+        alembic_ini = Path(__file__).resolve().parent.parent / "alembic.ini"
+        if not alembic_ini.exists():
+            logger.warning("alembic.ini not found, skipping migrations")
             return
 
-        try:
-            logger.info("Clearing stale connection state on startup...")
-            pool = cast(asyncpg.Pool, self.pool)
+        alembic_cfg = AlembicConfig(str(alembic_ini))
+        # Override the URL from the connection string
+        conn_str = os.environ.get("DB_CONNECTION_STRING", "")
+        if conn_str:
+            if conn_str.startswith("postgresql://"):
+                conn_str = conn_str.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif conn_str.startswith("postgres://"):
+                conn_str = conn_str.replace("postgres://", "postgres+asyncpg://", 1)
+            alembic_cfg.set_main_option("sqlalchemy.url", conn_str)
 
-            # Get one connection and clear its state
-            async with pool.acquire() as conn:
-                c = cast(asyncpg.Connection, conn)
-                await c.execute("DISCARD ALL;")
-                await c.reload_schema_state()
+        logger.info("Running Alembic migrations...")
+        # Alembic's upgrade command is sync; we run it in a thread to avoid blocking the event loop
+        import asyncio  # pylint: disable=import-outside-toplevel
 
-            logger.info("✅ Stale connection state cleared successfully")
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to clear stale connection state (non-critical): {e}"
-            )
+        await asyncio.to_thread(upgrade, alembic_cfg, "head")
+        logger.info("Alembic migrations completed")
 
     def get_service[T](self, service: Optional[T]) -> T:
         """Get a storage service by name"""
@@ -188,7 +177,7 @@ class Storage:
         if not service:
             raise ValueError(f"Unknown storage service: {service}")
 
-        return cast(T, service)
+        return service  # type: ignore[return-value]
 
 
 # Create a singleton instance

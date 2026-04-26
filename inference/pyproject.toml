@@ -49,6 +49,8 @@ dependencies = [
     # Storage
     "redis==6.4.0",
     "asyncpg==0.30.0",
+    "sqlalchemy[asyncio]>=2.0,<3.0",
+    "alembic>=1.14,<2.0",
     "psycopg[binary]==3.2.12",
     "psycopg2-binary==2.9.11",
     "faiss-cpu==1.12.0",

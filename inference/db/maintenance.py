@@ -8,7 +8,8 @@ import contextlib
 import os
 
 from typing import Optional
-import asyncpg
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="db.maintenance")
@@ -18,15 +19,19 @@ class DatabaseMaintenanceService:
     """Service to perform periodic database maintenance tasks"""
 
     def __init__(self):
-        self.pool = None
+        self.session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+        self.engine: Optional[AsyncEngine] = None
         self._maintenance_task = None
         self._interval_hours = 24  # Default to running once per day
         self._is_running = False
         self._last_run = None
 
-    async def initialize(self, pool: asyncpg.Pool, interval_hours: int = 24):
-        """Initialize the maintenance service with a connection pool and interval"""
-        self.pool = pool
+    async def initialize(
+        self, engine: AsyncEngine, session_factory: async_sessionmaker[AsyncSession], interval_hours: int = 24
+    ):
+        """Initialize the maintenance service with a SQLAlchemy async engine and session factory"""
+        self.engine = engine
+        self.session_factory = session_factory
         self._interval_hours = interval_hours
         logger.info(
             f"Database maintenance service initialized with {interval_hours} hour interval"
@@ -40,20 +45,20 @@ class DatabaseMaintenanceService:
         Returns:
             bool: True if maintenance completed successfully, False otherwise
         """
-        if not self.pool:
-            logger.error("Cannot perform maintenance: database pool not initialized")
+        if not self.session_factory:
+            logger.error("Cannot perform maintenance: session factory not initialized")
             return False
 
         logger.info("Starting database maintenance tasks...")
         success = True
 
         try:
-            # Get a connection from the pool
-            async with self.pool.acquire() as conn:
+            async with self.session_factory() as conn:
                 # 1. Vacuum analyze for better query planning
                 logger.info("Running VACUUM ANALYZE...")
                 try:
-                    await conn.execute("VACUUM ANALYZE")
+                    await conn.execute(text("VACUUM ANALYZE"))
+                    await conn.commit()
                     logger.info("VACUUM ANALYZE completed successfully")
                 except Exception as e:
                     logger.error(f"Failed to run VACUUM ANALYZE: {str(e)}")
@@ -66,7 +71,7 @@ class DatabaseMaintenanceService:
                 try:
                     # Never move sequence backwards: use GREATEST with current last_value
                     await conn.execute(
-                        """
+                        text("""
                         SELECT setval(
                             'messages_id_seq',
                             GREATEST(
@@ -75,10 +80,10 @@ class DatabaseMaintenanceService:
                             ),
                             true
                         );
-                        """
+                        """)
                     )
                     await conn.execute(
-                        """
+                        text("""
                         SELECT setval(
                             'message_contents_id_seq',
                             GREATEST(
@@ -87,8 +92,9 @@ class DatabaseMaintenanceService:
                             ),
                             true
                         );
-                        """
+                        """)
                     )
+                    await conn.commit()
                     logger.info("Sequence alignment completed successfully")
                 except Exception as e:
                     logger.error(f"Failed to align sequences: {str(e)}")
@@ -104,15 +110,16 @@ class DatabaseMaintenanceService:
                     )
                     try:
                         # Note: We use the current database name rather than hardcoding
-                        db_name_row = await conn.fetchrow(
-                            "SELECT current_database() as db_name"
+                        db_name_row = await conn.execute(
+                            text("SELECT current_database() as db_name")
                         )
-                        db_name = db_name_row["db_name"]
+                        db_name = db_name_row.mappings()["db_name"]  # type: ignore[index]
 
                         # Run reindex concurrently
                         await conn.execute(
-                            f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}"
+                            text(f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}")
                         )
+                        await conn.commit()
                         logger.info(
                             f"REINDEX completed successfully on database '{db_name}'"
                         )
@@ -136,12 +143,15 @@ class DatabaseMaintenanceService:
                 # 3. Run TimescaleDB-specific maintenance
                 logger.info("Running TimescaleDB policy refresh...")
                 try:
-                    result = await conn.fetch(
-                        "SELECT run_job(j.id) FROM timescaledb_information.jobs j WHERE j.proc_name = 'policy_refresh'"
+                    result = await conn.execute(
+                        text(
+                            "SELECT run_job(j.id) FROM timescaledb_information.jobs j WHERE j.proc_name = 'policy_refresh'"
+                        )
                     )
-                    if result:
+                    rows = list(result)
+                    if rows:
                         logger.info(
-                            f"TimescaleDB policy refresh completed successfully: {len(result)} jobs processed"
+                            f"TimescaleDB policy refresh completed successfully: {len(rows)} jobs processed"
                         )
                     else:
                         logger.info(
@@ -246,14 +256,14 @@ class DatabaseMaintenanceService:
 
         Returns True if alignment commands executed without error.
         """
-        if not self.pool:
-            logger.error("Cannot align sequences: database pool not initialized")
+        if not self.session_factory:
+            logger.error("Cannot align sequences: session factory not initialized")
             return False
 
         try:
-            async with self.pool.acquire() as conn:
+            async with self.session_factory() as conn:
                 await conn.execute(
-                    """
+                    text("""
                     SELECT setval(
                         'messages_id_seq',
                         GREATEST(
@@ -262,10 +272,10 @@ class DatabaseMaintenanceService:
                         ),
                         true
                     );
-                    """
+                    """)
                 )
                 await conn.execute(
-                    """
+                    text("""
                     SELECT setval(
                         'message_contents_id_seq',
                         GREATEST(
@@ -274,8 +284,9 @@ class DatabaseMaintenanceService:
                         ),
                         true
                     );
-                    """
+                    """)
                 )
+                await conn.commit()
             logger.info("Sequence alignment executed successfully")
             return True
         except Exception as e:
@@ -283,42 +294,21 @@ class DatabaseMaintenanceService:
             return False
 
     async def _flush_pool_caches(self) -> None:
-        """Cycle through pool connections and clear prepared statements/schema cache.
+        """Cycle through session connections and clear prepared statements/schema cache.
 
         This prevents errors like 'could not open relation with OID ...' after REINDEX or DDL.
         """
-        if not self.pool:
+        if not self.engine:
             return
 
-        conns = []
         try:
-            # Acquire as many connections as the pool allows
-            max_to_acquire = getattr(self.pool, "_maxsize", 10)
-            for _ in range(max_to_acquire):
-                try:
-                    c = await self.pool.acquire(timeout=0.5)
-                except Exception:
-                    break
-                if not c:
-                    break
-                conns.append(c)
-
-            # Flush each connection's state
-            for c in conns:
-                try:
-                    await c.execute("DISCARD ALL;")
-                except Exception:
-                    # Some connections may not have any statements; ignore
-                    pass
-                try:
-                    await c.reload_schema_state()
-                except Exception:
-                    pass
-        finally:
-            # Release back to pool
-            for c in conns:
-                with contextlib.suppress(Exception):
-                    await self.pool.release(c)
+            # Use DISCARD ALL on raw connections from the underlying pool
+            async with self.engine.connect() as conn:
+                await conn.execute(text("DISCARD ALL;"))
+                await conn.commit()
+        except Exception:
+            # Some connections may not have any statements; ignore
+            pass
 
 
 # Create singleton instance

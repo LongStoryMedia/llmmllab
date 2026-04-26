@@ -3,17 +3,17 @@ API Key storage service for managing user API keys in the database.
 Handles creation, retrieval, validation, and revocation of API keys.
 """
 
-import asyncpg
 import hashlib
 import secrets
-from typing import Callable, List, Optional
+from typing import List, Optional
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from models import ApiKey
 from utils.logging import llmmllogger
-from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
-from db.db_utils import typed_pool, TypedConnection
 
 logger = llmmllogger.bind(component="api_key_storage")
 
@@ -21,22 +21,9 @@ logger = llmmllogger.bind(component="api_key_storage")
 class ApiKeyStorage:
     """Storage service for API key management"""
 
-    def __init__(
-        self,
-        pool: asyncpg.Pool,
-        get_query: Callable[[str], str],
-    ):
-        self.pool = pool
-        self.typed_pool = typed_pool(pool)
-        self.get_query = get_query
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+        self.session_factory = session_factory
         self.logger = llmmllogger.bind(component="api_key_storage_instance")
-
-        # Initialize connection recovery manager
-        self.recovery_manager = (
-            recovery_manager
-            if recovery_manager
-            else ConnectionRecoveryManager(self.typed_pool._pool)
-        )
 
     @staticmethod
     def hash_key(key: str) -> str:
@@ -55,7 +42,6 @@ class ApiKeyStorage:
         name: str,
         scopes: List[str],
         expires_in_days: Optional[int] = None,
-        conn: Optional[TypedConnection] = None,
     ) -> tuple[str, ApiKey]:
         """
         Create a new API key for a user.
@@ -68,42 +54,48 @@ class ApiKeyStorage:
         if expires_in_days:
             expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
 
+        query = text(
+            """
+            INSERT INTO api_keys(user_id, key_hash, name, scopes, expires_at)
+                VALUES (:user_id, :key_hash, :name, :scopes, :expires_at)
+            RETURNING id, user_id, key_hash, name, created_at, expires_at, scopes, is_revoked;
+            """
+        )
+
         try:
-            query = self.get_query("api_key.create_api_key")
-
-            if conn:
-                result = await conn.fetchrow(
-                    query, user_id, key_hash, name, scopes, expires_at
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    query,
+                    {
+                        "user_id": user_id,
+                        "key_hash": key_hash,
+                        "name": name,
+                        "scopes": scopes,
+                        "expires_at": expires_at,
+                    },
                 )
-            else:
+                row = result.mappings().first()
 
-                async def _create():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.fetchrow(
-                            query, user_id, key_hash, name, scopes, expires_at
-                        )
+                if row:
+                    api_key = ApiKey(
+                        id=str(row["id"]),
+                        user_id=row["user_id"],
+                        key_hash=row["key_hash"],
+                        name=row["name"],
+                        created_at=row["created_at"],
+                        last_used_at=row.get("last_used_at"),
+                        expires_at=row.get("expires_at"),
+                        is_revoked=row.get("is_revoked", False),
+                        scopes=row["scopes"],
+                    )
+                    self.logger.info(
+                        f"Created API key '{name}' for user {user_id}",
+                        extra={"key_id": api_key.id},
+                    )
+                    await session.commit()
+                    return plaintext_key, api_key
 
-                result = await self.recovery_manager.execute_with_recovery(_create)
-
-            if result:
-                api_key = ApiKey(
-                    id=str(result["id"]),
-                    user_id=result["user_id"],
-                    key_hash=result["key_hash"],
-                    name=result["name"],
-                    created_at=result["created_at"],
-                    last_used_at=result.get("last_used_at"),
-                    expires_at=result.get("expires_at"),
-                    is_revoked=result.get("is_revoked", False),
-                    scopes=result["scopes"],
-                )
-                self.logger.info(
-                    f"Created API key '{name}' for user {user_id}",
-                    extra={"key_id": api_key.id},
-                )
-                return plaintext_key, api_key
-
-            raise RuntimeError("Failed to create API key")
+                raise RuntimeError("Failed to create API key")
 
         except Exception as e:
             self.logger.error(f"Error creating API key for user {user_id}: {e}")
@@ -112,39 +104,39 @@ class ApiKeyStorage:
     async def get_api_key_by_hash(
         self,
         key_hash: str,
-        conn: Optional[TypedConnection] = None,
     ) -> Optional[ApiKey]:
         """
         Retrieve API key by its hash for authentication.
         Returns None if key is revoked or expired.
         """
+        query = text(
+            """
+            SELECT id, user_id, key_hash, name, created_at, last_used_at, expires_at, is_revoked, scopes
+            FROM api_keys
+            WHERE key_hash = :key_hash AND NOT is_revoked
+              AND (expires_at IS NULL OR expires_at > NOW());
+            """
+        )
+
         try:
-            query = self.get_query("api_key.get_api_key_by_hash")
+            async with self.session_factory() as session:
+                result = await session.execute(query, {"key_hash": key_hash})
+                row = result.mappings().first()
 
-            if conn:
-                result = await conn.fetchrow(query, key_hash)
-            else:
+                if row:
+                    return ApiKey(
+                        id=str(row["id"]),
+                        user_id=row["user_id"],
+                        key_hash=row["key_hash"],
+                        name=row["name"],
+                        created_at=row["created_at"],
+                        last_used_at=row.get("last_used_at"),
+                        expires_at=row.get("expires_at"),
+                        is_revoked=row.get("is_revoked", False),
+                        scopes=row["scopes"],
+                    )
 
-                async def _get_key():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.fetchrow(query, key_hash)
-
-                result = await self.recovery_manager.execute_with_recovery(_get_key)
-
-            if result:
-                return ApiKey(
-                    id=str(result["id"]),
-                    user_id=result["user_id"],
-                    key_hash=result["key_hash"],
-                    name=result["name"],
-                    created_at=result["created_at"],
-                    last_used_at=result.get("last_used_at"),
-                    expires_at=result.get("expires_at"),
-                    is_revoked=result.get("is_revoked", False),
-                    scopes=result["scopes"],
-                )
-
-            return None
+                return None
 
         except Exception as e:
             self.logger.error(f"Error retrieving API key by hash: {e}")
@@ -165,36 +157,36 @@ class ApiKeyStorage:
     async def list_api_keys_for_user(
         self,
         user_id: str,
-        conn: Optional[TypedConnection] = None,
     ) -> List[ApiKey]:
         """List all API keys for a user"""
+        query = text(
+            """
+            SELECT id, user_id, key_hash, name, created_at, last_used_at, expires_at, is_revoked, scopes
+            FROM api_keys
+            WHERE user_id = :user_id
+            ORDER BY created_at DESC;
+            """
+        )
+
         try:
-            query = self.get_query("api_key.list_api_keys_for_user")
+            async with self.session_factory() as session:
+                result = await session.execute(query, {"user_id": user_id})
+                rows = result.mappings().all()
 
-            if conn:
-                results = await conn.fetch(query, user_id)
-            else:
-
-                async def _list_keys():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.fetch(query, user_id)
-
-                results = await self.recovery_manager.execute_with_recovery(_list_keys)
-
-            return [
-                ApiKey(
-                    id=str(row["id"]),
-                    user_id=row["user_id"],
-                    key_hash=row["key_hash"],
-                    name=row["name"],
-                    created_at=row["created_at"],
-                    last_used_at=row.get("last_used_at"),
-                    expires_at=row.get("expires_at"),
-                    is_revoked=row.get("is_revoked", False),
-                    scopes=row["scopes"],
-                )
-                for row in results
-            ]
+                return [
+                    ApiKey(
+                        id=str(row["id"]),
+                        user_id=row["user_id"],
+                        key_hash=row["key_hash"],
+                        name=row["name"],
+                        created_at=row["created_at"],
+                        last_used_at=row.get("last_used_at"),
+                        expires_at=row.get("expires_at"),
+                        is_revoked=row.get("is_revoked", False),
+                        scopes=row["scopes"],
+                    )
+                    for row in rows
+                ]
 
         except Exception as e:
             self.logger.error(f"Error listing API keys for user {user_id}: {e}")
@@ -203,23 +195,21 @@ class ApiKeyStorage:
     async def update_last_used(
         self,
         key_id: str,
-        conn: Optional[TypedConnection] = None,
     ) -> bool:
         """Update the last_used_at timestamp for an API key"""
+        query = text(
+            """
+            UPDATE api_keys
+            SET last_used_at = NOW()
+            WHERE id = :id AND NOT is_revoked;
+            """
+        )
+
         try:
-            query = self.get_query("api_key.update_last_used")
-
-            if conn:
-                await conn.execute(query, UUID(key_id))
-            else:
-
-                async def _update():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.execute(query, UUID(key_id))
-
-                await self.recovery_manager.execute_with_recovery(_update)
-
-            return True
+            async with self.session_factory() as session:
+                await session.execute(query, {"id": UUID(key_id)})
+                await session.commit()
+                return True
 
         except Exception as e:
             self.logger.warning(f"Error updating last_used for key {key_id}: {e}")
@@ -230,27 +220,30 @@ class ApiKeyStorage:
         self,
         key_id: str,
         user_id: str,
-        conn: Optional[TypedConnection] = None,
     ) -> bool:
         """Revoke an API key"""
+        query = text(
+            """
+            UPDATE api_keys
+            SET is_revoked = TRUE
+            WHERE id = :id AND user_id = :user_id
+            RETURNING id;
+            """
+        )
+
         try:
-            query = self.get_query("api_key.revoke_api_key")
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    query, {"id": UUID(key_id), "user_id": user_id}
+                )
+                row = result.mappings().first()
+                await session.commit()
 
-            if conn:
-                result = await conn.fetchrow(query, UUID(key_id), user_id)
-            else:
+                if row:
+                    self.logger.info(f"Revoked API key {key_id} for user {user_id}")
+                    return True
 
-                async def _revoke():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.fetchrow(query, UUID(key_id), user_id)
-
-                result = await self.recovery_manager.execute_with_recovery(_revoke)
-
-            if result:
-                self.logger.info(f"Revoked API key {key_id} for user {user_id}")
-                return True
-
-            return False
+                return False
 
         except Exception as e:
             self.logger.error(f"Error revoking API key {key_id}: {e}")
@@ -260,27 +253,29 @@ class ApiKeyStorage:
         self,
         key_id: str,
         user_id: str,
-        conn: Optional[TypedConnection] = None,
     ) -> bool:
         """Delete an API key"""
+        query = text(
+            """
+            DELETE FROM api_keys
+            WHERE id = :id AND user_id = :user_id
+            RETURNING id;
+            """
+        )
+
         try:
-            query = self.get_query("api_key.delete_api_key")
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    query, {"id": UUID(key_id), "user_id": user_id}
+                )
+                row = result.mappings().first()
+                await session.commit()
 
-            if conn:
-                result = await conn.fetchrow(query, UUID(key_id), user_id)
-            else:
+                if row:
+                    self.logger.info(f"Deleted API key {key_id} for user {user_id}")
+                    return True
 
-                async def _delete():
-                    async with self.typed_pool.acquire() as c:
-                        return await c.fetchrow(query, UUID(key_id), user_id)
-
-                result = await self.recovery_manager.execute_with_recovery(_delete)
-
-            if result:
-                self.logger.info(f"Deleted API key {key_id} for user {user_id}")
-                return True
-
-            return False
+                return False
 
         except Exception as e:
             self.logger.error(f"Error deleting API key {key_id}: {e}")

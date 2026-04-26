@@ -5,8 +5,11 @@ Handles message persistence, caching, and proper aggregation of related data.
 
 import json
 from datetime import datetime, timezone
-from typing import Callable, List, Optional, Dict, Any
-import asyncpg
+from typing import List, Optional, Dict, Any
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
@@ -15,122 +18,316 @@ from models.thought import Thought
 from models.resource_usage import ResourceUsage
 from models.document import Document
 from db.cache_storage import cache_storage
-from db.db_utils import TypedConnection, typed_pool
 from db.thought_storage import ThoughtStorage
 from db.tool_call_storage import ToolCallStorage
 from db.message_content_storage import MessageContentStorage
 from db.document_storage import DocumentStorage
-from db.connection_recovery import ConnectionRecoveryManager, recovery_manager
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="message_storage")
+
+# --- Inline SQL (previously in db/sql/message/) ---
+
+_ADD_MESSAGE_SQL = text("""
+    INSERT INTO messages(conversation_id, role)
+    VALUES (:conversation_id, :role)
+    RETURNING id
+""")
+
+_GET_MESSAGE_SQL = text("""
+    SELECT m.id, m.conversation_id, m.role, m.created_at
+    FROM messages m
+    WHERE m.id = :message_id
+""")
+
+_GET_CONVERSATION_HISTORY_SQL = text("""
+    SELECT m.id, m.conversation_id, m.role, m.created_at
+    FROM messages m
+    WHERE m.conversation_id = :conversation_id
+      AND m.id NOT IN (
+          SELECT CAST(jsonb_array_elements_text(source_ids) AS integer)
+          FROM summaries
+          WHERE conversation_id = :conversation_id AND level = 1
+      )
+    ORDER BY m.created_at ASC
+""")
+
+_GET_BY_CONVERSATION_ID_SQL = text("""
+    SELECT m.id, m.conversation_id, m.role, m.created_at
+    FROM messages m
+    WHERE m.conversation_id = :conversation_id
+    ORDER BY m.created_at ASC
+    LIMIT :limit OFFSET :offset
+""")
+
+_UPDATE_MESSAGE_SQL = text("""
+    UPDATE messages SET role = :role WHERE id = :message_id
+""")
+
+_DELETE_MESSAGE_SQL = text("""
+    DELETE FROM messages WHERE id = :message_id
+""")
+
+_DELETE_MESSAGES_FROM_TIMESTAMP_SQL = text("""
+    DELETE FROM messages
+    WHERE conversation_id = :conversation_id AND created_at > :created_at
+""")
+
+_DELETE_MESSAGE_CONTENTS_SQL = text("""
+    DELETE FROM message_contents WHERE message_id = :message_id
+""")
+
+_DELETE_TOOL_CALLS_SQL = text("""
+    DELETE FROM tool_calls WHERE message_id = :message_id
+""")
+
+_DELETE_THOUGHTS_SQL = text("""
+    DELETE FROM thoughts WHERE message_id = :message_id
+""")
+
+_INSERT_MESSAGE_CONTENT_SQL = text("""
+    INSERT INTO message_contents(message_id, type, text_content, url, format, name, created_at)
+    VALUES (:message_id, :type, :text_content, :url, :format, :name, COALESCE(:created_at, NOW()))
+    RETURNING id
+""")
+
+_INSERT_THOUGHT_SQL = text("""
+    INSERT INTO thoughts(message_id, text, created_at)
+    VALUES (:message_id, :text, COALESCE(:created_at, NOW()))
+    RETURNING id
+""")
+
+_INSERT_TOOL_CALL_SQL = text("""
+    INSERT INTO tool_calls(
+        message_id, tool_name, execution_id, success, args, result_data,
+        error_message, execution_time_ms, resource_usage, created_at
+    ) VALUES (
+        :message_id, :tool_name, :execution_id, :success, :args, :result_data,
+        :error_message, :execution_time_ms, :resource_usage, COALESCE(:created_at, NOW())
+    )
+    RETURNING id
+""")
+
+_INSERT_DOCUMENT_SQL = text("""
+    INSERT INTO documents(
+        message_id, user_id, filename, content_type, file_size, content, text_content,
+        created_at, updated_at
+    ) VALUES (
+        :message_id, :user_id, :filename, :content_type, :file_size, :content, :text_content,
+        COALESCE(:created_at, NOW()), COALESCE(:updated_at, NOW())
+    )
+    RETURNING id, created_at, updated_at
+""")
+
+_GET_CONTENTS_BY_MESSAGE_SQL = text("""
+    SELECT id, message_id, type, text_content, url, format, name, created_at
+    FROM message_contents
+    WHERE message_id = :message_id
+    ORDER BY id
+""")
+
+_GET_TOOL_CALLS_BY_MESSAGE_SQL = text("""
+    SELECT id, message_id, tool_name, execution_id, success, args, result_data,
+           error_message, execution_time_ms, resource_usage, created_at
+    FROM tool_calls
+    WHERE message_id = :message_id
+""")
+
+_GET_THOUGHTS_BY_MESSAGE_SQL = text("""
+    SELECT id, message_id, text, created_at
+    FROM thoughts
+    WHERE message_id = :message_id
+""")
+
+_GET_DOCUMENTS_BY_MESSAGE_SQL = text("""
+    SELECT id, message_id, user_id, filename, content_type, file_size, content,
+           text_content, created_at, updated_at
+    FROM documents
+    WHERE message_id = :message_id
+""")
 
 
 class MessageStorage:
     def __init__(
         self,
-        pool: asyncpg.Pool,
-        get_query: Callable[[str], str],
+        session_factory: async_sessionmaker[AsyncSession],
         thought_storage: ThoughtStorage,
         tool_call_storage: ToolCallStorage,
         message_content_storage: MessageContentStorage,
         document_storage: DocumentStorage,
     ):
-        self.pool = pool
-        self.typed_pool = typed_pool(pool)
-        self.get_query = get_query
+        self.session_factory = session_factory
         self.logger = llmmllogger.bind(component="message_storage_instance")
 
-        # Storage service dependencies (will be set after initialization)
+        # Storage service dependencies
         self.thought_storage = thought_storage
         self.tool_call_storage = tool_call_storage
         self.message_content_storage = message_content_storage
         self.document_storage = document_storage
 
-        # Initialize connection recovery manager
-        self.recovery_manager = (
-            recovery_manager
-            if recovery_manager
-            else ConnectionRecoveryManager(self.typed_pool._pool)
-        )
+    # ------------------------------------------------------------------
+    # Public methods
+    # ------------------------------------------------------------------
 
-    async def add_message(
-        self,
-        message: Message,
-        conn: Optional[TypedConnection] = None,
-    ) -> Optional[int]:
-        """
-        Add a message with all its related content, tool_calls, and thoughts.
-        Uses proper transaction handling for data consistency and OID error recovery.
-
-        Args:
-            message: The message to add
-            conn: Optional existing connection for transaction support
-        """
+    async def add_message(self, message: Message) -> Optional[int]:
+        """Add a message with all its related content, tool_calls, and thoughts."""
         if not message.conversation_id:
             raise ValueError("Message must have a conversation_id")
 
         self.logger.info(f"Adding message to conversation {message.conversation_id}")
 
-        # If no connection provided, wrap the entire transaction in recovery
-        if conn is None:
+        async with self.session_factory() as session:
+            try:
+                message_id = await self._add_message(message, session)
+                await session.commit()
+                return message_id
+            except Exception:
+                await session.rollback()
+                raise
 
-            async def _add_with_transaction():
-                async with self.typed_pool.acquire() as connection:
-                    async with connection.transaction():
-                        return await self._add_message(message, connection)
+    async def update_message(self, message: Message) -> bool:
+        """Update an existing message with all its related data."""
+        if not message.id:
+            raise ValueError("Message must have an id to be updated")
+        if not message.conversation_id:
+            raise ValueError("Message must have a conversation_id")
 
-            # Execute the entire transaction with recovery
-            return await self.recovery_manager.execute_with_recovery(
-                _add_with_transaction
+        async with self.session_factory() as session:
+            try:
+                result = await self._update_message(message, session)
+                await session.commit()
+                return result
+            except Exception:
+                await session.rollback()
+                raise
+
+    async def get_message(self, message_id: int) -> Optional[Message]:
+        """Get a message by ID with all related content, tool_calls, and thoughts."""
+        cached_message = cache_storage.get_message_from_cache(message_id)
+        if cached_message:
+            return cached_message
+
+        async with self.session_factory() as session:
+            return await self._get_message(message_id, session, cache_result=True)
+
+    async def get_conversation_history(
+        self, conversation_id: int
+    ) -> List[Message]:
+        """Get messages for a conversation, excluding summarized messages."""
+        cached_messages = cache_storage.get_conversation_messages(conversation_id)
+        if cached_messages:
+            return self._validate_cached_messages(cached_messages)
+
+        async with self.session_factory() as session:
+            return await self._get_conversation_history(conversation_id, session)
+
+    async def get_messages_by_conversation_id(
+        self, conversation_id: int, limit: int, offset: int
+    ) -> List[Message]:
+        """Get messages for a conversation with pagination."""
+        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
+            conversation_id
+        )
+        if cached_messages:
+            return cached_messages
+
+        async with self.session_factory() as session:
+            return await self._get_messages_by_conversation_id(
+                conversation_id, limit, offset, session
             )
-        else:
-            # Use existing connection (transaction managed externally)
-            # In this case, recovery should be handled by the outer transaction manager
-            return await self._add_message(message, conn)
+
+    async def delete_message(self, message_id: int) -> None:
+        """Delete a message and all its related data."""
+        message = await self.get_message(message_id)
+        if not message:
+            self.logger.warning(
+                f"Message {message_id} not found and could not be deleted"
+            )
+            return
+
+        async with self.session_factory() as session:
+            try:
+                await session.execute(_DELETE_MESSAGE_SQL, {"message_id": message_id})
+                await session.commit()
+                self.logger.info(
+                    f"Deleted message {message_id} and related data from database"
+                )
+            except Exception:
+                await session.rollback()
+                raise
+
+        # Invalidate caches
+        try:
+            cache_storage.invalidate_message_cache(message_id)
+            if message.conversation_id:
+                cache_storage.invalidate_conversation_messages_cache(
+                    message.conversation_id
+                )
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to invalidate cache for deleted message {message_id}: {e}"
+            )
+
+    async def delete_all_from_message(self, message: Message) -> int:
+        """Delete all messages in a conversation created at or after the specified timestamp."""
+        assert message.conversation_id is not None, "Message must have a conversation_id"
+
+        async with self.session_factory() as session:
+            try:
+                result = await session.execute(
+                    _DELETE_MESSAGES_FROM_TIMESTAMP_SQL,
+                    {
+                        "conversation_id": message.conversation_id,
+                        "created_at": message.created_at,
+                    },
+                )
+                # Also update the message itself within the same transaction
+                await self._update_message(message, session)
+                await session.commit()
+
+                deleted_count = result.rowcount  # type: ignore[attr-defined]
+                logger.info(
+                    f"Bulk deleted {deleted_count} messages from conversation "
+                    f"{message.conversation_id} created > {message.created_at}"
+                )
+                return deleted_count
+            except Exception:
+                await session.rollback()
+                raise
+
+        # Invalidate conversation messages list cache
+        cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
+
+    # ------------------------------------------------------------------
+    # Private methods
+    # ------------------------------------------------------------------
 
     async def _add_message(
-        self,
-        message: Message,
-        conn: TypedConnection,
+        self, message: Message, session: AsyncSession
     ) -> Optional[int]:
-        """
-        Internal method to add message using a specific connection.
-        """
-        # Insert the main message record
-        row = await conn.fetchrow(
-            self.get_query("message.add_message"),
-            message.conversation_id,
-            message.role,
+        """Insert a message and all related data within a session."""
+        row = await session.execute(
+            _ADD_MESSAGE_SQL,
+            {"conversation_id": message.conversation_id, "role": message.role},
         )
-        message_id = row["id"] if row and "id" in row else None
+        message_id = row.mappings().first()["id"]  # type: ignore[index]
 
         if not message_id:
             self.logger.error("Failed to get message_id after insert")
             return None
 
-        # Insert message contents
+        # Insert related data directly (not via sub-storages) to share transaction
         if message.content:
-            await self._insert_message_contents(conn, message_id, message.content)
-
-        # Insert tool_calls if present
+            await self._insert_message_contents(session, message_id, message.content)
         if message.tool_calls:
-            await self._insert_tool_calls(conn, message_id, message.tool_calls)
-
-        # Insert thoughts if present
+            await self._insert_tool_calls(session, message_id, message.tool_calls)
         if message.thoughts:
-            await self._insert_thoughts(conn, message_id, message.thoughts)
-
-        # Insert documents if present
+            await self._insert_thoughts(session, message_id, message.thoughts)
         if message.documents:
-            await self._insert_documents(conn, message_id, message.documents)
+            await self._insert_documents(session, message_id, message.documents)
 
-        # Set the message_id on the message object
         message.id = message_id
 
-        # Cache and invalidate appropriately
-        # Note: We cache the new message but invalidate conversation cache
-        # This ensures cache consistency regardless of transaction state
         if message.conversation_id is not None:
             try:
                 cache_storage.cache_message(message)
@@ -144,84 +341,41 @@ class MessageStorage:
 
         return message_id
 
-    async def update_message(
-        self,
-        message: Message,
-        conn: Optional[TypedConnection] = None,
-    ) -> bool:
-        """
-        Update an existing message with all its related content, tool_calls, and thoughts.
-        Uses proper transaction handling for data consistency and OID error recovery.
-
-        Args:
-            message: The message to update (must have an id)
-            conn: Optional existing connection for transaction support
-
-        Returns:
-            True if update was successful, False otherwise
-        """
-        if not message.id:
-            raise ValueError("Message must have an id to be updated")
-        if not message.conversation_id:
-            raise ValueError("Message must have a conversation_id")
-
-        # If no connection provided, wrap the entire transaction in recovery
-        if conn is None:
-
-            async def _update_with_transaction():
-                async with self.typed_pool.acquire() as connection:
-                    async with connection.transaction():
-                        return await self._update_message(message, connection)
-
-            # Execute the entire transaction with recovery
-            return await self.recovery_manager.execute_with_recovery(
-                _update_with_transaction
-            )
-        else:
-            # Use existing connection (transaction managed externally)
-            return await self._update_message(message, conn)
-
     async def _update_message(
-        self,
-        message: Message,
-        conn: TypedConnection,
+        self, message: Message, session: AsyncSession
     ) -> bool:
-        """
-        Internal method to update message using a specific connection.
-        """
+        """Update a message and all related data within a session."""
         if not message.id:
             self.logger.error("Cannot update message without id")
             return False
 
         try:
-            # Update the main message record (role is typically immutable, but we'll include it)
-            await conn.execute(
-                self.get_query("message.update_message"),
-                message.id,
-                message.role,
+            # Update the main message record
+            await session.execute(
+                _UPDATE_MESSAGE_SQL,
+                {"message_id": message.id, "role": message.role},
             )
 
-            # Delete existing related data to replace with new data
-            # This ensures consistency and handles cases where lists have changed
-            await conn.execute(
-                self.get_query("message_content.delete_message_contents"), message.id
+            # Delete existing related data
+            await session.execute(
+                _DELETE_MESSAGE_CONTENTS_SQL, {"message_id": message.id}
             )
-            await conn.execute(
-                self.get_query("tool_call.delete_by_message"), message.id
+            await session.execute(
+                _DELETE_TOOL_CALLS_SQL, {"message_id": message.id}
             )
-            await conn.execute(self.get_query("thought.delete_by_message"), message.id)
+            await session.execute(
+                _DELETE_THOUGHTS_SQL, {"message_id": message.id}
+            )
 
-            # Insert new message contents
+            # Insert new related data
             if message.content:
-                await self._insert_message_contents(conn, message.id, message.content)
-
-            # Insert new tool_calls if present
+                await self._insert_message_contents(
+                    session, message.id, message.content
+                )
             if message.tool_calls:
-                await self._insert_tool_calls(conn, message.id, message.tool_calls)
-
-            # Insert new thoughts if present
+                await self._insert_tool_calls(session, message.id, message.tool_calls)
             if message.thoughts:
-                await self._insert_thoughts(conn, message.id, message.thoughts)
+                await self._insert_thoughts(session, message.id, message.thoughts)
 
             # Update cache
             if message.conversation_id is not None:
@@ -244,111 +398,50 @@ class MessageStorage:
             )
             return False
 
-    async def get_message(
-        self,
-        message_id: int,
-        conn: Optional[TypedConnection] = None,
-    ) -> Optional[Message]:
-        """
-        Get a message by ID with all related content, tool_calls, and thoughts using multiple queries.
-
-        Args:
-            message_id: The message ID to retrieve
-            conn: Optional existing connection for transaction support
-        """
-        # Try cache first - safe even in transactions for read operations
-        cached_message = cache_storage.get_message_from_cache(message_id)
-        if cached_message:
-            return cached_message
-
-        # Acquire connection if not provided
-        if conn is None:
-            async with self.typed_pool.acquire() as connection:
-                return await self._get_message(
-                    message_id, connection, cache_result=True
-                )
-        else:
-            # When using external connection, we still cache but let caller control transaction
-            return await self._get_message(message_id, conn, cache_result=True)
-
     async def _get_message(
-        self,
-        message_id: int,
-        conn: TypedConnection,
-        cache_result: bool = True,
+        self, message_id: int, session: AsyncSession, cache_result: bool = True
     ) -> Optional[Message]:
-        """
-        Internal method to get message using a specific connection.
-
-        Args:
-            message_id: The message ID to retrieve
-            conn: Database connection to use
-            cache_result: Whether to cache the result after fetching
-        """
-
-        # Get the base message with recovery
-        async def _get_message_record():
-            return await conn.fetchrow(
-                self.get_query("message.get_message"), message_id
-            )
-
-        row = await self.recovery_manager.execute_with_recovery(_get_message_record)
-        if not row:
+        """Get a message with all related data from a session."""
+        row = await session.execute(
+            _GET_MESSAGE_SQL, {"message_id": message_id}
+        )
+        msg_row = row.mappings().first()
+        if not msg_row:
             return None
 
-        message_data = dict(row)
+        message_data = dict(msg_row)
 
-        # Get message contents using separate query with recovery
-        async def _get_contents():
-            return await conn.fetch(
-                self.get_query("message_content.get_by_message"), message_id
-            )
-
-        contents_rows = await self.recovery_manager.execute_with_recovery(_get_contents)
+        # Get related data
+        contents_rows = await session.execute(
+            _GET_CONTENTS_BY_MESSAGE_SQL, {"message_id": message_id}
+        )
         message_data["content"] = [
-            MessageContent(**dict(content_row)) for content_row in contents_rows
+            MessageContent(**dict(r)) for r in contents_rows.mappings()
         ]
 
-        # Get tool calls using separate query with recovery
-        async def _get_tool_calls():
-            return await conn.fetch(
-                self.get_query("tool_call.get_by_message"), message_id
-            )
-
-        tool_calls_rows = await self.recovery_manager.execute_with_recovery(
-            _get_tool_calls
+        tool_rows = await session.execute(
+            _GET_TOOL_CALLS_BY_MESSAGE_SQL, {"message_id": message_id}
         )
         message_data["tool_calls"] = [
-            self._parse_tool_call_row(dict(tool_row)) for tool_row in tool_calls_rows
+            self._parse_tool_call_row(dict(r)) for r in tool_rows.mappings()
         ]
 
-        # Get thoughts using separate query with recovery
-        async def _get_thoughts():
-            return await conn.fetch(
-                self.get_query("thought.get_by_message"), message_id
-            )
-
-        thoughts_rows = await self.recovery_manager.execute_with_recovery(_get_thoughts)
+        thought_rows = await session.execute(
+            _GET_THOUGHTS_BY_MESSAGE_SQL, {"message_id": message_id}
+        )
         message_data["thoughts"] = [
-            Thought(**dict(thought_row)) for thought_row in thoughts_rows
+            Thought(**dict(r)) for r in thought_rows.mappings()
         ]
 
-        # Get documents using separate query with recovery
-        async def _get_documents():
-            return await conn.fetch(
-                self.get_query("document.get_documents_by_message"), message_id
-            )
-
-        documents_rows = await self.recovery_manager.execute_with_recovery(
-            _get_documents
+        doc_rows = await session.execute(
+            _GET_DOCUMENTS_BY_MESSAGE_SQL, {"message_id": message_id}
         )
         message_data["documents"] = [
-            Document(**dict(document_row)) for document_row in documents_rows
+            Document(**dict(r)) for r in doc_rows.mappings()
         ]
 
         message = Message(**message_data)
 
-        # Cache the result if requested
         if cache_result:
             try:
                 cache_storage.cache_message(message)
@@ -357,17 +450,151 @@ class MessageStorage:
 
         return message
 
+    async def _get_conversation_history(
+        self, conversation_id: int, session: AsyncSession
+    ) -> List[Message]:
+        """Get conversation history from a session."""
+        rows = await session.execute(
+            _GET_CONVERSATION_HISTORY_SQL, {"conversation_id": conversation_id}
+        )
+
+        messages = []
+        for row in rows.mappings():
+            message = await self._get_message(row["id"], session, cache_result=True)
+            if message:
+                messages.append(message)
+
+        if len(messages) > 0:
+            try:
+                cache_storage.cache_conversation_messages(conversation_id, messages)
+            except Exception as e:
+                self.logger.warning(f"Failed to cache conversation messages: {e}")
+
+        return messages
+
+    async def _get_messages_by_conversation_id(
+        self,
+        conversation_id: int,
+        limit: int,
+        offset: int,
+        session: AsyncSession,
+    ) -> List[Message]:
+        """Get paginated messages from a session."""
+        rows = await session.execute(
+            _GET_BY_CONVERSATION_ID_SQL,
+            {"conversation_id": conversation_id, "limit": limit, "offset": offset},
+        )
+
+        messages = []
+        for row in rows.mappings():
+            message = await self._get_message(row["id"], session, cache_result=True)
+            if message:
+                messages.append(message)
+
+        if messages:
+            try:
+                cache_storage.cache_messages_by_conversation_id(
+                    conversation_id, messages
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to cache paginated messages: {e}")
+
+        return messages
+
+    # ------------------------------------------------------------------
+    # Insert helpers (operate on a shared session)
+    # ------------------------------------------------------------------
+
+    async def _insert_message_contents(
+        self, session: AsyncSession, message_id: int, contents: List[MessageContent]
+    ) -> None:
+        for content in contents:
+            if not content.message_id:
+                content.message_id = message_id
+            await session.execute(
+                _INSERT_MESSAGE_CONTENT_SQL,
+                {
+                    "message_id": message_id,
+                    "type": content.type,
+                    "text_content": content.text,
+                    "url": content.url,
+                    "format": content.format,
+                    "name": content.name,
+                    "created_at": content.created_at,
+                },
+            )
+
+    async def _insert_tool_calls(
+        self, session: AsyncSession, message_id: int, tool_calls: List[ToolCall]
+    ) -> None:
+        for tc in tool_calls:
+            if not tc.message_id:
+                tc.message_id = message_id
+            args_json = json.dumps(tc.args) if tc.args else None
+            result_json = json.dumps(tc.result_data) if tc.result_data else None
+            resource_json = (
+                json.dumps(tc.resource_usage.model_dump())
+                if tc.resource_usage
+                else None
+            )
+            await session.execute(
+                _INSERT_TOOL_CALL_SQL,
+                {
+                    "message_id": message_id,
+                    "tool_name": tc.name,
+                    "execution_id": tc.execution_id,
+                    "success": tc.success,
+                    "args": args_json,
+                    "result_data": result_json,
+                    "error_message": tc.error_message,
+                    "execution_time_ms": tc.execution_time_ms,
+                    "resource_usage": resource_json,
+                    "created_at": tc.created_at,
+                },
+            )
+
+    async def _insert_thoughts(
+        self, session: AsyncSession, message_id: int, thoughts: List[Thought]
+    ) -> None:
+        for thought in thoughts:
+            if not thought.message_id:
+                thought.message_id = message_id
+            await session.execute(
+                _INSERT_THOUGHT_SQL,
+                {
+                    "message_id": message_id,
+                    "text": thought.text,
+                    "created_at": thought.created_at,
+                },
+            )
+
+    async def _insert_documents(
+        self, session: AsyncSession, message_id: int, documents: List[Document]
+    ) -> None:
+        for doc in documents:
+            if not doc.message_id:
+                doc.message_id = message_id
+            await session.execute(
+                _INSERT_DOCUMENT_SQL,
+                {
+                    "message_id": message_id,
+                    "user_id": doc.user_id,
+                    "filename": doc.filename,
+                    "content_type": doc.content_type,
+                    "file_size": doc.file_size,
+                    "content": doc.content,
+                    "text_content": doc.text_content,
+                    "created_at": doc.created_at,
+                    "updated_at": doc.updated_at,
+                },
+            )
+
+    # ------------------------------------------------------------------
+    # Parsing helpers (unchanged from original)
+    # ------------------------------------------------------------------
+
     def _parse_tool_call_row(self, row: Dict[str, Any]) -> ToolCall:
-        """
-        Parse an individual tool call row from database into ToolCall object.
-
-        Args:
-            row: Database row containing tool call data
-
-        Returns:
-            ToolCall object with properly parsed JSON fields
-        """
-        # Parse JSON fields from strings to dicts
+        """Parse a tool call row from database into ToolCall object."""
         args = row.get("args", "{}")
         if isinstance(args, str):
             args = json.loads(args)
@@ -386,20 +613,16 @@ class MessageStorage:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at).replace(tzinfo=timezone.utc)
 
-        # Convert resource_usage dict to ResourceUsage object if not empty
         resource_usage = None
         if resource_usage_data:
             try:
                 resource_usage = ResourceUsage(**resource_usage_data)
             except Exception as e:
                 self.logger.warning(f"Failed to parse resource_usage: {e}")
-                resource_usage = None
 
         return ToolCall(
             message_id=row.get("message_id"),
-            name=row.get(
-                "tool_name", "UNKNOWN"
-            ),  # Map tool_name from DB to name field in model
+            name=row.get("tool_name", "UNKNOWN"),
             execution_id=row.get("execution_id"),
             success=row.get("success", False),
             args=args,
@@ -410,469 +633,21 @@ class MessageStorage:
             created_at=created_at,
         )
 
-    async def get_conversation_history(
-        self, conversation_id: int, conn: Optional[TypedConnection] = None
-    ) -> List[Message]:
-        """
-        Gets messages for a conversation, ordered and without messages that have been summarized already.
-
-        Args:
-            conversation_id: The conversation ID to get messages for
-            conn: Optional existing connection for transaction support
-        """
-        # Try cache first - safe even in transactions for read operations
-        cached_messages = cache_storage.get_conversation_messages(conversation_id)
-        if cached_messages:
-            return self._validate_cached_messages(cached_messages)
-
-        # Acquire connection if not provided
-        if conn is None:
-            async with self.typed_pool.acquire() as connection:
-                return await self._get_conversation_history(conversation_id, connection)
-        else:
-            return await self._get_conversation_history(conversation_id, conn)
-
-    async def _get_conversation_history(
-        self,
-        conversation_id: int,
-        conn: TypedConnection,
-    ) -> List[Message]:
-        """
-        Internal method to get conversation history using a specific connection with transaction support.
-        """
-
-        # Get all messages for the conversation with recovery
-        async def _get_conversation_rows():
-            return await conn.fetch(
-                self.get_query("message.get_conversation_history"),
-                conversation_id,
-            )
-
-        rows = await self.recovery_manager.execute_with_recovery(_get_conversation_rows)
-
-        messages = []
-        for row in rows:
-            message_id = row["id"]
-            # Get the full message with all related data
-            message = await self._get_message(message_id, conn, cache_result=True)
-            if message:
-                messages.append(message)
-
-        # Cache the results - safe to cache read results even in transactions
-        if len(messages) > 0:
-            try:
-                cache_storage.cache_conversation_messages(conversation_id, messages)
-            except Exception as e:
-                self.logger.warning(f"Failed to cache conversation messages: {e}")
-
-        return messages
-
-    async def get_messages_by_conversation_id(
-        self,
-        conversation_id: int,
-        limit: int,
-        offset: int,
-        conn: Optional[TypedConnection] = None,
-    ) -> List[Message]:
-        """
-        Gets messages for a conversation by conversation_id with pagination.
-
-        Args:
-            conversation_id: The conversation ID to get messages for
-            limit: Maximum number of messages to return
-            offset: Number of messages to skip
-            conn: Optional existing connection for transaction support
-        """
-        # Check cache first - safe even in transactions for read operations
-        cached_messages = cache_storage.get_messages_by_conversation_id_from_cache(
-            conversation_id
-        )
-        if cached_messages:
-            return cached_messages
-
-        # Acquire connection if not provided
-        if conn is None:
-            async with self.typed_pool.acquire() as connection:
-                return await self._get_messages_by_conversation_id(
-                    conversation_id, limit, offset, connection
-                )
-        else:
-            return await self._get_messages_by_conversation_id(
-                conversation_id, limit, offset, conn
-            )
-
-    async def _get_messages_by_conversation_id(
-        self,
-        conversation_id: int,
-        limit: int,
-        offset: int,
-        conn: TypedConnection,
-    ) -> List[Message]:
-        """
-        Internal method to get paginated messages using a specific connection.
-        """
-        rows = await conn.fetch(
-            self.get_query("message.get_by_conversation_id"),
-            conversation_id,
-            limit,
-            offset,
-        )
-
-        messages = []
-        for row in rows:
-            message_id = row["id"]
-            # Get the full message with all related data
-            message = await self._get_message(message_id, conn, cache_result=True)
-            if message:
-                messages.append(message)
-
-        # Cache results - safe to cache read results even in transactions
-        if messages:
-            try:
-                cache_storage.cache_messages_by_conversation_id(
-                    conversation_id, messages
-                )
-            except Exception as e:
-                self.logger.warning(f"Failed to cache paginated messages: {e}")
-
-        return messages
-
-    async def delete_message(self, message_id: int) -> None:
-        """
-        Delete a message and all its related data.
-        Cascade delete triggers handle related table cleanup automatically.
-        """
-        # Get the message to find its conversation_id before deletion
-        message = await self.get_message(message_id)
-        if not message:
-            self.logger.warning(
-                f"Message {message_id} not found and could not be deleted"
-            )
-            return
-
-        async with self.typed_pool.acquire() as conn:
-            async with conn.transaction():
-                # Delete the message - cascade triggers will handle related data
-                # (message_contents, tool_calls, thoughts, analyses, etc.)
-                await conn.execute(
-                    self.get_query("message.delete_message_record"), message_id
-                )
-                self.logger.info(
-                    f"Deleted message {message_id} and related data from database"
-                )
-
-        # Invalidate caches
-        try:
-            cache_storage.invalidate_message_cache(message_id)
-            if message.conversation_id:
-                cache_storage.invalidate_conversation_messages_cache(
-                    message.conversation_id
-                )
-        except Exception as e:
-            self.logger.warning(
-                f"Failed to invalidate cache for deleted message {message_id}: {e}"
-            )
-
-    async def delete_all_from_message(self, message: Message) -> int:
-        """
-        Delete all messages in a conversation created at or after the specified timestamp.
-        This is more efficient than deleting messages one by one, especially with TimescaleDB.
-        Cascade delete triggers automatically handle related data (message_contents, thoughts, tool_calls, analyses).
-
-        Args:
-            conversation_id: The conversation ID
-            from_timestamp: Delete messages created at or after this timestamp
-
-        Returns:
-            Number of messages deleted
-        """
-        assert (
-            message.conversation_id is not None
-        ), "Message must have a conversation_id"
-
-        async def _delete_with_transaction():
-            async with self.typed_pool.acquire() as conn:
-                async with conn.transaction():
-                    # Delete messages - cascade triggers will automatically delete related data
-                    # (message_contents, thoughts, tool_calls, analyses, etc.)
-                    message_result = await conn.execute(
-                        self.get_query("message.delete_messages_from_timestamp"),
-                        message.conversation_id,
-                        message.created_at,
-                    )
-
-                    await self.update_message(message, conn=conn)
-
-                    # Extract the number of deleted rows from the command result
-                    deleted_count = (
-                        int(message_result.split()[-1])
-                        if message_result and message_result.split()
-                        else 0
-                    )
-
-                    logger.info(
-                        f"Bulk deleted {deleted_count} messages from conversation {message.conversation_id} created > {message.created_at} (cascade triggers handled related data)"
-                    )
-                    return deleted_count
-
-        # Execute the entire transaction with recovery
-        deleted_count = await self.recovery_manager.execute_with_recovery(
-            _delete_with_transaction
-        )
-
-        # Invalidate conversation messages list cache
-        cache_storage.invalidate_conversation_messages_cache(message.conversation_id)
-
-        return deleted_count
-
-    async def _build_messages(
-        self, conversation_id: int, message_dicts: List[dict], conn: TypedConnection
-    ) -> List[Message]:
-        """Build Message objects from database rows with all related data."""
-        messages: List[Message] = []
-        for msg_dict in message_dicts:
-            try:
-                # Ensure conversation_id is set
-                if (
-                    "conversation_id" not in msg_dict
-                    or msg_dict["conversation_id"] is None
-                ):
-                    msg_dict["conversation_id"] = conversation_id
-
-                # Parse all message data using the unified parser
-                message_data = self._parse_message_row(msg_dict)
-
-                # Create the Message object
-                message_obj = Message(**message_data)
-                messages.append(message_obj)
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to create Message object: {e}, msg={msg_dict}"
-                )
-
-        return messages
-
-    async def _insert_message_contents(
-        self,
-        conn: TypedConnection,
-        message_id: int,
-        contents: List[MessageContent],
-    ) -> None:
-        """Helper method to insert message contents using MessageContentStorage."""
-
-        for content in contents:
-            # Set the message_id on the content before inserting
-            if not content.message_id:
-                content.message_id = message_id
-            await self.message_content_storage.add_content(content=content, conn=conn)
-
-    async def _insert_tool_calls(
-        self,
-        conn: TypedConnection,
-        message_id: int,
-        tool_calls: List[ToolCall],
-    ) -> None:
-        """Helper method to insert tool calls using ToolCallStorage."""
-
-        for tool_call in tool_calls:
-            # Set message_id if not already set (for streaming tool_calls)
-            if not tool_call.message_id:
-                tool_call.message_id = message_id
-            await self.tool_call_storage.add_tool_call(tool_call=tool_call, conn=conn)
-
-    async def _insert_thoughts(
-        self,
-        conn: TypedConnection,
-        message_id: int,
-        thoughts: List[Thought],
-    ) -> None:
-        """Helper method to insert thoughts using ThoughtStorage."""
-
-        for thought in thoughts:
-            # Set message_id if not already set (for streaming thoughts)
-            if not thought.message_id:
-                thought.message_id = message_id
-            await self.thought_storage.add_thought(thought, conn=conn)
-
-    async def _insert_documents(
-        self,
-        conn: TypedConnection,
-        message_id: int,
-        documents: List[Document],
-    ) -> None:
-        """Helper method to insert documents using DocumentStorage."""
-
-        for document in documents:
-            # Set message_id if not already set
-            if not document.message_id:
-                document.message_id = message_id
-            # Use the document storage to store the document
-            await self.document_storage.store_document(
-                message_id=document.message_id,
-                user_id=document.user_id,
-                filename=document.filename,
-                content_type=document.content_type,
-                file_size=document.file_size,
-                content=document.content,
-                text_content=document.text_content,
-            )
-
-    def _parse_message_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Parse a database row containing message data with aggregated JSON fields.
-        Handles contents, tool_calls, thoughts, and documents aggregation.
-        """
-        contents = self._parse_contents(row.get("contents"))
-        tool_calls = self._parse_tool_calls(row.get("tool_calls"))
-        thoughts = self._parse_thoughts(row.get("thoughts"))
-        documents = self._parse_documents(row.get("documents"))
-
-        return {
-            "id": row["id"],
-            "conversation_id": row["conversation_id"],
-            "role": row["role"],
-            "created_at": row["created_at"],
-            "content": contents,
-            "tool_calls": tool_calls if tool_calls else None,
-            "thoughts": thoughts if thoughts else None,
-            "documents": documents if documents else None,
-        }
-
-    def _parse_contents(self, contents_data: Any) -> List[MessageContent]:
-        """Parse message contents from JSON data."""
-        if not contents_data:
-            return [MessageContent(type=MessageContentType.TEXT, text="", url=None)]
-
-        contents = []
-        # Parse JSON data (could be string or already parsed)
-        if isinstance(contents_data, str):
-            parsed_data = json.loads(contents_data)
-        else:
-            parsed_data = contents_data
-
-        for content_data in parsed_data:
-            contents.append(
-                MessageContent(
-                    type=MessageContentType(
-                        content_data.get("type", MessageContentType.TEXT)
-                    ),
-                    text=content_data.get("text_content", ""),
-                    url=content_data.get("url"),
-                )
-            )
-
-        return contents
-
-    def _parse_tool_calls(self, tool_calls_data: Any) -> Optional[List[ToolCall]]:
-        """Parse tool_calls from JSON data."""
-        if not tool_calls_data:
-            return None
-
-        tool_calls = []
-        # Parse JSON data (could be string or already parsed)
-        if isinstance(tool_calls_data, str):
-            parsed_data = json.loads(tool_calls_data)
-        else:
-            parsed_data = tool_calls_data
-
-        for tc_data in parsed_data:
-            # Parse resource_usage if present
-            resource_usage = None
-            if tc_data.get("resource_usage"):
-                try:
-                    resource_usage = ResourceUsage(**tc_data["resource_usage"])
-                except Exception as e:
-                    self.logger.warning(f"Failed to parse resource_usage: {e}")
-
-            tool_calls.append(
-                ToolCall(
-                    name=tc_data["name"],
-                    execution_id=tc_data.get("execution_id"),
-                    success=tc_data["success"],
-                    args=tc_data.get("args"),
-                    result_data=tc_data.get("result_data"),
-                    error_message=tc_data.get("error_message"),
-                    execution_time_ms=tc_data.get("execution_time_ms"),
-                    resource_usage=resource_usage,
-                )
-            )
-
-        return tool_calls if tool_calls else None
-
-    def _parse_thoughts(self, thoughts_data: Any) -> Optional[List[Thought]]:
-        """Parse thoughts from JSON data."""
-        if not thoughts_data:
-            return None
-
-        thoughts = []
-        # Parse JSON data (could be string or already parsed)
-        if isinstance(thoughts_data, str):
-            parsed_data = json.loads(thoughts_data)
-        else:
-            parsed_data = thoughts_data
-
-        for th_data in parsed_data:
-            thoughts.append(
-                Thought(
-                    id=th_data.get("id"),
-                    message_id=th_data.get("message_id"),
-                    text=th_data["text"],
-                    created_at=th_data.get("created_at"),
-                )
-            )
-
-        return thoughts if thoughts else None
-
-    def _parse_documents(self, documents_data: Any) -> Optional[List[Document]]:
-        """Parse documents from JSON data."""
-        if not documents_data:
-            return None
-
-        documents = []
-        # Parse JSON data (could be string or already parsed)
-        try:
-            if isinstance(documents_data, str):
-                documents_list = json.loads(documents_data)
-            else:
-                documents_list = documents_data
-
-            if not isinstance(documents_list, list):
-                return None
-
-            for doc_data in documents_list:
-                if not doc_data:
-                    continue
-
-                try:
-                    document = Document(**doc_data)
-                    documents.append(document)
-                except Exception as e:
-                    self.logger.warning(f"Failed to parse document data: {e}")
-                    continue
-
-        except (json.JSONDecodeError, TypeError) as e:
-            self.logger.warning(f"Failed to parse documents JSON: {e}")
-            return None
-
-        return documents if documents else None
-
     def _validate_cached_messages(self, cached_messages: Any) -> List[Message]:
         """Validate and clean cached messages data."""
         validated_messages = []
-
-        # Ensure cached_messages is iterable
         if not isinstance(cached_messages, list):
             cached_messages = [cached_messages]
 
         for msg in cached_messages:
-            # Ensure content is a list - this handles legacy cached data
             if not msg.content:
                 msg.content = [MessageContent(type=MessageContentType.TEXT, text="")]
             elif not isinstance(msg.content, list):
                 msg.content = [
-                    MessageContent(type=MessageContentType.TEXT, text=str(msg.content))
+                    MessageContent(
+                        type=MessageContentType.TEXT, text=str(msg.content)
+                    )
                 ]
-
             validated_messages.append(msg)
 
         return validated_messages

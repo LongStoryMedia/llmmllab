@@ -5,8 +5,8 @@ module for managing search topic synthesis
 import json
 import logging
 from typing import Optional
-import asyncpg
-from db.db_utils import typed_pool
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from models.search_topic_synthesis import SearchTopicSynthesis
 
 logger = logging.getLogger(__name__)
@@ -17,10 +17,8 @@ class SearchStorage:
     Class for managing search records in the database.
     """
 
-    def __init__(self, pool: asyncpg.Pool, get_query):
-        self.pool = pool
-        self.typed_pool = typed_pool(pool)
-        self.get_query = get_query
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+        self.session_factory = session_factory
 
     async def create(self, sts: SearchTopicSynthesis) -> Optional[int]:
         """
@@ -32,14 +30,22 @@ class SearchStorage:
         Returns:
             The ID of the created synthesis, or None if creation failed
         """
-        async with self.typed_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                self.get_query("search.add_search_topic_synthesis"),
-                json.dumps(sts.urls),
-                json.dumps(sts.topics),
-                sts.synthesis,
-                sts.conversation_id,
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("""
+                    INSERT INTO search_topic_syntheses(urls, topics, synthesis, conversation_id, created_at)
+                    VALUES (:urls, :topics, :synthesis, :conversation_id, NOW())
+                    RETURNING id
+                """),
+                {
+                    "urls": json.dumps(sts.urls),
+                    "topics": json.dumps(sts.topics),
+                    "synthesis": sts.synthesis,
+                    "conversation_id": sts.conversation_id,
+                },
             )
+            await session.commit()
+            row = result.mappings().first()
             return row["id"] if row and "id" in row else None
 
     async def get_by_id(self, synthesis_id: int) -> Optional[SearchTopicSynthesis]:
@@ -52,10 +58,16 @@ class SearchStorage:
         Returns:
             The SearchTopicSynthesis object if found, or None if not found
         """
-        async with self.typed_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                self.get_query("search.get_search_topic_synthesis"), synthesis_id
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("""
+                    SELECT id, urls, topics, synthesis, created_at
+                    FROM search_topic_syntheses
+                    WHERE id = :synthesis_id
+                """),
+                {"synthesis_id": synthesis_id},
             )
+            row = result.mappings().first()
             return (
                 SearchTopicSynthesis(
                     id=row["id"],
