@@ -27,9 +27,30 @@ def create_async_engine(connection_string: str) -> AsyncEngine:
     elif connection_string.startswith("postgres://") and not connection_string.startswith("postgres+asyncpg://"):
         connection_string = connection_string.replace("postgres://", "postgres+asyncpg://", 1)
 
+    # asyncpg doesn't accept query string parameters as kwargs (e.g., ?sslmode=disable).
+    # Strip the query string and handle sslmode via connect_args instead.
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(connection_string)
+    query_params = urllib.parse.parse_qs(parsed.query)
+
+    connect_args = {}
+    if "sslmode" in query_params:
+        sslmode = query_params["sslmode"][0]
+        if sslmode == "disable":
+            connect_args["ssl"] = False
+        elif sslmode != "allow":
+            import ssl as ssl_module
+
+            connect_args["ssl"] = ssl_module.create_default_context()
+
+    # Rebuild URL without query string (asyncpg rejects ?sslmode as kwarg)
+    connection_string = parsed._replace(query="").geturl()
+
     engine = create_async_engine(
         connection_string,
         echo=False,
+        connect_args=connect_args if connect_args else {},
         # Match previous asyncpg pool behavior — pre_ping detects stale connections
         # (replaces our hand-rolled connection_recovery module)
         pool_pre_ping=True,

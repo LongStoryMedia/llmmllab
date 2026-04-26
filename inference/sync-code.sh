@@ -22,7 +22,7 @@ Env:
   REMOTE_NODE_HOST, REMOTE_NODE_USER override node defaults.
 EOF
             exit 0
-            ;;
+        ;;
         *) echo "Unknown option: $arg"; exit 1 ;;
     esac
 done
@@ -43,12 +43,13 @@ RSYNC_EXCLUDES=(
     --exclude='.DS_Store'
     --exclude='benchmark_data/'
     --exclude='evaluation/'
+    --exclude='.env'
 )
 
 sync_once() {
     echo "📤 Syncing → ${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}"
     rsync -avzru --delete "${RSYNC_EXCLUDES[@]}" \
-        "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
+    "${SCRIPT_DIR}/" "${NODE_USER}@${NODE_HOST}:${NODE_CODE_PATH}/"
     echo "✅ Synced"
     if [ "$RESTART" = "1" ]; then
         kubectl rollout restart deployment llmmll -n llmmll

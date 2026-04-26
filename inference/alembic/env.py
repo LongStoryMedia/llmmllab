@@ -57,20 +57,25 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode using a sync engine.
 
-    TimescaleDB DDL (create_hypertable, add_compression_policy, etc.) requires
-    autocommit — it cannot run inside a user transaction. We set autocommit on
-    the connection so each statement commits immediately, and skip the outer
-    transaction wrapper.
+    TimescaleDB DDL (create_hypertable, add_compression_policy, etc.) normally
+    requires autocommit, but we use timescaledb.enable_transaction_split=TRUE
+    to allow it to run inside Alembic's transaction, which is required for
+    Alembic to manage its version table correctly.
     """
+    from sqlalchemy import text  # pylint: disable=import-outside-toplevel
+
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
         poolclass=NullPool,
         echo=False,
     )
 
-    with connectable.connect().execution_options(autocommit=True) as connection:
+    with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
-        context.run_migrations()
+        with context.begin_transaction():
+            # Allow TimescaleDB DDL to run inside this transaction
+            connection.execute(text("SET LOCAL timescaledb.enable_transaction_split = TRUE"))
+            context.run_migrations()
 
 
 if context.is_offline_mode():
