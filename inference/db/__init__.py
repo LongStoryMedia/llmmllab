@@ -143,8 +143,6 @@ class Storage:
 
     async def _run_alembic_upgrades(self, connection_string: str):
         """Run Alembic migrations to ensure schema is up to date."""
-        from alembic.command import upgrade  # pylint: disable=import-outside-toplevel
-        from alembic.config import Config as AlembicConfig  # pylint: disable=import-outside-toplevel
         from pathlib import Path  # pylint: disable=import-outside-toplevel
 
         alembic_ini = Path(__file__).resolve().parent.parent / "alembic.ini"
@@ -152,12 +150,6 @@ class Storage:
             logger.warning("alembic.ini not found, skipping migrations")
             return
 
-        alembic_cfg = AlembicConfig(str(alembic_ini))
-        # Ensure script_location is absolute (Alembic resolves relative paths vs CWD)
-        alembic_cfg.set_main_option(
-            "script_location",
-            str(alembic_ini.parent / "alembic"),
-        )
         # Convert the async connection string to sync psycopg2 for Alembic
         sync_conn_str = connection_string.replace("postgresql+asyncpg://", "postgresql://", 1)
         sync_conn_str = sync_conn_str.replace("postgres+asyncpg://", "postgresql://", 1)
@@ -165,17 +157,35 @@ class Storage:
             sync_conn_str = sync_conn_str.replace("postgresql://", "postgresql+psycopg2://", 1)
         elif sync_conn_str.startswith("postgres://"):
             sync_conn_str = sync_conn_str.replace("postgres://", "postgres+psycopg2://", 1)
-        alembic_cfg.set_main_option("sqlalchemy.url", sync_conn_str)
 
         logger.info("Running Alembic migrations...")
-        # Alembic's upgrade command is sync; we run it in a thread to avoid blocking the event loop
+        # Run Alembic as a subprocess to avoid thread-pool deadlocks
+        # with asyncio.to_thread + Alembic's internal context managers.
         import asyncio as aio  # pylint: disable=import-outside-toplevel
+        import sys as _sys  # pylint: disable=import-outside-toplevel
 
+        project_root = str(alembic_ini.parent)
         try:
-            await aio.wait_for(
-                aio.to_thread(upgrade, alembic_cfg, "head"),
+            proc = await aio.wait_for(
+                aio.create_subprocess_exec(
+                    _sys.executable, "-m", "alembic", "-c", str(alembic_ini), "upgrade", "head",
+                    cwd=project_root,
+                    env={**os.environ, "DB_CONNECTION_STRING": sync_conn_str},
+                    stdout=aio.subprocess.PIPE,
+                    stderr=aio.subprocess.PIPE,
+                ),
+                timeout=10,
+            )
+            stdout, stderr = await aio.wait_for(
+                proc.communicate(),
                 timeout=120,
             )
+            if proc.returncode != 0:
+                log_output = stderr.decode(errors="replace").strip()
+                if not log_output:
+                    log_output = stdout.decode(errors="replace").strip()
+                logger.error(f"Alembic migrations failed: {log_output}")
+                raise RuntimeError(f"Alembic migrations failed (exit {proc.returncode}): {log_output}")
             logger.info("Alembic migrations completed")
         except aio.TimeoutError:
             logger.error("Alembic migrations timed out after 120 seconds")
