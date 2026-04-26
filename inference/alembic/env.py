@@ -100,34 +100,18 @@ def run_migrations_online() -> None:
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
         poolclass=NullPool,
-        echo=True,
+        echo=False,
         isolation_level="AUTOCOMMIT",
     )
 
-    import sys as _sys
-
-    _sys.stderr.write("[alembic] connection acquired, configuring...\n")
-    _sys.stderr.flush()
-
     with connectable.connect() as connection:
-        _sys.stderr.write("[alembic] configuring context...\n")
-        _sys.stderr.flush()
         context.configure(connection=connection, target_metadata=target_metadata)
-
-        _sys.stderr.write("[alembic] running migrations...\n")
-        _sys.stderr.flush()
         context.run_migrations()
-
-        _sys.stderr.write("[alembic] migrations done, stamping version...\n")
-        _sys.stderr.flush()
 
         # Manually stamp the version table (Alembic can't do it in autocommit mode)
         revision = _get_current_revision()
         if revision:
             _manage_version_table(connection, revision)
-
-        _sys.stderr.write("[alembic] done\n")
-        _sys.stderr.flush()
 
 
 if context.is_offline_mode():
