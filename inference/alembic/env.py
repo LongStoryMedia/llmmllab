@@ -54,28 +54,64 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode using a sync engine.
+def _get_current_revision() -> str | None:
+    """Get the head revision from the Alembic script directory."""
+    from alembic.script import ScriptDirectory  # pylint: disable=import-outside-toplevel
 
-    TimescaleDB DDL (create_hypertable, add_compression_policy, etc.) normally
-    requires autocommit, but we use timescaledb.enable_transaction_split=TRUE
-    to allow it to run inside Alembic's transaction, which is required for
-    Alembic to manage its version table correctly.
+    script = ScriptDirectory.from_config(config)
+    return script.get_current_head()
+
+
+def _manage_version_table(connection, revision) -> None:
+    """Create and update the Alembic version table.
+
+    When running with autocommit (required for TimescaleDB DDL), Alembic
+    cannot manage its version table inside a transaction. We handle it
+    manually here using the same schema Alembic expects.
     """
     from sqlalchemy import text  # pylint: disable=import-outside-toplevel
 
+    # Create version table if needed (matches Alembic's schema)
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS alembic_version ("
+            "version_num VARCHAR(32) NOT NULL PRIMARY KEY"
+            ")"
+        )
+    )
+
+    # Stamp the current revision
+    connection.execute(
+        text(
+            "INSERT INTO alembic_version (version_num) VALUES (:version)"
+            " ON CONFLICT (version_num) DO UPDATE SET version_num = EXCLUDED.version_num"
+        ),
+        {"version": revision},
+    )
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode using a sync engine.
+
+    TimescaleDB DDL (create_hypertable, add_compression_policy, etc.) requires
+    autocommit — it cannot run inside a user transaction. We set the engine's
+    isolation level to AUTOCOMMIT so each statement commits immediately.
+    """
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
         poolclass=NullPool,
         echo=False,
+        isolation_level="AUTOCOMMIT",
     )
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            # Allow TimescaleDB DDL to run inside this transaction
-            connection.execute(text("SET LOCAL timescaledb.enable_transaction_split = TRUE"))
-            context.run_migrations()
+        context.run_migrations()
+
+        # Manually stamp the version table (Alembic can't do it in autocommit mode)
+        revision = _get_current_revision()
+        if revision:
+            _manage_version_table(connection, revision)
 
 
 if context.is_offline_mode():
