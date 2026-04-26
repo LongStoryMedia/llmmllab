@@ -4,11 +4,13 @@ Uses a synchronous SQLAlchemy engine with psycopg2 for migrations.
 The db/__init__.py caller ensures the URL uses the psycopg2 driver.
 """
 
+import logging
 import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.pool import NullPool
 
 from db.models import Base
 
@@ -39,6 +41,17 @@ if connection_string:
 
 target_metadata = Base.metadata
 
+# Log all SQL executed during migrations
+alembic_logger = logging.getLogger("alembic.runtime.migration")
+alembic_logger.setLevel(logging.INFO)
+
+
+@event.listens_for("Engine", "before_cursor_execute")
+def receive_before_cursor_execute(  # noqa: U004
+    _conn, _cursor, statement, _parameters, _context, _executemany,
+):
+    alembic_logger.info("SQL: %s", statement[:200])
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -58,7 +71,7 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode using a sync engine."""
     connectable = create_engine(
         config.get_main_option("sqlalchemy.url"),
-        poolclass="null",
+        poolclass=NullPool,
     )
 
     with connectable.connect() as connection:

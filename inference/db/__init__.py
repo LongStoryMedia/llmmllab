@@ -172,10 +172,17 @@ class Storage:
 
         logger.info("Running Alembic migrations...")
         # Alembic's upgrade command is sync; we run it in a thread to avoid blocking the event loop
-        import asyncio  # pylint: disable=import-outside-toplevel
+        import asyncio as aio  # pylint: disable=import-outside-toplevel
 
-        await asyncio.to_thread(upgrade, alembic_cfg, "head")
-        logger.info("Alembic migrations completed")
+        try:
+            await aio.wait_for(
+                aio.to_thread(upgrade, alembic_cfg, "head"),
+                timeout=120,
+            )
+            logger.info("Alembic migrations completed")
+        except aio.TimeoutError:
+            logger.error("Alembic migrations timed out after 120 seconds")
+            raise TimeoutError("Alembic migrations timed out after 120 seconds") from None
 
     def get_service[T](self, service: Optional[T]) -> T:
         """Get a storage service by name"""
