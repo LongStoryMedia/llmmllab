@@ -153,6 +153,11 @@ class Storage:
             return
 
         alembic_cfg = AlembicConfig(str(alembic_ini))
+        # Ensure script_location is absolute (Alembic resolves relative paths vs CWD)
+        alembic_cfg.set_main_option(
+            "script_location",
+            str(alembic_ini.parent / "alembic"),
+        )
         # Override the URL from the connection string
         conn_str = os.environ.get("DB_CONNECTION_STRING", "")
         if conn_str:
