@@ -63,15 +63,15 @@ class ImageStorage:
                         images
                     WHERE
                         user_id = :user_id
-                        AND (:conversation_id::bigint IS NULL
-                            OR conversation_id = :conversation_id::bigint)
+                        AND (CAST(:conv_id AS integer) IS NULL
+                            OR conversation_id = CAST(:conv_id AS integer))
                     ORDER BY
                         created_at DESC
                     LIMIT COALESCE(:limit, 25) OFFSET COALESCE(:offset, 0)
                 """),
                 {
                     "user_id": user_id,
-                    "conversation_id": conversation_id,
+                    "conv_id": conversation_id,
                     "limit": limit,
                     "offset": offset,
                 },

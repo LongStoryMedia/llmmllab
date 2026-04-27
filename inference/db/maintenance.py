@@ -42,36 +42,68 @@ class DatabaseMaintenanceService:
         Perform database maintenance tasks like VACUUM ANALYZE, REINDEX, and policy refresh.
         Similar to the Go implementation's PerformDatabaseMaintenance function.
 
+        Each step runs in its own session/connection so a failure in one step
+        does not cascade to the others.
+
         Returns:
             bool: True if maintenance completed successfully, False otherwise
         """
-        if not self.session_factory:
-            logger.error("Cannot perform maintenance: session factory not initialized")
+        if not self.session_factory or not self.engine:
+            logger.error("Cannot perform maintenance: engine/session not initialized")
             return False
 
         logger.info("Starting database maintenance tasks...")
         success = True
 
-        try:
-            async with self.session_factory() as conn:
-                # 1. Vacuum analyze for better query planning
-                logger.info("Running VACUUM ANALYZE...")
-                try:
-                    await conn.execute(text("VACUUM ANALYZE"))
-                    await conn.commit()
-                    logger.info("VACUUM ANALYZE completed successfully")
-                except Exception as e:
-                    logger.error(f"Failed to run VACUUM ANALYZE: {str(e)}")
-                    success = False
+        # 1. Vacuum analyze for better query planning
+        # VACUUM cannot run inside a transaction block, so we use a raw
+        # engine connection (no session) which runs in autocommit mode.
+        await self._run_vacuum_analyze()
 
-                # 1b. Align sequences to prevent ID drift causing duplicates on restore/migration
-                logger.info(
-                    "Aligning sequences for hypertables (messages, message_contents)..."
-                )
-                try:
-                    # Never move sequence backwards: use GREATEST with current last_value
-                    await conn.execute(
-                        text("""
+        # 1b. Align sequences to prevent ID drift causing duplicates on restore/migration
+        if not await self._align_sequences():
+            success = False
+
+        # 2. Optional REINDEX (off by default to avoid stale OID plan errors during traffic)
+        reindex_enabled = os.environ.get(
+            "DB_REINDEX_ON_MAINTENANCE", "false"
+        ).lower() in ("1", "true", "yes")
+        if reindex_enabled:
+            if not await self._run_reindex():
+                success = False
+        else:
+            logger.info("Skipping REINDEX (DB_REINDEX_ON_MAINTENANCE not enabled)")
+
+        # 3. Run TimescaleDB-specific maintenance
+        await self._run_timescaledb_policy_refresh()
+
+        self._last_run = datetime.datetime.now()
+        logger.info(
+            "Database maintenance tasks completed successfully"
+            if success
+            else "Database maintenance completed with some errors"
+        )
+        return success
+
+    async def _run_vacuum_analyze(self) -> None:
+        """Run VACUUM ANALYZE on a raw connection (no transaction)."""
+        logger.info("Running VACUUM ANALYZE...")
+        try:
+            async with self.engine.connect() as conn:
+                await conn.execute(text("VACUUM ANALYZE"))
+            logger.info("VACUUM ANALYZE completed successfully")
+        except Exception as e:
+            logger.error(f"Failed to run VACUUM ANALYZE: {str(e)}")
+
+    async def _align_sequences(self) -> bool:
+        """Align sequences using a dedicated session."""
+        logger.info(
+            "Aligning sequences for hypertables (messages, message_contents)..."
+        )
+        try:
+            async with self.session_factory() as session:
+                await session.execute(
+                    text("""
                         SELECT setval(
                             'messages_id_seq',
                             GREATEST(
@@ -80,10 +112,10 @@ class DatabaseMaintenanceService:
                             ),
                             true
                         );
-                        """)
-                    )
-                    await conn.execute(
-                        text("""
+                    """)
+                )
+                await session.execute(
+                    text("""
                         SELECT setval(
                             'message_contents_id_seq',
                             GREATEST(
@@ -92,88 +124,67 @@ class DatabaseMaintenanceService:
                             ),
                             true
                         );
-                        """)
-                    )
-                    await conn.commit()
-                    logger.info("Sequence alignment completed successfully")
-                except Exception as e:
-                    logger.error(f"Failed to align sequences: {str(e)}")
-                    success = False
-
-                # 2. Optional REINDEX (off by default to avoid stale OID plan errors during traffic)
-                reindex_enabled = os.environ.get(
-                    "DB_REINDEX_ON_MAINTENANCE", "false"
-                ).lower() in ("1", "true", "yes")
-                if reindex_enabled:
-                    logger.info(
-                        "Running REINDEX on database (DB_REINDEX_ON_MAINTENANCE=true)..."
-                    )
-                    try:
-                        # Note: We use the current database name rather than hardcoding
-                        db_name_row = await conn.execute(
-                            text("SELECT current_database() as db_name")
-                        )
-                        db_name = db_name_row.mappings()["db_name"]  # type: ignore[index]
-
-                        # Run reindex concurrently
-                        await conn.execute(
-                            text(f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}")
-                        )
-                        await conn.commit()
-                        logger.info(
-                            f"REINDEX completed successfully on database '{db_name}'"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to run REINDEX: {str(e)}")
-                        success = False
-
-                    # Flush statement caches across pool connections to avoid stale OID references
-                    try:
-                        await self._flush_pool_caches()
-                        logger.info("Flushed statement caches across pool connections")
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to flush some connection caches (will recover on reconnect): {str(e)}"
-                        )
-                else:
-                    logger.info(
-                        "Skipping REINDEX (DB_REINDEX_ON_MAINTENANCE not enabled)"
-                    )
-
-                # 3. Run TimescaleDB-specific maintenance
-                logger.info("Running TimescaleDB policy refresh...")
-                try:
-                    result = await conn.execute(
-                        text(
-                            "SELECT run_job(j.id) FROM timescaledb_information.jobs j WHERE j.proc_name = 'policy_refresh'"
-                        )
-                    )
-                    rows = list(result)
-                    if rows:
-                        logger.info(
-                            f"TimescaleDB policy refresh completed successfully: {len(rows)} jobs processed"
-                        )
-                    else:
-                        logger.info(
-                            "TimescaleDB policy refresh completed (no jobs found)"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Note: TimescaleDB policy refresh failed (may be normal if no jobs): {str(e)}"
-                    )
-                    # This is not considered a failure as it's expected in some cases
-
-            self._last_run = datetime.datetime.now()
-            logger.info(
-                "Database maintenance tasks completed successfully"
-                if success
-                else "Database maintenance completed with some errors"
-            )
-            return success
-
+                    """)
+                )
+                await session.commit()
+            logger.info("Sequence alignment completed successfully")
+            return True
         except Exception as e:
-            logger.error(f"Unexpected error during database maintenance: {str(e)}")
+            logger.error(f"Failed to align sequences: {str(e)}")
             return False
+
+    async def _run_reindex(self) -> bool:
+        """Run REINDEX using a dedicated session."""
+        logger.info(
+            "Running REINDEX on database (DB_REINDEX_ON_MAINTENANCE=true)..."
+        )
+        try:
+            async with self.session_factory() as session:
+                db_name_row = await session.execute(
+                    text("SELECT current_database() as db_name")
+                )
+                db_name = db_name_row.mappings()["db_name"]  # type: ignore[index]
+
+                await session.execute(
+                    text(f"REINDEX (VERBOSE, CONCURRENTLY) DATABASE {db_name}")
+                )
+                await session.commit()
+            logger.info(f"REINDEX completed successfully on database '{db_name}'")
+
+            # Flush statement caches across pool connections
+            try:
+                await self._flush_pool_caches()
+                logger.info("Flushed statement caches across pool connections")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to flush some connection caches (will recover on reconnect): {str(e)}"
+                )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to run REINDEX: {str(e)}")
+            return False
+
+    async def _run_timescaledb_policy_refresh(self) -> None:
+        """Run TimescaleDB policy refresh using a dedicated session."""
+        logger.info("Running TimescaleDB policy refresh...")
+        try:
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT run_job(j.id) FROM timescaledb_information.jobs j WHERE j.proc_name = 'policy_refresh'"
+                    )
+                )
+                rows = list(result)
+                if rows:
+                    logger.info(
+                        f"TimescaleDB policy refresh completed: {len(rows)} jobs processed"
+                    )
+                else:
+                    logger.info("TimescaleDB policy refresh completed (no jobs found)")
+        except Exception as e:
+            logger.warning(
+                f"TimescaleDB policy refresh failed (may be normal if no jobs): {str(e)}"
+            )
 
     async def start_maintenance_schedule(self):
         """Start the scheduled maintenance task"""

@@ -75,7 +75,9 @@ class ToolCallStorage:
         """
         try:
             async with self.session_factory() as session:
-                return await self._add_tool_call(tool_call, session)
+                tool_call_id = await self._add_tool_call(tool_call, session)
+                await session.commit()
+                return tool_call_id
         except Exception as e:
             self.logger.error(
                 f"Error adding tool call for message {tool_call.message_id}: {e}"
@@ -145,13 +147,13 @@ class ToolCallStorage:
                 "message_id": tool_call.message_id,
                 "tool_name": tool_call.name,
                 "execution_id": tool_call.execution_id,
-                "success": tool_call.success,
+                "success": tool_call.success if tool_call.success is not None else False,
                 "args": args_json,
                 "result_data": result_data_json,
                 "error_message": tool_call.error_message,
                 "execution_time_ms": tool_call.execution_time_ms,
                 "resource_usage": resource_usage_json,
-                "created_at": tool_call.created_at,
+                "created_at": tool_call.created_at or datetime.now(timezone.utc),
             },
         )
         tool_call_id = row.scalar()

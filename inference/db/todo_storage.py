@@ -142,7 +142,7 @@ class TodoStorage:
         try:
             async with self.session_factory() as session:
                 result = await session.execute(
-                    text("""
+                    text(f"""
                         UPDATE todos
                         SET title = :title,
                             description = :description,
