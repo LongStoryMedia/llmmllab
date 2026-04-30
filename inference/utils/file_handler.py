@@ -87,7 +87,7 @@ def decode_and_save_image(
     """
     try:
         # Get IMAGE_DIR dynamically to support testing
-        from server.config import IMAGE_DIR
+        from config import IMAGE_DIR
 
         # Decode base64 data
         image_data = base64.b64decode(base64_data)
@@ -249,7 +249,7 @@ def is_image_format(mime_type: str) -> bool:
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """Clean up old temporary files."""
     try:
-        from server.config import IMAGE_DIR
+        from config import IMAGE_DIR
         import time
 
         cutoff_time = time.time() - (max_age_hours * 3600)

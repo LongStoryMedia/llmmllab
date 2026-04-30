@@ -15,7 +15,7 @@ from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
 from models.search_result import SearchResult
 from models.search_result_content import SearchResultContent
-from server.context.search import SearchContext
+from context.search import SearchContext
 
 
 class TestSearchDeduplication:
@@ -73,8 +73,8 @@ class TestSearchDeduplication:
         mock.search.return_value = result
         return mock
 
-    @patch("server.services.search_service._get_search_provider")
-    @patch("server.services.search_service.WebExtractionService")
+    @patch("services.search_service._get_search_provider")
+    @patch("services.search_service.WebExtractionService")
     async def test_duplicate_url_filtering(
         self, mock_extraction_service, mock_get_provider, user_config, mock_provider
     ):

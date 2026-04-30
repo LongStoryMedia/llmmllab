@@ -41,9 +41,16 @@ make clean          # Remove build artifacts (ui/build/)
 
 ```
 inference/      Python FastAPI inference service (deployed to k8s)
-  server/       API layer: routers, middleware, app.py entry point
+  app.py        FastAPI entry point
+  routers/      API layer: openai/, anthropic/, common/ routers + middleware
+  middleware/   Authentication, database init, message validation
+  services/     Business logic: completion, token, tool services
   runner/       Model execution: pipeline_factory, pipeline_cache, pipelines/
-  composer/     LangGraph agent orchestration
+  composer_init.py  Composer public API (workflow orchestration)
+  agents/       Agent implementations (chat, embed)
+  core/         Core composer components (service, errors)
+  graph/        LangGraph workflow builder, executor, state, nodes
+  tools/        Tool registry and static tools
   db/           PostgreSQL + Redis storage
   models/       Pydantic data models (edit directly)
   utils/        Shared helpers
@@ -67,17 +74,17 @@ ui/             React 19 + Vite frontend
 
 | Component | Entry Point |
 |-----------|-------------|
-| FastAPI app | `inference/server/app.py` |
-| OpenAI chat endpoint | `inference/server/routers/openai/chat.py` |
-| Anthropic messages endpoint | `inference/server/routers/anthropic/messages.py` |
+| FastAPI app | `inference/app.py` |
+| OpenAI chat endpoint | `inference/routers/openai/chat.py` |
+| Anthropic messages endpoint | `inference/routers/anthropic/messages.py` |
 | Pipeline creation | `inference/runner/pipeline_factory.py` |
-| Composer/agents | `inference/composer/__init__.py` |
+| Composer/agents | `inference/composer_init.py` |
 | React app | `ui/src/main.tsx` |
 | Routes | `ui/src/Router.tsx` |
 
 ### Configuration
 
-- Python type checking: `pyrightconfig.json` (Python 3.12, basic mode, covers server/composer/runner)
+- Python type checking: `pyrightconfig.json` (Python 3.12, basic mode, covers routers/composer/runner)
 - TypeScript: `ui/tsconfig.json` (ESNext, paths aliased `@/*` → `./src/*`, strict: false)
 - Pytest: `inference/pytest.ini` (asyncio_mode: auto, testpaths: `test/unit tests`)
 - ESLint: `ui/.eslintrc.cjs` (xo + TypeScript + React hooks, 2-space indent)

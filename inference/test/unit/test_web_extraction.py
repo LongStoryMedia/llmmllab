@@ -107,11 +107,11 @@ class MockPipelineFactory:
 
 
 # Mock imports to make testing easier
-sys.modules["server.db.storage"] = MockStorage()
+sys.modules["db.storage"] = MockStorage()
 sys.modules["runner.pipelines.factory"] = MockPipelineFactory()
 
 # Import after setting up mocks
-from server.services.web_extraction_service import WebExtractionService
+from services.web_extraction_service import WebExtractionService
 
 
 async def main():

@@ -5,9 +5,9 @@ Test the search service functionality with real-world scenarios.
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
 
-from server.services.search import SearchContext
-from server.services.search_service import SearchService
-from server.services.search_providers import StandardSearchProvider
+from services.search import SearchContext
+from services.search_service import SearchService
+from services.search_providers import StandardSearchProvider
 from models import Message, SearchResult, SearchResultContent
 from models.web_search_providers import WebSearchProviders
 from models.message_role import MessageRole
@@ -51,8 +51,8 @@ class TestSearchService:
         return provider
 
     # Using unittest for async testing
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_search(
         self, mock_storage, mock_factory, mock_user_config, mock_provider
     ):
@@ -73,7 +73,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             # Create SearchService
             search_service = SearchService(mock_user_config)
@@ -98,7 +98,7 @@ class TestSearchService:
             assert result.contents[1].title == "Test Title 2"
             assert result.error is None
 
-    @patch("server.services.search_service.SearchProviderFactory")
+    @patch("services.search_service.SearchProviderFactory")
     async def test_search_disabled(self, _, mock_user_config):
         """Test search when web search is disabled."""
         # Setup mocks
@@ -121,8 +121,8 @@ class TestSearchService:
         assert len(result.contents) == 0
         assert result.error == "Web search is disabled"
 
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_search_no_providers(
         self, mock_storage, mock_factory, mock_user_config
     ):
@@ -143,7 +143,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             # Create SearchService
             search_service = SearchService(mock_user_config)
@@ -164,8 +164,8 @@ class TestSearchService:
             assert len(result.contents) == 0
             assert result.error == "No search providers available"
 
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_real_world_ai_search(
         self, mock_storage, mock_factory, mock_user_config
     ):
@@ -213,7 +213,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             search_service = SearchService(mock_user_config)
 
@@ -248,8 +248,8 @@ class TestSearchService:
             assert any("arxiv.org" in url for url in urls)
             assert result.error is None
 
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_result_limit_enforcement(
         self, mock_storage, mock_factory, mock_user_config
     ):
@@ -288,7 +288,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             search_service = SearchService(mock_user_config)
 
@@ -311,8 +311,8 @@ class TestSearchService:
             assert len(result.contents) <= mock_user_config.web_search.max_results
             assert result.error is None
 
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_content_quality_validation(
         self, mock_storage, mock_factory, mock_user_config
     ):
@@ -359,7 +359,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             search_service = SearchService(mock_user_config)
 
@@ -407,8 +407,8 @@ class TestSearchService:
 
             assert result.error is None
 
-    @patch("server.services.search_service.SearchProviderFactory")
-    @patch("server.services.search_service.storage")
+    @patch("services.search_service.SearchProviderFactory")
+    @patch("services.search_service.storage")
     async def test_query_formatting_optimization(
         self, mock_storage, mock_factory, mock_user_config
     ):
@@ -431,7 +431,7 @@ class TestSearchService:
         mock_pipeline_factory.get_pipeline.return_value = (mock_pipeline, None)
 
         with patch(
-            "server.services.search_service.pipeline_factory", mock_pipeline_factory
+            "services.search_service.pipeline_factory", mock_pipeline_factory
         ):
             search_service = SearchService(mock_user_config)
 

@@ -16,7 +16,7 @@ from models.message_role import MessageRole
 from models.search_result import SearchResult
 from models.search_result_content import SearchResultContent
 from models.search_topic_synthesis import SearchTopicSynthesis
-from server.context.search import SearchContext
+from context.search import SearchContext
 
 
 class TestMultiURLDeepCrawling:
@@ -87,7 +87,7 @@ class TestMultiURLDeepCrawling:
         mock.extract_content_from_url.side_effect = mock_extract
         return mock
 
-    @patch("server.services.search_service._get_search_provider")
+    @patch("services.search_service._get_search_provider")
     async def test_multi_url_deep_crawling(
         self, mock_get_provider, user_config, mock_provider, mock_web_extraction
     ):

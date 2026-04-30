@@ -14,7 +14,7 @@ from langchain_core.language_models import BaseChatModel
 
 
 from models import Model
-from server.config import LOG_LEVEL
+from config import LOG_LEVEL
 
 # Enable HTTP logging for debugging
 if LOG_LEVEL.lower() == "trace":

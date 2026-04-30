@@ -4,8 +4,8 @@ Unit tests for NodeMetadata integration with BaseNode.
 
 import pytest
 from datetime import datetime, timezone
-from composer.nodes.base_node import BaseNode
-from composer.graph.state import WorkflowState
+from nodes.base import BaseNode
+from graph.state import WorkflowState
 from models.node_metadata import NodeMetadata, ErrorDetails
 
 

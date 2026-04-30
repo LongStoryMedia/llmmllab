@@ -7,9 +7,9 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 
-from composer.agents.base_agent import BaseAgent
+from agents.base import BaseAgent
 from models import NodeMetadata, ErrorDetails
-from composer.core.errors import NodeExecutionError
+from core.errors import NodeExecutionError
 
 
 class ConcreteAgent(BaseAgent):
@@ -139,7 +139,7 @@ class TestBaseAgent:
         assert "new_key" not in original_context
         assert original_context["test"] == "value"
 
-    @patch("composer.agents.base_agent.llmmllogger")
+    @patch("agents.base_agent.llmmllogger")
     def test_log_operation_start_without_metadata(self, mock_logger):
         """Test operation start logging without node metadata."""
         agent = ConcreteAgent()
@@ -151,7 +151,7 @@ class TestBaseAgent:
             "Starting test_operation", operation="test_operation", user_id="test-user"
         )
 
-    @patch("composer.agents.base_agent.llmmllogger")
+    @patch("agents.base_agent.llmmllogger")
     def test_log_operation_start_with_metadata(self, mock_logger):
         """Test operation start logging with node metadata."""
         agent = ConcreteAgent()
@@ -170,7 +170,7 @@ class TestBaseAgent:
             conversation_id=42,
         )
 
-    @patch("composer.agents.base_agent.llmmllogger")
+    @patch("agents.base_agent.llmmllogger")
     def test_log_operation_success(self, mock_logger):
         """Test operation success logging."""
         agent = ConcreteAgent()
@@ -182,7 +182,7 @@ class TestBaseAgent:
             "Completed test_operation", operation="test_operation", result="success"
         )
 
-    @patch("composer.agents.base_agent.llmmllogger")
+    @patch("agents.base_agent.llmmllogger")
     def test_log_operation_error_without_metadata(self, mock_logger):
         """Test operation error logging without node metadata."""
         agent = ConcreteAgent()
@@ -199,7 +199,7 @@ class TestBaseAgent:
             context="test",
         )
 
-    @patch("composer.agents.base_agent.llmmllogger")
+    @patch("agents.base_agent.llmmllogger")
     def test_log_operation_error_with_metadata(self, mock_logger):
         """Test operation error logging with node metadata."""
         agent = ConcreteAgent()

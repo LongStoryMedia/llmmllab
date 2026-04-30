@@ -11,7 +11,7 @@ from models.user_config import UserConfig
 from models.web_search_config import WebSearchConfig
 from models.search_topic_synthesis import SearchTopicSynthesis
 from models.message import Message
-from server.services.web_extraction_service import WebExtractionService
+from services.web_extraction_service import WebExtractionService
 
 
 class TestWebExtractionDeduplication:
@@ -33,8 +33,8 @@ class TestWebExtractionDeduplication:
             user_id="test-user",
         )
 
-    @patch("server.services.web_extraction_service.pipeline_factory.get_pipeline")
-    @patch("server.services.web_extraction_service.storage")
+    @patch("services.web_extraction_service.pipeline_factory.get_pipeline")
+    @patch("services.web_extraction_service.storage")
     async def test_url_deduplication(
         self, mock_storage, mock_get_pipeline, user_config
     ):

@@ -20,7 +20,7 @@ from runner.pipelines.base import BasePipeline
 from utils.logging import llmmllogger
 from .utils.hardware_manager import hardware_manager
 from .exceptions import InsufficientVRAMError
-from server.config import PIPELINE_CACHE_TIMEOUT_MIN, PIPELINE_EVICTION_TIMEOUT_MIN
+from config import PIPELINE_CACHE_TIMEOUT_MIN, PIPELINE_EVICTION_TIMEOUT_MIN
 
 _MODEL_OVERHEAD_BYTES = 128 * 1024 * 1024  # 128 MB
 

@@ -197,7 +197,7 @@ class PipelineFactory:
                     ChatOpenAI,
                 )
                 from pydantic import SecretStr
-                from server.config import OPENAI_API_KEY
+                from config import OPENAI_API_KEY
 
                 return ChatOpenAI(  # type: ignore[return-value]
                     model=model.name,
@@ -208,7 +208,7 @@ class PipelineFactory:
                     ChatAnthropic,
                 )
                 from pydantic import SecretStr
-                from server.config import ANTHROPIC_API_KEY
+                from config import ANTHROPIC_API_KEY
 
                 return ChatAnthropic(  # type: ignore[return-value]
                     model_name=model.name,  # type: ignore

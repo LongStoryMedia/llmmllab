@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from models.model_parameters import ModelParameters
 from models import Model, UserConfig
-from server.config import LLAMA_SERVER_EXECUTABLE, LOG_LEVEL
+from config import LLAMA_SERVER_EXECUTABLE, LOG_LEVEL
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="LlamaCppArgumentBuilder")

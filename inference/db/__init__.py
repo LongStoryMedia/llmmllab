@@ -11,6 +11,7 @@ from typing import Optional, Any
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from utils.logging import llmmllogger
+
 from .cache_storage import cache_storage
 from .engine import create_async_engine, create_session_factory, dispose_engine
 from .userconfig_storage import UserConfigStorage
@@ -73,9 +74,7 @@ class Storage:
             factory = self.session_factory
 
             self.user_config = UserConfigStorage(factory)
-            self.conversation = ConversationStorage(
-                factory, self.user_config
-            )
+            self.conversation = ConversationStorage(factory, self.user_config)
             self.image = ImageStorage(factory)
             self.model = ModelStorage(factory)
             self.summary = SummaryStorage(factory)
@@ -151,12 +150,18 @@ class Storage:
             return
 
         # Convert the async connection string to sync psycopg2 for Alembic
-        sync_conn_str = connection_string.replace("postgresql+asyncpg://", "postgresql://", 1)
+        sync_conn_str = connection_string.replace(
+            "postgresql+asyncpg://", "postgresql://", 1
+        )
         sync_conn_str = sync_conn_str.replace("postgres+asyncpg://", "postgresql://", 1)
         if sync_conn_str.startswith("postgresql://"):
-            sync_conn_str = sync_conn_str.replace("postgresql://", "postgresql+psycopg2://", 1)
+            sync_conn_str = sync_conn_str.replace(
+                "postgresql://", "postgresql+psycopg2://", 1
+            )
         elif sync_conn_str.startswith("postgres://"):
-            sync_conn_str = sync_conn_str.replace("postgres://", "postgres+psycopg2://", 1)
+            sync_conn_str = sync_conn_str.replace(
+                "postgres://", "postgres+psycopg2://", 1
+            )
 
         logger.info("Running Alembic migrations...")
         # Run Alembic as a subprocess to avoid thread-pool deadlocks
@@ -168,7 +173,13 @@ class Storage:
         try:
             proc = await aio.wait_for(
                 aio.create_subprocess_exec(
-                    _sys.executable, "-m", "alembic", "-c", str(alembic_ini), "upgrade", "head",
+                    _sys.executable,
+                    "-m",
+                    "alembic",
+                    "-c",
+                    str(alembic_ini),
+                    "upgrade",
+                    "head",
                     cwd=project_root,
                     env={**os.environ, "DB_CONNECTION_STRING": sync_conn_str},
                     stdout=aio.subprocess.PIPE,
@@ -185,11 +196,15 @@ class Storage:
                 if not log_output:
                     log_output = stdout.decode(errors="replace").strip()
                 logger.error(f"Alembic migrations failed: {log_output}")
-                raise RuntimeError(f"Alembic migrations failed (exit {proc.returncode}): {log_output}")
+                raise RuntimeError(
+                    f"Alembic migrations failed (exit {proc.returncode}): {log_output}"
+                )
             logger.info("Alembic migrations completed")
         except aio.TimeoutError:
             logger.error("Alembic migrations timed out after 120 seconds")
-            raise TimeoutError("Alembic migrations timed out after 120 seconds") from None
+            raise TimeoutError(
+                "Alembic migrations timed out after 120 seconds"
+            ) from None
 
     def get_service[T](self, service: Optional[T]) -> T:
         """Get a storage service by name"""

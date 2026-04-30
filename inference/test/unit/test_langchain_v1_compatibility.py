@@ -91,7 +91,7 @@ def test_tool_node_v1_compatibility():
 async def test_workflow_state_compatibility():
     """Test that WorkflowState is compatible with LangGraph v1.0."""
     try:
-        from composer.graph.state import WorkflowState
+        from graph.state import WorkflowState
         from models import LangChainMessage
 
         # Create test state

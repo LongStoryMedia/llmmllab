@@ -13,7 +13,7 @@ from pydantic import BaseModel  # noqa: F401
 
 from models import Model, OptimalParameters
 from runner.pipelines.llamacpp import BaseLlamaCppPipeline
-from server.config import LOG_LEVEL
+from config import LOG_LEVEL
 
 
 class Qwen3VLPipeline(BaseLlamaCppPipeline):

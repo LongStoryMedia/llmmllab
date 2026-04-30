@@ -24,7 +24,7 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
-from composer.tools.static.web_reader_tool import (
+from tools.static.web_reader_tool import (
     read_web_content,
     _is_spa_detected,
     _extract_text_from_html,
@@ -332,7 +332,7 @@ class TestReadWebContent:
         """Test graceful failure when Playwright import fails."""
         # This test verifies the code handles ImportError gracefully
         # We test by checking the _render_with_playwright function behavior
-        from composer.tools.static.web_reader_tool import _render_with_playwright
+        from tools.static.web_reader_tool import _render_with_playwright
 
         # Mock the import to fail
         with patch.dict(sys.modules, {"playwright": None}):

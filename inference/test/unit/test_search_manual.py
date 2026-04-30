@@ -20,7 +20,7 @@ from models.message_role import MessageRole
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.web_search_providers import WebSearchProviders
-from server.services.search_providers import (
+from services.search_providers import (
     SearchProviderFactory,
     StandardSearchProvider,
     BraveSearchProviderWrapper,

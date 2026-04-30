@@ -57,7 +57,7 @@ run_server() {
     # This check can be improved to see if the port is already in use
     # Redirect stderr to stdout for all logs to be captured by Kubernetes
     # Change to server directory before running uvicorn to find app.py
-    cd /app/server && v python -m uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/server_api.log &
+    cd /app && v python -m uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}" --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/server_api.log &
     SERVER_PID=$!
     if [ $? -eq 0 ]; then
         log "INFO" "REST API server started on port ${PORT:-8000} with PID $SERVER_PID" "${GREEN}"
@@ -73,7 +73,7 @@ run_server() {
 # run_local_api_server() {
 #     log "INFO" "Starting local API server (port 11435)..." "${BLUE}"
 #     # Local API server for Ollama and OpenAI endpoints (IDE integration)
-#     cd /app/server && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11435 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
+#     cd /app && v python -m uvicorn local_api_server:app --host 0.0.0.0 --port 11435 --reload --reload-dir /app --timeout-graceful-shutdown 0 2>&1 | tee /var/log/local_api_server.log &
 #     LOCAL_API_PID=$!
 #     if [ $? -eq 0 ]; then
 #         log "INFO" "Local API server started on port 11435 with PID $LOCAL_API_PID" "${GREEN}"
@@ -87,11 +87,11 @@ run_server() {
 # }
 
 # Start server if app.py exists
-if [ -f /app/server/app.py ]; then
+if [ -f /app/app.py ]; then
     run_server
 else
-    log "WARNING" "app.py not found in /app/server directory" "${YELLOW}"
-    ls -la /app/server
+    log "WARNING" "app.py not found in /app directory" "${YELLOW}"
+    ls -la /app
     echo "rest_api:missing:0" >> $SERVICE_STATUS_FILE
 fi
 

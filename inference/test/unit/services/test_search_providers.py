@@ -7,7 +7,7 @@ import pytest
 from unittest import mock
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from server.services.search_providers import (
+from services.search_providers import (
     SearchProviderFactory,
     BraveSearchProviderWrapper,
     DuckDuckGoSearchProviderWrapper,

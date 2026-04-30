@@ -387,7 +387,7 @@ class UserConfigStorage:
                                 logger.warning(
                                     f"Failed to create UserConfig for user {user_id}: {e}"
                                 )
-                                from server.routers.config import (
+                                from routers.config import (
                                     create_default_config,
                                 )
 
@@ -399,14 +399,14 @@ class UserConfigStorage:
                                 f"Failed to process config for user {user_id}: {e}"
                             )
                             # Use empty config as fallback
-                            from server.routers.config import create_default_config
+                            from routers.config import create_default_config
 
                             user_dict["config"] = create_default_config(
                                 user_id
                             ).model_dump()
                     else:
                         # No config or empty config, use default
-                        from server.routers.config import create_default_config
+                        from routers.config import create_default_config
 
                         user_dict["config"] = create_default_config(
                             user_id

@@ -49,7 +49,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
     @pytest.mark.asyncio
     async def test_initialization_and_shutdown(self, mock_composer_service):
         """Test composer initialization and shutdown."""
-        with patch("composer.core.service.ComposerService") as MockComposerService:
+        with patch("core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
 
             # Test initialization
@@ -72,7 +72,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
             mock_composer_service.shutdown.assert_called_once()
 
             # Verify service is cleared after shutdown
-            import composer
+            import composer_init as composer
 
             assert composer._composer_service is None
 
@@ -81,7 +81,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
         self, mock_conversation_ctx, mock_composer_service
     ):
         """Test that compose_workflow calls the service method properly."""
-        with patch("composer.core.service.ComposerService") as MockComposerService:
+        with patch("core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
             mock_workflow = Mock()
             mock_composer_service.compose_workflow.return_value = mock_workflow
@@ -109,7 +109,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
         self, mock_conversation_ctx, mock_composer_service
     ):
         """Test that create_initial_state calls the service method properly."""
-        with patch("composer.core.service.ComposerService") as MockComposerService:
+        with patch("core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
             mock_initial_state = {"test": "state"}
             mock_composer_service.create_initial_state.return_value = mock_initial_state
@@ -134,7 +134,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
 
     def test_interface_completeness(self):
         """Test that all expected functions are exported."""
-        import composer
+        import composer_init as composer
 
         expected_functions = [
             "initialize_composer",
@@ -154,7 +154,7 @@ pytest.skip("Legacy test removed", allow_module_level=True)
     @pytest.mark.asyncio
     async def test_basic_lifecycle(self, mock_composer_service):
         """Test basic initialization, config access, and shutdown lifecycle."""
-        with patch("composer.core.service.ComposerService") as MockComposerService:
+        with patch("core.service.ComposerService") as MockComposerService:
             MockComposerService.return_value = mock_composer_service
 
             try:

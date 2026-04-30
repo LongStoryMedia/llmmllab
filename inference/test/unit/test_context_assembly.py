@@ -73,7 +73,7 @@ def test_assemble_context_messages_token_budgeting():
 def test_memory_formatting():
     """Test memory fragment formatting."""
     
-    from composer.graph.state import _format_memory_for_message
+    from graph.state import _format_memory_for_message
     
     # Test user-assistant pair
     pair_memory = Memory(
@@ -111,7 +111,7 @@ def test_memory_formatting():
 def test_langchain_type_mapping():
     """Test LangChain message type to MessageRole mapping."""
     
-    from composer.graph.state import _map_langchain_type_to_message_role
+    from graph.state import _map_langchain_type_to_message_role
     
     assert _map_langchain_type_to_message_role("user") == MessageRole.USER
     assert _map_langchain_type_to_message_role("human") == MessageRole.USER

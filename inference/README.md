@@ -1,70 +1,76 @@
-# Inference Service
+# LLM ML Lab Server
 
-Python FastAPI service that serves OpenAI- and Anthropic-compatible inference endpoints backed by `llama.cpp` and diffusion pipelines. Deployed to Kubernetes.
+This project provides API servers for language model inference, with both OpenAI-compatible REST API and gRPC interfaces.
 
-## Layout
+## Overview
 
-```
-inference/
-├── server/         FastAPI app, routers (openai/, anthropic/, common/), middleware
-├── runner/         Model execution: pipeline_factory, pipeline_cache, pipelines/
-├── composer/       LangGraph agent orchestration, workflows, tool generation
-├── db/             Multi-tier storage (memory → Redis → Postgres)
-├── models/         *Generated* from schemas/ — do not edit
-├── utils/          Shared helpers (logging, message conversion, tool-call types)
-├── k8s/            Deployment manifests + apply.sh
-├── Dockerfile      CUDA 12.8 runtime image, single shared venv
-└── requirements.txt
-```
+The LLM ML Lab Server project provides:
 
-Architecture, entry points, and developer conventions live in the repo-root [CLAUDE.md](../CLAUDE.md).
+- OpenAI-compatible REST API endpoints
+- gRPC services for efficient communication
+- Service layer for handling model operations
 
-## Running
-
-All commands run from the repo root via the Makefile:
+## Installation
 
 ```bash
-make inference-dev   # sync code to k8s, tail logs (primary dev loop)
-make deploy          # deploy inference + maistro + ui
-make test            # pytest + UI tests
-make validate        # tsc --noEmit, Python compileall, Pyright
+# Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-The dev loop pushes local changes into the running pod via `inference/sync-code.sh` — no image rebuild required for Python edits.
+## Usage
 
-In-pod commands use `/app/v.sh`:
+### Starting the REST API Server
 
 ```bash
-kubectl exec -it -n llmmll <pod> -- /app/v.sh server python -m <module>
+# Start the FastAPI server
+python -m app
 ```
 
-## Schema-driven models
-
-Data contracts live as YAML in [`schemas/`](../schemas/). Regenerate after schema edits:
+### Starting the gRPC Server
 
 ```bash
-./regenerate_models.sh              # both Python + TypeScript
-./regenerate_models.sh python       # inference/models/ only
-./regenerate_models.sh typescript   # ui/src/types/ only
+# Start the gRPC server
+python -m grpc_server
 ```
 
-Never hand-edit files under `inference/models/`.
+### Configuration
 
-## Building the image
+Create a `.env` file with the following settings:
 
-```bash
-docker build -t llmmllab:latest -f inference/Dockerfile .
+```
+MODEL_CONFIG_PATH=/path/to/models.json
+PORT=8000
+GRPC_PORT=50051
 ```
 
-Everything installs into a single venv at `/opt/venv/shared` and is wired up for editable imports.
+## Project Structure
 
-## Endpoints
+- `app.py`: FastAPI application entry point
+- `routers/`: FastAPI route handlers (openai/, anthropic/, common/)
+- `middleware/`: Authentication, database init, message validation
+- `services/`: Business logic (completion, token, tool)
+- `runner/`: Model execution (pipelines, pipeline factory/cache)
+- `composer_init.py`: Composer public API (workflow orchestration)
+- `agents/`: Agent implementations (chat, embed)
+- `core/`: Core composer components (service, errors)
+- `graph/`: LangGraph workflow builder, executor, state, nodes
+- `tools/`: Tool registry and static tools
+- `db/`: Multi-tier storage (memory → Redis → Postgres)
+- `models/`: Pydantic data models
+- `utils/`: Shared helpers (logging, message conversion)
+- `k8s/`: Kubernetes deployment manifests
+- `test/`: Unit and integration tests
 
-- `POST /v1/chat/completions` — OpenAI chat (streaming)
-- `POST /v1/embeddings` — OpenAI embeddings
-- `POST /v1/messages` — Anthropic messages (streaming)
-- `POST /v1/images/generations` — text-to-image
-- `POST /v1/audio/transcriptions` — Whisper speech-to-text
-- `GET /openapi.json`, `/docs` — FastAPI-generated, unauthenticated
+## API Documentation
 
-See individual router files under `server/routers/` for the full list.
+When running the server, visit:
+- REST API docs: http://localhost:8000/docs
+- Alternative docs: http://localhost:8000/redoc
+
+## License
+
+[License information]

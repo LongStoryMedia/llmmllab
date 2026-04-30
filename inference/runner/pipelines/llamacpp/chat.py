@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from models import Model
 from runner.pipelines.base import BasePipeline
 from runner.server_manager import LlamaCppServerManager
-from server.config import LOG_LEVEL
+from config import LOG_LEVEL
 from utils.logging import llmmllogger
 
 logger = llmmllogger.bind(component="LangChainChatOpenAIPipeline")

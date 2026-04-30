@@ -94,7 +94,7 @@ class TestComposerCoreImplementation:
     async def test_composer_service_initialization(self):
         """Test that composer service initializes without errors."""
         # Service should be initialized by fixture
-        from composer import get_composer_service
+        from composer_init import get_composer_service
 
         # Service should be available (though get_composer_service might be None in test env)
         # The fact that initialize_composer() completed successfully indicates proper setup
@@ -169,8 +169,8 @@ class TestComposerIntegrationValidation:
         # If any circular imports or missing modules exist, the test imports at the top would fail.
 
         # Test some key import chains that were potentially problematic
-        from composer.core.service import ComposerService
-        from composer.graph.builder import GraphBuilder
+        from core.service import ComposerService
+        from graph.builder import GraphBuilder
         from models import Message, LangGraphState
 
         assert ComposerService is not None
@@ -182,10 +182,10 @@ class TestComposerIntegrationValidation:
         """Test that there are no circular import issues."""
         # If this test runs successfully, it means the module loading
         # completed without circular import errors
-        import composer
-        import composer.core
-        import composer.nodes
-        import composer.graph
+        import composer_init as composer
+        import core
+        import nodes
+        import graph
         import models
 
         # All imports should succeed
@@ -204,8 +204,8 @@ class TestComposerIntegrationValidation:
     def test_langgraph_architecture_compliance(self):
         """Test that the implementation follows LangGraph V1 Alpha architecture."""
         # Test that core LangGraph components are properly integrated
-        from composer.core.service import CompiledStateGraph
-        from composer.graph.builder import GraphBuilder
+        from core.service import CompiledStateGraph
+        from graph.builder import GraphBuilder
 
         # These should be compatible with LangGraph patterns
         assert CompiledStateGraph is not None
@@ -232,7 +232,7 @@ class TestComposerArchitecturalCompliance:
     def test_component_separation(self):
         """Test that components are properly separated per architecture rules."""
         # Test that composer, runner, and models are separate
-        import composer
+        import composer_init as composer
         import runner
         import models
 
@@ -244,7 +244,7 @@ class TestComposerArchitecturalCompliance:
         """Test that there are no hardcoded paths in critical modules."""
         # This test would catch any sys.path.append('/Users/...') patterns
         # Since we can import successfully, this requirement is met
-        import composer
+        import composer_init as composer
         import models
 
         # Successful imports indicate proper Python module structure

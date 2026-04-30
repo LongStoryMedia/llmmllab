@@ -13,7 +13,7 @@ from models.message import Message
 from models.message_content import MessageContent
 from models.message_content_type import MessageContentType
 from models.message_role import MessageRole
-from server.services.web_extraction_service import WebExtractionService
+from services.web_extraction_service import WebExtractionService
 
 
 class TestWebExtractionService:
@@ -63,8 +63,8 @@ class TestWebExtractionService:
         mock.get_pipeline.return_value = (mock_pipeline, 0.0)
         return mock
 
-    @patch("server.services.web_extraction_service.storage")
-    @patch("server.services.web_extraction_service.pipeline_factory")
+    @patch("services.web_extraction_service.storage")
+    @patch("services.web_extraction_service.pipeline_factory")
     async def test_extract_content_from_url(
         self, mock_pipeline_factory, mock_storage, user_config
     ):
@@ -102,7 +102,7 @@ class TestWebExtractionService:
 
         # Call the method under test
         with patch(
-            "server.services.web_extraction_service.SearchStorage",
+            "services.web_extraction_service.SearchStorage",
             return_value=mock_search_storage,
         ):
             result = await service.extract_content_from_url(
@@ -152,8 +152,8 @@ class TestWebExtractionService:
         assert "http://example.com/page1" in links
         assert "http://example.com/page2" in links
 
-    @patch("server.services.web_extraction_service.storage")
-    @patch("server.services.web_extraction_service.pipeline_factory")
+    @patch("services.web_extraction_service.storage")
+    @patch("services.web_extraction_service.pipeline_factory")
     async def test_filter_relevant_links(
         self, mock_pipeline_factory, mock_storage, user_config
     ):
